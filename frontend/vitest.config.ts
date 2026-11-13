@@ -9,7 +9,7 @@ export default defineConfig({
     css: false,
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'html'],
+      reporter: ['text'],
       exclude: ['node_modules/', './setupTests.ts'],
     },
   },
