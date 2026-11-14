@@ -1,121 +1,79 @@
 # Backend Tracker
 
-Independent Go backend (`ai-buddy/backend-tracker`), copied from `backend-template`.
-PostgreSQL stores profiles, mentor assignments, tasks, and OIDC sessions.
-No UI or administrative CRUD is included.
-Backend directories, Go modules and deployment services use `backend-[service]`
-(for example, `backend-tracker`). The existing Authentik OIDC client remains
-`tracker`, with its registered issuer and HTTPS callback.
+Задачи стажёров, прогресс и назначения наставников. Go, PostgreSQL, вход через Authentik OIDC.
+Сервисы создаются с именами `backend-[service]`; OIDC-клиент этого сервиса — `tracker`.
 
-## Run
+## Запуск
+
+Команды выполнять из `backend-tracker`. Сначала запустить [Authentik](../deploy/authentik/README.md), который создаёт сеть `ai-buddy-shared`.
 
 ```sh
 cp .env.example .env
-# Fill database password, two different random service keys (openssl rand -hex 32),
-# and the existing tracker OIDC client secret and public HTTPS callback.
-docker network create ai-buddy-shared # once, shared with Authentik
-# If the network already exists, continue with the next command.
+# Заполнить .env, затем:
 docker compose up --build -d backend-tracker
 ```
 
-The server binds to `127.0.0.1:8083`. Put it behind the HTTPS reverse proxy at
-the existing `TRACKER_PUBLIC_URL`; use the exact callback registered by
-`deploy/authentik/blueprints/01-oidc.yaml`, `/api/auth/callback`.
-`OIDC_CLIENT_ID=tracker`, issuer `/application/o/tracker/`. Secure session cookies
-require HTTPS. Login: `GET /api/auth/login`; identity: `GET /api/auth/me`;
-logout: `POST /api/auth/logout`. Each service needs its own public hostname.
+В `.env` указать пароль БД, разные `BUDDY_API_KEY` и `TICKET_API_KEY`, OIDC issuer,
+секрет существующего клиента `tracker` и зарегистрированный HTTPS callback.
+Секреты можно генерировать командой `openssl rand -hex 32`.
 
-Compose runs migrations once before starting `backend-tracker`. The database has its own
-volume and no published port. Only `backend-tracker` joins `ai-buddy-shared`; migrations,
-seed and the database use the private network. Seed must reach the public
-Authentik URL through that network's outbound access.
+Сервер доступен на `127.0.0.1:8083`; для браузера нужен HTTPS-прокси.
+Миграции выполняются перед запуском. БД хранится в отдельном томе, её порт не публикуется.
+Вход: `/api/auth/login`, текущий пользователь: `/api/auth/me`, выход: `POST /api/auth/logout`.
 
-### Demo seed
+## Демо-данные
 
-In Authentik's admin interface, create a service account, grant it **view user**
-permission (including the six demo users), and create an API token for that
-account under Directory → Tokens and app passwords. Use the token's key, not
-its identifier. Seed only needs read access; do not use a superuser token.
-The [Authentik users API](https://api.goauthentik.io/reference/core-users-list/)
-provides `pk`, username, activity, and attributes used to verify identities.
+В Authentik создать служебную учётную запись с правом просмотра демо-пользователей и API-токен.
+Указать `AUTHENTIK_URL` и `AUTHENTIK_API_TOKEN` в окружении или `.env`, затем выполнить:
 
 ```sh
-# Export AUTHENTIK_URL and AUTHENTIK_API_TOKEN in your shell for this command.
-# Avoid putting a real token in shell history or committing it.
 docker compose --profile tools run --rm seed
-unset AUTHENTIK_API_TOKEN
 ```
 
-Seed resolves all six usernames from the Authentik demo blueprint before writing
-anything, checks exact usernames, active status, role and team, then writes one
-transaction. Repeating it inserts missing data without changing profiles,
-assignments, task dates or completions. `intern.platform.2` has no mentor.
-The Authentik API token is passed only to seed; the server neither needs it nor
-calls the administrative API. Seed configuration is separate from server config.
+Токен передаётся только seed. Seed проверяет шесть пользователей до записи в БД и добавляет
+профили, назначения и примеры задач одной транзакцией. Повторный запуск сохраняет существующие
+данные. У `intern.platform.2` наставника нет.
 
 ## API
 
-All domain responses and errors are JSON. Task IDs and intern IDs are strings;
-intern IDs are the string representation of Authentik `pk`.
+Ответы — JSON. Браузерные маршруты требуют сессию; стажёр работает со своими задачами,
+наставник читает данные закреплённых стажёров.
 
-| Method and path | Access |
+| Метод и путь | Назначение |
 | --- | --- |
-| `GET /api/tasks` | Intern: own tasks, `{ "tasks": [...] }` |
-| `POST /api/tasks` | Intern: create own task |
-| `POST /api/tasks/{id}/complete` | Intern: complete own task |
-| `GET /api/progress` | Intern: own progress |
-| `GET /api/interns` | Mentor: assigned profiles, `{ "interns": [...] }` |
-| `GET /api/interns/{id}/progress` | Mentor: assigned intern's progress |
-| `GET /internal/interns/{id}/progress` | Buddy |
-| `POST /internal/interns/{id}/tasks` | Buddy |
-| `POST /internal/interns/{id}/tasks/{taskID}/complete` | Buddy |
-| `GET /internal/interns/{id}/mentor` | Buddy or Ticket; `{ "mentor": null }` if unassigned |
+| `GET /api/tasks`, `POST /api/tasks` | Список и создание задач стажёра |
+| `POST /api/tasks/{id}/complete` | Завершение задачи |
+| `GET /api/progress` | Свой прогресс |
+| `GET /api/interns` | Стажёры наставника |
+| `GET /api/interns/{id}/progress` | Прогресс закреплённого стажёра |
+| `GET /internal/interns/{id}/progress` | Прогресс для Buddy |
+| `POST /internal/interns/{id}/tasks` | Создание задачи через Buddy |
+| `POST /internal/interns/{id}/tasks/{taskID}/complete` | Завершение через Buddy |
+| `GET /internal/interns/{id}/mentor` | Поиск наставника для Buddy и Ticket |
 
-Internal routes require `Authorization: Bearer <BUDDY_API_KEY>` or
-`<TICKET_API_KEY>`. Sessions do not authorize internal calls. Ticket can only
-look up mentors. Browser ownership comes from the session, never request input.
+Внутренние маршруты требуют `Authorization: Bearer <ключ>`; Ticket доступен только поиск наставника.
+Создание требует `Idempotency-Key` и тело `{"title":"Задача","description":"Описание","deadline":"2026-12-01"}`.
+Название и дата обязательны. Создание возвращает `201`, повтор — `200`, конфликт содержимого — `409`.
+Повторное завершение сохраняет первую дату завершения.
 
-Create body: `{"title":"First task","description":"Optional","deadline":"2026-12-01"}`.
-Title, description and deadline are trimmed. Title and a valid `YYYY-MM-DD`
-deadline are required; past dates are allowed. All creates require an
-`Idempotency-Key` (nonblank, at most 256 bytes). Use a new key per intended task.
-Creation returns the task with `201`; normalized replay returns it with `200`;
-changed content with the same intern/key returns `409`. Browser and Buddy share
-the same key namespace. Parallel requests create one task. Completion returns
-`200` and preserves the first completion timestamp on retries. Buddy handles
-user confirmation before submitting a create request.
+Прогресс содержит профиль, наставника, задачи, счётчики, процент и следующую задачу.
+Следующая — первая просроченная незавершённая, иначе с ближайшим дедлайном.
+Часовой пояс задаётся `APP_TIMEZONE` (по умолчанию `Europe/Moscow`); сегодняшний дедлайн не просрочен.
+Проверки доступности: `/health/live`, `/health/ready`.
 
-Tasks contain `id`, `intern_id`, `title`, `description`, `deadline`, `created_at`,
-`completed_at`, `status` (`pending`/`completed`) and `overdue`. Order is ascending
-creation time then ID. `APP_TIMEZONE` defaults to `Europe/Moscow`; today's
-calendar deadline is not overdue. Completed tasks are never overdue.
+## Структура и проверки
 
-Progress includes `intern`, nullable `mentor`, `start_date`, `goals`,
-`expectations`, `tasks`, `completed`, `total`, integer `percent` and nullable
-`next_task`. The next task is the first pending overdue task in list order,
-otherwise the pending task with earliest deadline (ties preserve list order).
-Empty progress is 0%; empty or fully completed progress has no next task.
-
-Errors: `400` invalid input, `401` missing/invalid credentials, `403` role or
-key permission denied, `404` unknown intern, foreign task or inaccessible
-profile, `409` idempotency conflict, `500` storage failure without SQL/secrets.
-Health endpoints: `/health/live`, `/health/ready` (204 on success).
-
-## Checks
+`internal/tasks` — задачи, `interns` — профили и назначения, `progress` — сводка прогресса.
+В каждом пакете есть сервис, подпакеты `http` и `postgres`. Интерфейсы объявлены у потребителей,
+зависимости собираются в `cmd/server`. Репозиторий прогресса использует репозитории задач и стажёров.
 
 ```sh
-go test -coverprofile=coverage.out ./...
-go tool cover -func=coverage.out
+go test -race -coverprofile=/tmp/backend-tracker.cover ./...
+go tool cover -func=/tmp/backend-tracker.cover
 go vet ./...
 go build -o /tmp/backend-tracker-bin/ ./cmd/...
 docker compose --env-file .env.example config --quiet
-docker build -t ai-buddy-backend-tracker:local .
-# Dedicated reachable PostgreSQL, permissions to create/drop temporary schemas:
-TEST_DATABASE_URL='postgres://user:password@localhost:5432/backend-tracker_test?sslmode=disable' go test -count=1 ./...
 ```
 
-PostgreSQL tests use isolated temporary schemas and drop them after each run.
-Without `TEST_DATABASE_URL` those tests explicitly skip. They check migrations,
-assignment constraints, persistence, concurrent idempotency, seed repeats and
-rollback. Unit/HTTP tests run without PostgreSQL and include OIDC/session tests
-inherited from the template. Coverage must remain strictly above 80%.
+Покрытие должно превышать 80%. Для PostgreSQL-тестов задать `TEST_DATABASE_URL`:
+они создают и удаляют временные схемы. Без этой переменной интеграционные тесты пропускаются.
