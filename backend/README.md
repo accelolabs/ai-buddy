@@ -3,6 +3,7 @@
 Архитектура и требования: [SDD](../docs/SDD.md). В каталоге `backend/` расположен один Go-модуль `ai-buddy`, отдельные процессы и базы данных сервисов.
 
 - [Authentik: OIDC и демо-пользователи](deploy/authentik/README.md).
+- [Ollama: локальные модели на CPU](deploy/ollama/README.md).
 - [Tracker: задачи, прогресс, наставники](deploy/tracker/README.md).
 - [Ticket: вопросы наставникам](deploy/ticket/README.md).
 
@@ -15,7 +16,7 @@ internal/tracker               задачи, стажёры, прогресс, �
 internal/ticket                тикеты, HTTP-клиент Tracker, миграции и seed Ticket
 internal/platform              auth, config, database, server, httpx, migrations, demousers, cli
 internal/testutil              только тестовые HTTP-заглушки и временные схемы PostgreSQL
-deploy/tracker, deploy/ticket  Compose, окружение и инструкции
+deploy/                       Compose, окружение и инструкции сервисов и Ollama
 ```
 
 Предметные пакеты сохраняют подпакеты `http` и `postgres`; DTO находятся у обработчиков,
@@ -70,6 +71,22 @@ Compose явно сохраняет имена проектов `backend-tracker
 Сброс БД и перенос данных не нужны; не удаляйте существующие тома.
 Порты остаются 8083/8084. Серверы используют общую сеть `ai-buddy-shared`, БД — только приватные сети.
 OIDC-клиенты `tracker` и `ticket` и зарегистрированные HTTPS callback остаются прежними.
+
+## Локальные модели
+
+После запуска Authentik, создавшего `ai-buddy-shared`, из каталога `backend/`:
+
+```sh
+cp deploy/ollama/.env.example deploy/ollama/.env
+docker compose -f deploy/ollama/compose.yaml up -d
+docker compose -f deploy/ollama/compose.yaml logs -f models
+```
+
+Docker запускает Ollama на CPU и загружает `embeddinggemma:300m` для Wiki и `qwen3.5:4b`
+для Buddy. Веса сохраняются в томе. Жёсткие лимиты RAM и swap не задаются.
+Для LLM приняты контекст 4096 и `think: false`. Память остальных компонентов
+учитывается отдельно. Сервисы используют `http://ollama:11434`.
+Готовность загрузки, примеры HTTP-запросов и обновление: [инструкция Ollama](deploy/ollama/README.md).
 
 ## Проверки
 

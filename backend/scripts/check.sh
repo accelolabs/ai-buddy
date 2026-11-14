@@ -38,7 +38,7 @@ if [[ -z "${TEST_DATABASE_URL:-}" ]]; then
   echo 'PostgreSQL integration tests skipped: TEST_DATABASE_URL is unset.'
 fi
 if command -v docker >/dev/null; then
-  for service in tracker ticket; do
+  for service in tracker ticket ollama; do
     docker compose -f "deploy/$service/compose.yaml" --env-file "deploy/$service/.env.example" config --quiet
   done
 else

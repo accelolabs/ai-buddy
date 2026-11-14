@@ -5,6 +5,7 @@ AI Buddy — сервисы Buddy, Tracker, Ticket и Wiki с авторизац
 - [Архитектура и требования](docs/SDD.md).
 - [Бэкенд: структура, запуск, сборка и проверки](backend/README.md).
 - [Authentik: OIDC и демо-пользователи](backend/deploy/authentik/README.md).
+- [Ollama: локальные модели на CPU](backend/deploy/ollama/README.md).
 - [Tracker: задачи, прогресс и наставники](backend/deploy/tracker/README.md).
 - [Ticket: вопросы наставникам](backend/deploy/ticket/README.md).
 
