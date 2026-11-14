@@ -1,0 +1,65 @@
+name: backend-buddy
+
+x-app: &app
+  build:
+    context: ../..
+    args:
+      SERVICE: buddy
+  image: ai-buddy-backend-buddy:local
+  networks: [private]
+  environment: &environment
+    DATABASE_URL: postgres://${POSTGRES_USER:-backend-buddy}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@backend-buddy-db:5432/${POSTGRES_DB:-backend-buddy}?sslmode=disable
+
+services:
+  backend-buddy-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-backend-buddy}
+      POSTGRES_USER: ${POSTGRES_USER:-backend-buddy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - backend-buddy-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [private]
+  migrate:
+    <<: *app
+    command: [/app/migrate, buddy, up]
+    depends_on:
+      backend-buddy-db:
+        condition: service_healthy
+  backend-buddy:
+    <<: *app
+    environment:
+      <<: *environment
+      HTTP_ADDR: :8080
+      OIDC_ISSUER: ${OIDC_ISSUER:?Set OIDC_ISSUER}
+      OIDC_CLIENT_ID: buddy
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?Set OIDC_CLIENT_SECRET}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:?Set OIDC_REDIRECT_URI}
+      BUDDY_API_KEY: ${BUDDY_API_KEY:?Set BUDDY_API_KEY}
+      TRACKER_URL: ${TRACKER_URL:-http://backend-tracker:8080}
+      TICKET_URL: ${TICKET_URL:-http://backend-ticket:8080}
+      WIKI_URL: ${WIKI_URL:-http://backend-wiki:8080}
+      WIKI_PUBLIC_URL: ${WIKI_PUBLIC_URL:?Set WIKI_PUBLIC_URL}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      SESSION_LIFETIME: ${SESSION_LIFETIME:-24h}
+      SESSION_IDLE_TIMEOUT: ${SESSION_IDLE_TIMEOUT:-1h}
+    ports:
+      - '${HTTP_BIND_ADDR:-127.0.0.1}:${HTTP_PORT:-8081}:8080'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [private, shared]
+    restart: unless-stopped
+
+volumes:
+  backend-buddy-data:
+networks:
+  private:
+  shared:
+    external: true
+    name: ai-buddy-shared

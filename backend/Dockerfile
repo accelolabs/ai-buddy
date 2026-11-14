@@ -4,7 +4,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 ARG SERVICE
-RUN case "$SERVICE" in tracker|ticket|wiki) ;; *) exit 1 ;; esac && \
+RUN case "$SERVICE" in tracker|ticket|wiki|buddy) ;; *) exit 1 ;; esac && \
     CGO_ENABLED=0 go build -trimpath -o /out/server ./cmd/$SERVICE && \
     CGO_ENABLED=0 go build -trimpath -o /out/migrate ./cmd/migrate && \
     CGO_ENABLED=0 go build -trimpath -o /out/seed ./cmd/seed && \
