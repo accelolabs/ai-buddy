@@ -12,9 +12,11 @@ if [[ -n "$unformatted" ]]; then
 fi
 go vet ./...
 go build -o "$output_dir/bin/" ./cmd/...
-for group in tracker ticket platform; do
+for group in tracker ticket wiki platform; do
   if [[ "$group" == platform ]]; then
     packages=$(go list ./internal/platform/... ./cmd/migrate ./cmd/seed | paste -sd,)
+  elif [[ "$group" == wiki ]]; then
+    packages=$(go list ./internal/wiki/... ./cmd/wiki ./cmd/wiki-index | paste -sd,)
   else
     packages=$(go list "./internal/$group/..." "./cmd/$group" | paste -sd,)
   fi
@@ -38,7 +40,7 @@ if [[ -z "${TEST_DATABASE_URL:-}" ]]; then
   echo 'PostgreSQL integration tests skipped: TEST_DATABASE_URL is unset.'
 fi
 if command -v docker >/dev/null; then
-  for service in tracker ticket ollama; do
+  for service in tracker ticket wiki ollama; do
     docker compose -f "deploy/$service/compose.yaml" --env-file "deploy/$service/.env.example" config --quiet
   done
 else
