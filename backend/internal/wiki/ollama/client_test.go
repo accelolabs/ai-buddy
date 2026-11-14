@@ -1,0 +1,91 @@
+package ollama
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"ai-buddy/internal/wiki"
+)
+
+func embedding() []float64 { v := make([]float64, 768); v[0] = 1; return v }
+func TestOllama(t *testing.T) {
+	ctx := context.Background()
+	mode := "ok"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if mode == "status" {
+			w.WriteHeader(500)
+			return
+		}
+		if mode == "context" {
+			w.WriteHeader(400)
+			fmt.Fprint(w, `{"error":"input length exceeds context length"}`)
+			return
+		}
+		if mode == "invalid" {
+			fmt.Fprint(w, "!")
+			return
+		}
+		if r.URL.Path == "/api/tags" {
+			if mode == "missing" {
+				fmt.Fprint(w, `{"models":[]}`)
+			} else {
+				fmt.Fprint(w, `{"models":[{"name":"embeddinggemma:300m","digest":"sha256:test"}]}`)
+			}
+			return
+		}
+		var req struct {
+			Model, Input string
+			Truncate     *bool
+		}
+		if json.NewDecoder(r.Body).Decode(&req) != nil || req.Truncate == nil || *req.Truncate || req.Model != wiki.Model || req.Input == "" {
+			t.Error("bad embed request")
+		}
+		v := embedding()
+		if mode == "dimension" {
+			v = v[:4]
+		}
+		if mode == "zero" {
+			v[0] = 0
+		}
+		json.NewEncoder(w).Encode(map[string]any{"embeddings": [][]float64{v}})
+	}))
+	defer srv.Close()
+	o := New(srv.URL)
+	fp, err := o.Fingerprint(ctx)
+	if err != nil || !strings.Contains(fp, "sha256:test") || !strings.Contains(fp, wiki.SplitVersion) {
+		t.Fatal(fp, err)
+	}
+	if v, err := o.Embed(ctx, "test"); err != nil || len(v) != 768 {
+		t.Fatal(v, err)
+	}
+	for _, m := range []string{"status", "invalid", "missing"} {
+		mode = m
+		if _, err := o.Fingerprint(ctx); err == nil {
+			t.Fatal(m)
+		}
+	}
+	for _, m := range []string{"status", "invalid", "context", "dimension", "zero"} {
+		mode = m
+		_, err := o.Embed(ctx, "test")
+		if err == nil {
+			t.Fatal(m)
+		}
+		if m == "context" && !errors.Is(err, wiki.ErrContext) {
+			t.Fatal(err)
+		}
+	}
+	o.URL = ":"
+	if _, err := o.Fingerprint(ctx); err == nil {
+		t.Fatal("URL")
+	}
+	o.URL = "http://127.0.0.1:1"
+	if _, err := o.Embed(ctx, "x"); err == nil {
+		t.Fatal("network")
+	}
+}

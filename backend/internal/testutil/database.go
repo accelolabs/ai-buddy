@@ -44,7 +44,7 @@ func Database(t *testing.T, files fs.FS) *sql.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.RuntimeParams["search_path"] = schema
+	cfg.RuntimeParams["search_path"] = schema + ",public"
 	db := stdlib.OpenDB(*cfg)
 	t.Cleanup(func() { db.Close() })
 	if err = migrations.Run(ctx, db, files, "up"); err != nil {
