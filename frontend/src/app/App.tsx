@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppLayout } from '@/app/AppLayout';
-import { ChatPage } from '@/pages/chat';
+import { ChatPage } from '@/pages';
 
 const queryClient = new QueryClient();
 
