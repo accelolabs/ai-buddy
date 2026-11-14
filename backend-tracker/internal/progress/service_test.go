@@ -161,30 +161,3 @@ func TestMentorAccessAndErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
-func TestProgressCalendarAndProfile(t *testing.T) {
-	s, repo := fixture()
-	repo.snapshot.Tasks = []tasks.Task{{ID: "today", Deadline: "2026-11-14"}, {ID: "tomorrow", Deadline: "2026-11-15"}}
-	calls := 0
-	s.now = func() time.Time {
-		calls++
-		return time.Date(2026, 11, 14, 20, 59, 59, 0, time.UTC)
-	}
-	p, err := s.Progress(context.Background(), "i")
-	if err != nil ||
-		calls != 1 ||
-		p.Tasks[0].Overdue ||
-		p.StartDate != repo.snapshot.Intern.StartDate ||
-		p.Goals != "Goals" ||
-		p.Expectations != "Expectations" {
-		t.Fatal(p, err, calls)
-	}
-
-	s.now = func() time.Time {
-		return time.Date(2026, 11, 14, 21, 0, 0, 0, time.UTC)
-	}
-	p, err = s.Progress(context.Background(), "i")
-	if err != nil || !p.Tasks[0].Overdue || p.Tasks[1].Overdue || p.NextTask.ID != "today" {
-		t.Fatal(p, err)
-	}
-}

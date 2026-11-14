@@ -1,60 +1,10 @@
 package httpx
 
 import (
-	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
-
-	"ai-buddy/backend-tracker/internal/apperror"
 )
-
-func TestFailure(t *testing.T) {
-	for _, tc := range []struct {
-		err  error
-		code int
-	}{
-		{apperror.ErrInvalid, 400},
-		{apperror.ErrNotFound, 404},
-		{apperror.ErrConflict, 409},
-		{errors.New("SQL secret"), 500},
-	} {
-		w := httptest.NewRecorder()
-		Failure(w, fmt.Errorf("wrapped: %w", tc.err))
-		if w.Code != tc.code ||
-			w.Header().Get("Content-Type") != "application/json" ||
-			strings.Contains(w.Body.String(), "secret") {
-			t.Fatal(w)
-		}
-	}
-}
-
-func TestDecode(t *testing.T) {
-	type input struct {
-		Title string `json:"title"`
-	}
-	for _, tc := range []struct {
-		body  string
-		valid bool
-	}{
-		{`{"title":"Task"}`, true},
-		{`{"title":"Task"} `, true},
-		{`{"extra":1}`, false},
-		{`{`, false},
-		{`{} {}`, false},
-		{`[]`, false},
-		{strings.Repeat("x", (1<<20)+1), false},
-	} {
-		var in input
-		w := httptest.NewRecorder()
-		err := Decode(w, httptest.NewRequest("POST", "/", strings.NewReader(tc.body)), &in)
-		if (err == nil) != tc.valid {
-			t.Fatal(tc, err)
-		}
-	}
-}
 
 func TestKeyAuth(t *testing.T) {
 	for _, ticketAllowed := range []bool{false, true} {

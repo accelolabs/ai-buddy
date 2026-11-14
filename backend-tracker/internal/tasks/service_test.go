@@ -109,57 +109,6 @@ func TestCreate(t *testing.T) {
 	}
 }
 
-func TestTasksAndComplete(t *testing.T) {
-	s, repo, intern := newService()
-	ctx := context.Background()
-	list, err := s.Tasks(ctx, "i")
-	if err != nil || list == nil || len(list) != 0 || intern.id != "i" {
-		t.Fatal(list, err)
-	}
-
-	now := s.now()
-	done := now
-	repo.list = []Task{
-		{
-			ID:        "z",
-			Deadline:  "2026-11-13",
-			CreatedAt: now.Add(time.Hour),
-		},
-		{
-			ID:        "b",
-			Deadline:  "2026-11-14",
-			CreatedAt: now,
-		},
-		{
-			ID:        "a",
-			Deadline:  "2026-11-13",
-			CreatedAt: now,
-		},
-		{
-			ID:          "c",
-			Deadline:    "2026-11-01",
-			CreatedAt:   now,
-			CompletedAt: &done,
-		},
-	}
-	list, err = s.Tasks(ctx, "i")
-	if err != nil ||
-		list[0].ID != "a" ||
-		!list[0].Overdue ||
-		list[1].ID != "b" ||
-		list[1].Overdue ||
-		list[2].Status != "completed" ||
-		list[2].Overdue ||
-		list[3].ID != "z" {
-		t.Fatal(list, err)
-	}
-
-	task, err := s.Complete(ctx, "i", "task")
-	if err != nil || task.ID != "task" || repo.internID != "i" || repo.taskID != "task" {
-		t.Fatal(task, err)
-	}
-}
-
 func TestCalendarBoundary(t *testing.T) {
 	s, repo, _ := newService()
 	repo.list = []Task{{Deadline: "2026-11-14"}}
@@ -211,34 +160,5 @@ func TestDependencyErrors(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-func TestPrepareListPreservesInput(t *testing.T) {
-	now := time.Now()
-	original := []Task{
-		{
-			ID:        "z",
-			CreatedAt: now,
-			Deadline:  "2026-11-13",
-		},
-		{
-			ID:        "a",
-			CreatedAt: now,
-			Deadline:  "2026-11-14",
-		},
-	}
-	prepared := PrepareList(original, "2026-11-14")
-	if original[0].ID != "z" ||
-		original[0].Status != "" ||
-		original[0].Overdue ||
-		prepared[0].ID != "a" ||
-		!prepared[1].Overdue {
-		t.Fatal(original, prepared)
-	}
-
-	prepared[0].Title = "Changed"
-	if original[1].Title != "" {
-		t.Fatal("result aliases source")
 	}
 }

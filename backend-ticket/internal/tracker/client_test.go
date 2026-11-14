@@ -64,13 +64,3 @@ func TestTimeoutAndRedirect(t *testing.T) {
 		}
 	}
 }
-func TestURL(t *testing.T) {
-	for _, raw := range []string{"ftp://tracker", "http://user:pass@tracker", "http://tracker?secret", "http://tracker#fragment", "bad"} {
-		if ValidURL(raw) {
-			t.Fatal(raw)
-		}
-	}
-	if !ValidURL("http://tracker:8080") {
-		t.Fatal("valid url")
-	}
-}

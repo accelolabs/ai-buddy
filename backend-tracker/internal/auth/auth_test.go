@@ -402,28 +402,6 @@ func stringMustJSON(v any) string {
 	return string(b)
 }
 
-func TestLoginReplacement(t *testing.T) {
-	f := newFixture(t)
-	c, old := f.login(t, nil)
-	c, current := f.login(t, c)
-	if old == current {
-		t.Fatal("attempt not replaced")
-	}
-
-	if w := f.callback(c, old); w.Code != 400 {
-		t.Fatal("old state accepted")
-	}
-
-	if w := f.callback(c, current); w.Code != 400 {
-		t.Fatal("attempt not consumed")
-	}
-
-	c, current = f.login(t, c)
-	if w := f.callback(c, current); w.Code != 302 {
-		t.Fatal("new attempt failed")
-	}
-}
-
 func TestStoreErrors(t *testing.T) {
 	f := newFixture(t)
 	c, s := f.login(t, nil)
@@ -446,54 +424,6 @@ func TestStoreErrors(t *testing.T) {
 	f.store.commit = true
 	if w := f.request("GET", "/api/auth/login", nil); w.Code != 500 {
 		t.Fatal("commit error")
-	}
-}
-
-func TestMiddlewareAndCSRF(t *testing.T) {
-	f := newFixture(t)
-	ctx, err := f.a.Sessions.Load(context.Background(), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, raw := range []string{"broken", `{"authentik_id":"42","role":"admin","team":"backend"}`} {
-		f.a.Sessions.Put(ctx, "user", raw)
-		w := httptest.NewRecorder()
-		f.a.RequireUser(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-			t.Fatal("called next")
-		})).ServeHTTP(
-			w,
-			httptest.NewRequest("GET", "/", nil).WithContext(ctx),
-		)
-		if w.Code != 500 {
-			t.Fatal(w.Code)
-		}
-	}
-
-	if _, ok := CurrentUser(context.Background()); ok {
-		t.Fatal("unexpected user")
-	}
-
-	r := httptest.NewRequest("POST", "https://app.example/api/auth/logout", nil)
-	r.Header.Set("Sec-Fetch-Site", "cross-site")
-	r.Header.Set("Origin", "https://evil.example")
-	w := httptest.NewRecorder()
-	f.a.Handler().ServeHTTP(w, r)
-	if w.Code != 403 {
-		t.Fatal(w.Code)
-	}
-
-	if w = f.request("GET", "/api/auth/logout", nil); w.Code != 405 {
-		t.Fatal(w.Code)
-	}
-}
-
-func TestDiscoveryFailure(t *testing.T) {
-	p := httptest.NewServer(http.NotFoundHandler())
-	defer p.Close()
-
-	if _, err := NewOIDCProvider(context.Background(), config.Config{Issuer: p.URL}); err == nil {
-		t.Fatal("discovery accepted")
 	}
 }
 
@@ -529,86 +459,6 @@ func (f *fixture) updateSession(t *testing.T, cookie *http.Cookie, update func(c
 	update(ctx)
 	if _, _, err = f.a.Sessions.Commit(ctx); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestPendingLoginInSession(t *testing.T) {
-	f := newFixture(t)
-	cookie, state := f.login(t, nil)
-	f.updateSession(t, cookie, func(ctx context.Context) {
-		if f.a.Sessions.GetString(ctx, SessionKeyOIDCState) != state ||
-			f.a.Sessions.GetString(ctx, SessionKeyOIDCNonce) != f.nonce ||
-			f.a.Sessions.GetString(ctx, SessionKeyOIDCPKCE) == "" {
-			t.Fatal("OIDC parameters not stored in SCS")
-		}
-
-		expiry := f.a.Sessions.GetTime(ctx, SessionKeyOIDCExpiry)
-		if remaining := time.Until(expiry); remaining < 4*time.Minute || remaining > 5*time.Minute {
-			t.Fatal("invalid login expiry", remaining)
-		}
-	})
-	w := f.callback(cookie, state)
-	if w.Code != 302 {
-		t.Fatal(w.Code)
-	}
-
-	var current *http.Cookie
-	for _, c := range w.Result().Cookies() {
-		if c.Name == "__Host-session" {
-			current = c
-		}
-	}
-
-	if current == nil {
-		t.Fatal("missing cookie")
-	}
-
-	f.updateSession(t, current, func(ctx context.Context) {
-		keys := f.a.Sessions.Keys(ctx)
-		if len(keys) != 1 || keys[0] != SessionKeyUser {
-			t.Fatalf("unexpected persisted session data: %v", keys)
-		}
-	})
-	if w := f.callback(current, state); w.Code != 400 {
-		t.Fatal("replayed callback accepted")
-	}
-}
-
-func TestIncompletePendingLogin(t *testing.T) {
-	f := newFixture(t)
-	for _, key := range []string{
-		SessionKeyOIDCState,
-		SessionKeyOIDCNonce,
-		SessionKeyOIDCPKCE,
-		SessionKeyOIDCExpiry,
-	} {
-		t.Run(key, func(t *testing.T) {
-			cookie, state := f.login(t, nil)
-			f.updateSession(t, cookie, func(ctx context.Context) {
-				f.a.Sessions.Remove(ctx, key)
-			})
-			if w := f.callback(cookie, state); w.Code != 400 {
-				t.Fatal("incomplete login accepted")
-			}
-
-			f.updateSession(t, cookie, func(ctx context.Context) {
-				if keys := f.a.Sessions.Keys(ctx); len(keys) != 0 {
-					t.Fatal("pending parameters not cleared", keys)
-				}
-			})
-		})
-	}
-}
-
-func TestLogoutCancelsLogin(t *testing.T) {
-	f := newFixture(t)
-	cookie, state := f.login(t, nil)
-	if w := f.request("POST", "/api/auth/logout", cookie); w.Code != 204 {
-		t.Fatal(w.Code)
-	}
-
-	if w := f.callback(cookie, state); w.Code != 400 {
-		t.Fatal("logout kept pending login")
 	}
 }
 

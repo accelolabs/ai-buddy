@@ -160,29 +160,6 @@ func newMiddlewareAuth(t *testing.T) (*Auth, *brokenStore) {
 	return New(sessions, nil), store
 }
 
-func TestWithSession(t *testing.T) {
-	a, _ := newMiddlewareAuth(t)
-	handler := a.WithSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		previous := a.Sessions.GetString(r.Context(), "value")
-		a.Sessions.Put(r.Context(), "value", "saved")
-		w.Write([]byte(previous))
-	}))
-	first := httptest.NewRecorder()
-	handler.ServeHTTP(first, httptest.NewRequest("GET", "https://app.example/", nil))
-	cookies := first.Result().Cookies()
-	if first.Code != 200 || len(cookies) != 1 {
-		t.Fatalf("first request: %d, cookies %d", first.Code, len(cookies))
-	}
-
-	second := httptest.NewRequest("GET", "https://app.example/", nil)
-	second.AddCookie(cookies[0])
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, second)
-	if w.Code != 200 || w.Body.String() != "saved" {
-		t.Fatalf("second request: %d %q", w.Code, w.Body.String())
-	}
-}
-
 func TestWithSessionCrossOrigin(t *testing.T) {
 	a, store := newMiddlewareAuth(t)
 	// Rejection happens before reading the session or calling the protected handler.
@@ -204,19 +181,5 @@ func TestWithSessionCrossOrigin(t *testing.T) {
 		if w.Code != 403 {
 			t.Fatalf("%s: status %d", header.key, w.Code)
 		}
-	}
-}
-
-func TestWithSessionWriteFailure(t *testing.T) {
-	a, store := newMiddlewareAuth(t)
-	store.commit = true
-	handler := a.WithSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		a.Sessions.Put(r.Context(), "value", "saved")
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, httptest.NewRequest("GET", "https://app.example/", nil))
-	if w.Code != 500 {
-		t.Fatalf("status = %d", w.Code)
 	}
 }

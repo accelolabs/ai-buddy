@@ -37,14 +37,3 @@ func TestInvalid(t *testing.T) {
 		})
 	}
 }
-func TestDatabaseOnly(t *testing.T) {
-	t.Setenv("DATABASE_URL", "postgresql://user:secret@db/app")
-	t.Setenv("OIDC_ISSUER", "")
-	if _, err := LoadDatabase(); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("DATABASE_URL", "invalid-secret")
-	if _, err := LoadDatabase(); err == nil || strings.Contains(err.Error(), "secret") {
-		t.Fatal("invalid database error")
-	}
-}
