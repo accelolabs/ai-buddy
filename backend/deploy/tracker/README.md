@@ -70,11 +70,12 @@ docker compose --profile tools run --rm seed
 Из каталога `backend/`:
 
 ```sh
-./scripts/check.sh
+./scripts/check.sh --unit
 # Для PostgreSQL-проверок добавить TEST_DATABASE_URL отдельной тестовой БД.
 ```
 
-Покрытие каждой из трёх групп (Tracker, Ticket, platform с общими командами) строго выше 80%.
+Полная проверка требует тестовую PostgreSQL с pgvector и Docker CLI.
+Покрытие каждой из пяти групп (Buddy, Tracker, Ticket, Wiki, Platform) строго выше 80%.
 Общий код не увеличивает покрытие сервиса, тестовые помощники исключены.
 Без `TEST_DATABASE_URL` PostgreSQL-тесты пропускаются; с ним создают временные схемы.
 Проверки, архитектура и добавление сервисов описаны в [README бэкенда](../../README.md).
@@ -82,3 +83,6 @@ docker compose --profile tools run --rm seed
 Compose явно задаёт историческое имя проекта `backend-tracker`, сохраняя существующий том.
 При прежнем нестандартном `-p` используйте его и дальше. SQL и номера миграций сохранены,
 сброс данных не требуется. Образ собирается Dockerfile каталога `backend/` с `SERVICE=tracker`.
+
+Контракт API: [OpenAPI 3.1.1](../../api/tracker.yaml).
+Общие быстрые и полные проверки, установка линтера и CI: [README бэкенда](../../README.md#api-и-проверки).

@@ -101,7 +101,9 @@ There is no approximate vector index.
 
 ## Verification
 
-From `backend/`, run `scripts/check.sh`. Wiki has its own coverage group including
+From `backend/`, run `scripts/check.sh --unit` for checks without PostgreSQL.
+The full `scripts/check.sh` requires `TEST_DATABASE_URL` (PostgreSQL 16 + pgvector) and Docker CLI.
+Wiki has its own coverage group including
 `cmd/wiki` and `cmd/wiki-index`; every group must remain strictly above 80%.
 For real PostgreSQL tests, set `TEST_DATABASE_URL` to an isolated test database on
 PostgreSQL 16 with pgvector installed. The test user needs schema/extension
@@ -134,3 +136,6 @@ external calls. Dependency URL/path settings are trusted and checked by the
 HTTP/filesystem operations themselves; required credentials and the similarity
 range remain startup checks. Database ACL filters, model identity, vector size,
 network deadlines and atomic publication remain enforced.
+
+Контракт API: [OpenAPI 3.1.1](../../api/wiki.yaml).
+Общие быстрые и полные проверки, установка линтера и CI: [README бэкенда](../../README.md#api-и-проверки).

@@ -111,10 +111,20 @@ Wiki предоставляет JSON API поиска, списка докуме
 идемпотентность, восстановление SSE и обработку ошибок зависимостей.
 Чужие документы, диалоги, задачи и тикеты недоступны.
 
-Общая проверка бэкенда включает форматирование, race-тесты, vet, сборки и Compose validation.
-Покрытие каждой группы — Tracker, Ticket, Wiki и общей инфраструктуры — строго выше 80%.
+Контракты Buddy, Tracker, Ticket и Wiki закреплены в четырёх самостоятельных OpenAPI 3.1.1
+в `backend/api/`, поддерживаемых вручную. Проверки документов, запросов и ответов используют
+kin-openapi v0.153.0, без генерации серверов и DTO.
+
+Общая проверка бэкенда: golangci-lint 2.13.2 (включая gofmt/goimports без перезаписи), vet,
+сборки, единый запуск race-тестов с PostgreSQL 16 + pgvector и Compose validation.
+Пять независимых профилей — Tracker, Ticket, Wiki, Buddy, Platform — требуют строго >80%
+до округления. Тестовые помощники исключены. `scripts/check.sh --unit` запускает быстрый
+набор без PostgreSQL и порогов; обычный запуск требует PostgreSQL и Docker CLI.
+GitHub Actions использует тот же полный скрипт без Authentik-секретов и моделей и сохраняет логи
+и профили даже при ошибках. Реальный Qwen проверяется отдельно после изменений агента/MCP/клиентов.
+Остановка Buddy дожидается сохранения генерации и начатых подтверждений до закрытия БД.
 
 Структура кода, команды и запуск описаны в [README бэкенда](../backend/README.md).
 Настройки и эксплуатационные подробности: [Authentik](../backend/deploy/authentik/README.md),
 [Ollama](../backend/deploy/ollama/README.md), [Tracker](../backend/deploy/tracker/README.md),
-[Ticket](../backend/deploy/ticket/README.md) и [Wiki](../backend/deploy/wiki/README.md).
+[Buddy](../backend/deploy/buddy/README.md), [Ticket](../backend/deploy/ticket/README.md) и [Wiki](../backend/deploy/wiki/README.md).
