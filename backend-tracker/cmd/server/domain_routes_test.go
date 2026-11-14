@@ -19,6 +19,12 @@ import (
 	"github.com/alexedwards/scs/v2"
 )
 
+type taskResponse struct {
+	ID       string `json:"id"`
+	InternID string `json:"intern_id"`
+	Title    string `json:"title"`
+}
+
 type httpFixture struct {
 	handler  http.Handler
 	store    *memory
@@ -127,7 +133,7 @@ func TestBrowserAPI(t *testing.T) {
 	body := `{"title":"  tasks.Task  ","description":" test ","deadline":"2020-01-01"}`
 	w := f.request("POST", "/api/tasks", body, "key", "", intern)
 	check(t, w, 201)
-	var task tasks.Task
+	var task taskResponse
 	if e := json.Unmarshal(w.Body.Bytes(), &task); e != nil || task.InternID != "i" || task.Title != "tasks.Task" {
 		t.Fatal(task, e)
 	}
@@ -188,7 +194,7 @@ func TestInternalAPI(t *testing.T) {
 	body := `{"title":"tasks.Task","deadline":"2026-01-01"}`
 	w := f.request("POST", "/internal/interns/i/tasks", body, "shared", "Bearer buddy", nil)
 	check(t, w, 201)
-	var task tasks.Task
+	var task taskResponse
 	json.Unmarshal(w.Body.Bytes(), &task)
 	check(t, f.request("POST", "/api/tasks", body, "shared", "", cookie), 200)
 	check(t, f.request("POST", "/internal/interns/i/tasks", body, "shared", "Bearer buddy", nil), 200)

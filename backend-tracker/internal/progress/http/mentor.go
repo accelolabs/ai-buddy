@@ -15,5 +15,5 @@ func (h *Handler) Mentor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.JSON(w, 200, result)
+	httpx.JSON(w, 200, fromProgress(result))
 }

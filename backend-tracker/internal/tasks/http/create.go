@@ -36,5 +36,5 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		code = 201
 	}
 
-	httpx.JSON(w, code, result)
+	httpx.JSON(w, code, fromTask(result))
 }

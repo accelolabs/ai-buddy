@@ -6,16 +6,16 @@ import (
 )
 
 type Progress struct {
-	Intern       interns.Profile  `json:"intern"`
-	Mentor       *interns.Profile `json:"mentor"`
-	StartDate    *string          `json:"start_date"`
-	Goals        string           `json:"goals"`
-	Expectations string           `json:"expectations"`
-	Tasks        []tasks.Task     `json:"tasks"`
-	Completed    int              `json:"completed"`
-	Total        int              `json:"total"`
-	Percent      int              `json:"percent"`
-	NextTask     *tasks.Task      `json:"next_task"`
+	Intern       interns.Profile
+	Mentor       *interns.Profile
+	StartDate    *string
+	Goals        string
+	Expectations string
+	Tasks        []tasks.Task
+	Completed    int
+	Total        int
+	Percent      int
+	NextTask     *tasks.Task
 }
 
 // Snapshot is the repository data needed to calculate progress.

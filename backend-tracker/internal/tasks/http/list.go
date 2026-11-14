@@ -13,5 +13,5 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.JSON(w, 200, map[string]any{"tasks": result})
+	httpx.JSON(w, 200, tasksResponse{Tasks: fromTasks(result)})
 }

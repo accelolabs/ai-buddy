@@ -68,7 +68,7 @@ func TestHandlers(t *testing.T) {
 
 	input := `{"title":"Task","description":"Details","deadline":"2026-12-01"}`
 	w = request(h.Create, input)
-	var task tasks.Task
+	var task taskResponse
 	err := json.Unmarshal(w.Body.Bytes(), &task)
 	if err != nil ||
 		w.Code != 201 ||

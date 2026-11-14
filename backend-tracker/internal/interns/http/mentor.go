@@ -13,5 +13,5 @@ func (h *Handler) Mentor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.JSON(w, 200, map[string]any{"mentor": result})
+	httpx.JSON(w, 200, fromMentor(result))
 }

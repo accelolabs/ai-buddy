@@ -15,5 +15,5 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.JSON(w, 200, map[string]any{"interns": result})
+	httpx.JSON(w, 200, internsResponse{Interns: fromProfiles(result)})
 }
