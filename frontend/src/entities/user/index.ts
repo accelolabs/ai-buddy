@@ -5,6 +5,8 @@ export {
   type UserRole,
   isTrainee,
   isMentor,
+} from './model/types';
+export {
   getUserRoleLabel,
   getUserInitials,
-} from './model/types';
+} from './model/helpers';
