@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 
+	buddy "ai-buddy/internal/buddy/migrations"
 	"ai-buddy/internal/platform/cli"
 	"ai-buddy/internal/platform/migrations"
 	ticket "ai-buddy/internal/ticket/migrations"
@@ -17,6 +18,9 @@ var openDatabase = cli.Open
 
 func prepare(service, command string) (cli.Operation, error) {
 	files := tracker.Files
+	if service == "buddy" {
+		files = buddy.Files
+	}
 	if service == "ticket" {
 		files = ticket.Files
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -33,6 +34,9 @@ func Run(ctx context.Context, c config.Config, open OpenDatabase, domain Domain)
 	api, err := domain(db, login)
 	if err != nil {
 		return err
+	}
+	if closer, ok := api.(io.Closer); ok {
+		defer closer.Close()
 	}
 	return ServeHTTP(ctx, c.HTTPAddr, Routes(db, login.Handler(), api))
 }
