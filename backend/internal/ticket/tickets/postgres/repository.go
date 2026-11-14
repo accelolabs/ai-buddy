@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 
 	"ai-buddy/internal/ticket/apperror"
 	"ai-buddy/internal/ticket/tickets"
@@ -113,7 +114,11 @@ func (p *Repository) list(ctx context.Context, query, id string) ([]tickets.Tick
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 
 	list := []tickets.Ticket{}
 	for rows.Next() {

@@ -25,7 +25,9 @@ func TestStartup(t *testing.T) {
 	p := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/.well-known/openid-configuration" {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"issuer":"http://` + r.Host + `","authorization_endpoint":"http://` + r.Host + `/authorize","token_endpoint":"http://` + r.Host + `/token","jwks_uri":"http://` + r.Host + `/jwks"}`))
+			if _, err := w.Write([]byte(`{"issuer":"http://` + r.Host + `","authorization_endpoint":"http://` + r.Host + `/authorize","token_endpoint":"http://` + r.Host + `/token","jwks_uri":"http://` + r.Host + `/jwks"}`)); err != nil {
+				t.Error(err)
+			}
 			return
 		}
 		http.NotFound(w, r)

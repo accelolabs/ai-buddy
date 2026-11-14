@@ -12,7 +12,7 @@ import (
 	"ai-buddy/internal/wiki/indexer"
 )
 
-var dbFailure = errors.New("database failed")
+var errDBFailure = errors.New("database failed")
 
 func mockRepo(t *testing.T) (*Repository, sqlmock.Sqlmock) {
 	t.Helper()
@@ -24,7 +24,8 @@ func mockRepo(t *testing.T) (*Repository, sqlmock.Sqlmock) {
 		if err := m.ExpectationsWereMet(); err != nil {
 			t.Error(err)
 		}
-		db.Close()
+		// sqlmock cleanup after assertions; Close is not part of this scenario.
+		_ = db.Close()
 	})
 	return &Repository{db}, m
 }
@@ -67,11 +68,11 @@ func TestRepositoryReads(t *testing.T) {
 			q := m.ExpectQuery("SELECT id,path,title")
 			switch mode {
 			case "query":
-				q.WillReturnError(dbFailure)
+				q.WillReturnError(errDBFailure)
 			case "scan":
 				q.WillReturnRows(sqlmock.NewRows([]string{"id", "path", "title"}).AddRow(nil, "p", "t"))
 			case "rows":
-				q.WillReturnRows(sqlmock.NewRows([]string{"id", "path", "title"}).AddRow("a", "p", "t").RowError(0, dbFailure))
+				q.WillReturnRows(sqlmock.NewRows([]string{"id", "path", "title"}).AddRow("a", "p", "t").RowError(0, errDBFailure))
 			}
 			if _, err := r.List(ctx, "backend"); err == nil {
 				t.Fatal("expected error")
@@ -86,7 +87,7 @@ func TestRepositoryReads(t *testing.T) {
 			case "missing":
 				query.WillReturnError(sql.ErrNoRows)
 			case "doc":
-				query.WillReturnError(dbFailure)
+				query.WillReturnError(errDBFailure)
 			case "scan":
 				query.WillReturnRows(sqlmock.NewRows([]string{"id", "path", "title", "markdown"}).AddRow(nil, "common/a.md", "Title", "# Title"))
 			default:
@@ -112,20 +113,21 @@ func TestRepositorySearch(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			r, m := mockRepo(t)
 			if mode == "begin" {
-				m.ExpectBegin().WillReturnError(dbFailure)
+				m.ExpectBegin().WillReturnError(errDBFailure)
 			} else {
 				m.ExpectBegin()
-				if mode == "state" {
-					m.ExpectQuery("SELECT fingerprint").WillReturnError(dbFailure)
+				switch mode {
+				case "state":
+					m.ExpectQuery("SELECT fingerprint").WillReturnError(errDBFailure)
 					m.ExpectRollback()
-				} else if mode == "mismatch" {
+				case "mismatch":
 					state(m, "different")
 					m.ExpectRollback()
-				} else {
+				default:
 					state(m, "fp")
 					q := m.ExpectQuery("WITH allowed AS MATERIALIZED").WithArgs("backend", "текст", vector(embedding()), 0.35)
 					if mode == "query" {
-						q.WillReturnError(dbFailure)
+						q.WillReturnError(errDBFailure)
 						m.ExpectRollback()
 					} else {
 						rows := sqlmock.NewRows([]string{"id", "title", "section", "anchor", "text"})
@@ -137,14 +139,15 @@ func TestRepositorySearch(t *testing.T) {
 							}
 						}
 						if mode == "rows" {
-							rows.RowError(0, dbFailure)
+							rows.RowError(0, errDBFailure)
 						}
 						q.WillReturnRows(rows)
-						if mode == "rows" || mode == "scan" {
+						switch mode {
+						case "rows", "scan":
 							m.ExpectRollback()
-						} else if mode == "commit" {
-							m.ExpectCommit().WillReturnError(dbFailure)
-						} else {
+						case "commit":
+							m.ExpectCommit().WillReturnError(errDBFailure)
+						default:
 							m.ExpectCommit()
 						}
 					}
@@ -213,10 +216,10 @@ func TestIndexLifecycle(t *testing.T) {
 				case "oldscan":
 					old.AddRow(nil, "hash")
 				case "oldrows":
-					old.AddRow("id", "hash").RowError(0, dbFailure)
+					old.AddRow("id", "hash").RowError(0, errDBFailure)
 				}
 				if mode == "oldquery" {
-					m.ExpectQuery("SELECT id,hash").WillReturnError(dbFailure)
+					m.ExpectQuery("SELECT id,hash").WillReturnError(errDBFailure)
 				} else {
 					m.ExpectQuery("SELECT id,hash").WillReturnRows(old)
 				}
@@ -225,14 +228,14 @@ func TestIndexLifecycle(t *testing.T) {
 				}
 				if mode != "embed" && mode != "oldquery" && mode != "oldscan" && mode != "oldrows" {
 					if mode == "begin" {
-						m.ExpectBegin().WillReturnError(dbFailure)
+						m.ExpectBegin().WillReturnError(errDBFailure)
 					} else {
 						m.ExpectBegin()
 						failed := false
 						del := func(id string) {
 							q := m.ExpectExec("DELETE FROM documents").WithArgs(id)
 							if mode == "deletefail" {
-								q.WillReturnError(dbFailure)
+								q.WillReturnError(errDBFailure)
 								failed = true
 							} else {
 								q.WillReturnResult(sqlmock.NewResult(0, 1))
@@ -245,7 +248,7 @@ func TestIndexLifecycle(t *testing.T) {
 							del(d.ID)
 							q := m.ExpectExec("INSERT INTO documents").WithArgs(d.ID, d.Path, "backend", d.Title, d.Markdown, d.Hash)
 							if mode == "insertfail" {
-								q.WillReturnError(dbFailure)
+								q.WillReturnError(errDBFailure)
 								failed = true
 							} else {
 								q.WillReturnResult(sqlmock.NewResult(0, 1))
@@ -253,7 +256,7 @@ func TestIndexLifecycle(t *testing.T) {
 							if !failed {
 								q = m.ExpectExec("INSERT INTO sections")
 								if mode == "sectionfail" {
-									q.WillReturnError(dbFailure)
+									q.WillReturnError(errDBFailure)
 									failed = true
 								} else {
 									q.WillReturnResult(sqlmock.NewResult(0, 1))
@@ -262,7 +265,7 @@ func TestIndexLifecycle(t *testing.T) {
 							if !failed {
 								q = m.ExpectExec("INSERT INTO chunks")
 								if mode == "chunkfail" {
-									q.WillReturnError(dbFailure)
+									q.WillReturnError(errDBFailure)
 									failed = true
 								} else {
 									q.WillReturnResult(sqlmock.NewResult(0, 1))
@@ -272,7 +275,7 @@ func TestIndexLifecycle(t *testing.T) {
 						if !failed {
 							q := m.ExpectExec("INSERT INTO wiki_state").WithArgs("fp")
 							if mode == "statefail" {
-								q.WillReturnError(dbFailure)
+								q.WillReturnError(errDBFailure)
 								failed = true
 							} else {
 								q.WillReturnResult(sqlmock.NewResult(0, 1))
@@ -281,7 +284,7 @@ func TestIndexLifecycle(t *testing.T) {
 						if failed {
 							m.ExpectRollback()
 						} else if mode == "commit" {
-							m.ExpectCommit().WillReturnError(dbFailure)
+							m.ExpectCommit().WillReturnError(errDBFailure)
 						} else {
 							m.ExpectCommit()
 						}
@@ -331,11 +334,12 @@ func TestIndexLockAndModel(t *testing.T) {
 			e := &fakeEmbedder{fp: "fp"}
 			switch mode {
 			case "closed":
-				r.db.Close()
+				// sqlmock cleanup after assertions; Close is not part of this scenario.
+				_ = r.db.Close()
 			case "busy":
 				m.ExpectQuery("SELECT pg_try_advisory_lock").WillReturnRows(sqlmock.NewRows([]string{"locked"}).AddRow(false))
 			case "query":
-				m.ExpectQuery("SELECT pg_try_advisory_lock").WillReturnError(dbFailure)
+				m.ExpectQuery("SELECT pg_try_advisory_lock").WillReturnError(errDBFailure)
 			default:
 				indexLock(m)
 				state(m, "fp")
@@ -351,7 +355,7 @@ func TestIndexLockAndModel(t *testing.T) {
 				m.ExpectBegin()
 				m.ExpectExec("INSERT INTO wiki_state").WillReturnResult(sqlmock.NewResult(0, 1))
 				m.ExpectCommit()
-				m.ExpectQuery("SELECT pg_advisory_unlock").WillReturnError(dbFailure)
+				m.ExpectQuery("SELECT pg_advisory_unlock").WillReturnError(errDBFailure)
 			}
 			_, err := indexer.Run(ctx, r, root, e, false)
 			if mode != "unlock" && err == nil {

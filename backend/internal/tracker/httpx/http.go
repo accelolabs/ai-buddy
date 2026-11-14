@@ -8,21 +8,10 @@ import (
 	"ai-buddy/internal/tracker/apperror"
 )
 
-var JSON = httpx.JSON
-var Fallbacks = httpx.Fallbacks
-var KeyAuth = httpx.KeyAuth
-var Owner = httpx.Owner
-
-func Decode(w http.ResponseWriter, r *http.Request, target any) error {
-	if httpx.Decode(w, r, target) != nil {
-		return apperror.ErrInvalid
-	}
-	return nil
-}
 func Failure(w http.ResponseWriter, err error) {
 	code, message := 500, "storage unavailable"
 	switch {
-	case errors.Is(err, apperror.ErrInvalid):
+	case errors.Is(err, apperror.ErrInvalid), errors.Is(err, httpx.ErrInvalid):
 		code, message = 400, "invalid input"
 	case errors.Is(err, apperror.ErrNotFound):
 		code, message = 404, "not found"
@@ -30,5 +19,5 @@ func Failure(w http.ResponseWriter, err error) {
 		code, message = 409, apperror.ErrConflict.Error()
 	}
 
-	JSON(w, code, map[string]string{"error": message})
+	httpx.JSON(w, code, map[string]string{"error": message})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -43,7 +44,11 @@ func (a *Client) Team(ctx context.Context, id string) (string, error) {
 	if err != nil {
 		return "", wiki.ErrUnavailable
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 	if resp.StatusCode == 404 {
 		return "", wiki.ErrNotFound
 	}

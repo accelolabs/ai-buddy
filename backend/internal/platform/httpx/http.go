@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -17,7 +18,9 @@ var ErrInvalid = errors.New("invalid input")
 func JSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Warn("write JSON response", "error", err)
+	}
 }
 
 // Override ServeMux's text errors for unmatched paths and unsupported methods.

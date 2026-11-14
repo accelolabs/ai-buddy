@@ -23,7 +23,11 @@ func Run(ctx context.Context, c config.Config, open OpenDatabase, domain Domain)
 	if err != nil {
 		return errors.New("database connection failed")
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 	sessions, stop := auth.NewSessions(db, c)
 	defer stop()
 	provider, err := auth.NewOIDCProvider(startup, c)
@@ -36,7 +40,11 @@ func Run(ctx context.Context, c config.Config, open OpenDatabase, domain Domain)
 		return err
 	}
 	if closer, ok := api.(io.Closer); ok {
-		defer closer.Close()
+		defer func() {
+			if err := closer.Close(); err != nil {
+				slog.Warn("resource cleanup failed", "error", err)
+			}
+		}()
 	}
 	return ServeHTTP(ctx, c.HTTPAddr, Routes(db, login.Handler(), api))
 }
@@ -49,7 +57,7 @@ func Routes(db *sql.DB, login, domain http.Handler) http.Handler {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 		if db.PingContext(ctx) != nil {
-			http.Error(w, "database unavailable", 503)
+			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -67,12 +75,19 @@ func ServeHTTP(ctx context.Context, addr string, handler http.Handler) error {
 		IdleTimeout:       60 * time.Second,
 		WriteTimeout:      0, // Future SSE responses may outlive a fixed write timeout.
 	}
-	defer server.Close()
+	defer func() {
+		if err := server.Close(); err != nil {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 	done := make(chan error, 1)
 	go func() { done <- server.ListenAndServe() }()
 	slog.Info("server listening", "address", addr)
 	select {
 	case err := <-done:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
 		return err
 	case <-ctx.Done():
 		shutdown, cancel := context.WithTimeout(context.Background(), 15*time.Second)

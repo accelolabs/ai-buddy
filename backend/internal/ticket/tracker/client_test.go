@@ -37,7 +37,9 @@ func TestMentor(t *testing.T) {
 					t.Error("wrong request", r.URL)
 				}
 				w.WriteHeader(tc.code)
-				w.Write([]byte(tc.body))
+				if _, err := w.Write([]byte(tc.body)); err != nil {
+					t.Error(err)
+				}
 			}))
 			defer server.Close()
 			got, err := New(server.URL, "secret", time.Second).Mentor(context.Background(), "a/b")
@@ -55,7 +57,7 @@ func TestTimeoutAndRedirect(t *testing.T) {
 			<-r.Context().Done()
 			return
 		}
-		http.Redirect(w, r, target.URL, 302)
+		http.Redirect(w, r, target.URL, http.StatusFound)
 	}))
 	defer server.Close()
 	for _, id := range []string{"slow", "redirect"} {

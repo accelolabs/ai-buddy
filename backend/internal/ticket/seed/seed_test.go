@@ -25,7 +25,10 @@ func TestSeedTransactions(t *testing.T) {
 	for _, fail := range []string{"", "begin", "insert", "commit"} {
 		t.Run(fail, func(t *testing.T) {
 			db, m, _ := sqlmock.New()
-			defer db.Close()
+			defer func() {
+				// sqlmock cleanup after assertions; Close is not part of this scenario.
+				_ = db.Close()
+			}()
 			if fail == "begin" {
 				m.ExpectBegin().WillReturnError(errors.New("down"))
 			} else {
@@ -63,7 +66,10 @@ func TestExternalFailuresBeforeWrite(t *testing.T) {
 			srv := testutil.Authentik(t, mode)
 			defer srv.Close()
 			db, m, _ := sqlmock.New()
-			defer db.Close()
+			defer func() {
+				// sqlmock cleanup after assertions; Close is not part of this scenario.
+				_ = db.Close()
+			}()
 			err := run(context.Background(), db, Config{URL: srv.URL, Token: "token"}, srv.Client(), finder{err: errors.New("tracker down")}, time.Now())
 			if err == nil {
 				t.Fatal("accepted external failure")

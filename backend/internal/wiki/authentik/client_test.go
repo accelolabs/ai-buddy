@@ -23,13 +23,21 @@ func TestAuthentik(t *testing.T) {
 		case "503":
 			w.WriteHeader(503)
 		case "invalid":
-			fmt.Fprint(w, "!")
+			if _, err := fmt.Fprint(w, "!"); err != nil {
+				t.Error(err)
+			}
 		case "wrong":
-			fmt.Fprint(w, `{"pk":43,"is_active":true,"attributes":{"team":"backend"}}`)
+			if _, err := fmt.Fprint(w, `{"pk":43,"is_active":true,"attributes":{"team":"backend"}}`); err != nil {
+				t.Error(err)
+			}
 		case "inactive":
-			fmt.Fprint(w, `{"pk":42,"is_active":false}`)
+			if _, err := fmt.Fprint(w, `{"pk":42,"is_active":false}`); err != nil {
+				t.Error(err)
+			}
 		default:
-			fmt.Fprint(w, `{"pk":42,"is_active":true,"attributes":{"team":"platform"}}`)
+			if _, err := fmt.Fprint(w, `{"pk":42,"is_active":true,"attributes":{"team":"platform"}}`); err != nil {
+				t.Error(err)
+			}
 		}
 	}))
 	defer srv.Close()

@@ -35,7 +35,10 @@ func TestRun(t *testing.T) {
 			}
 			want := errors.New("failure")
 			db, m, _ := sqlmock.New()
-			defer db.Close()
+			defer func() {
+				// sqlmock cleanup after assertions; Close is not part of this scenario.
+				_ = db.Close()
+			}()
 			called := false
 			prepare := func(service, command string) (Operation, error) {
 				if service != "ticket" || command != "up" {

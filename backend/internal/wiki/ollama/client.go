@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -30,7 +31,11 @@ func New(url string) *Client {
 func (o *Client) request(ctx context.Context, method, path string, body any, out any) error {
 	var data []byte
 	if body != nil {
-		data, _ = json.Marshal(body)
+		var err error
+		data, err = json.Marshal(body)
+		if err != nil {
+			return wiki.ErrUnavailable
+		}
 	}
 	req, err := http.NewRequestWithContext(ctx, method, o.URL+path, bytes.NewReader(data))
 	if err != nil {
@@ -42,13 +47,19 @@ func (o *Client) request(ctx context.Context, method, path string, body any, out
 	if err != nil {
 		return wiki.ErrUnavailable
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 
 	if resp.StatusCode != 200 { // Ollama reports context overflow as a 400.
 		var failure struct {
 			Error string `json:"error"`
 		}
-		_ = json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&failure)
+		if json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&failure) != nil {
+			return wiki.ErrUnavailable
+		}
 		if resp.StatusCode == 400 && (strings.Contains(failure.Error, "context length") || strings.Contains(failure.Error, "input length")) {
 			return wiki.ErrContext
 		}

@@ -27,13 +27,19 @@ func TestBoundedRequests(t *testing.T) {
 		}
 		switch mode {
 		case "ok":
-			fmt.Fprint(w, `{"ok":true}`)
+			if _, err := fmt.Fprint(w, `{"ok":true}`); err != nil {
+				t.Error(err)
+			}
 		case "large":
-			fmt.Fprint(w, strings.Repeat("x", (1<<20)+2))
+			if _, err := fmt.Fprint(w, strings.Repeat("x", (1<<20)+2)); err != nil {
+				t.Error(err)
+			}
 		case "bad":
-			fmt.Fprint(w, "bad")
+			if _, err := fmt.Fprint(w, "bad"); err != nil {
+				t.Error(err)
+			}
 		case "redirect":
-			http.Redirect(w, r, "/other", 302)
+			http.Redirect(w, r, "/other", http.StatusFound)
 		case "error":
 			w.WriteHeader(500)
 		}

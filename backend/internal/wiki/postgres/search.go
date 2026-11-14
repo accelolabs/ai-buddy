@@ -3,6 +3,8 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -15,7 +17,11 @@ func (r *Repository) Search(ctx context.Context, team, query string, embedding [
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 
 	var stored string
 	if err = tx.QueryRowContext(ctx, "SELECT fingerprint FROM wiki_state WHERE singleton").Scan(&stored); err != nil {
@@ -46,13 +52,19 @@ func (r *Repository) Search(ctx context.Context, team, query string, embedding [
 			&result.Anchor,
 			&result.Text,
 		); err != nil {
-			rows.Close()
+			defer func() {
+				if err := rows.Close(); err != nil {
+					slog.Warn("resource cleanup failed", "error", err)
+				}
+			}()
 			return nil, err
 		}
 		results = append(results, result)
 	}
 	err = rows.Err()
-	rows.Close()
+	if err := rows.Close(); err != nil {
+		slog.Warn("resource cleanup failed", "error", err)
+	}
 	if err != nil {
 		return nil, err
 	}

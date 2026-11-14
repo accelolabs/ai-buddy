@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 
 	"ai-buddy/internal/tracker/apperror"
 	"ai-buddy/internal/tracker/tasks"
@@ -63,7 +64,11 @@ func (p *Repository) Tasks(ctx context.Context, id string) ([]tasks.Task, error)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 
 	list := []tasks.Task{}
 	for rows.Next() {

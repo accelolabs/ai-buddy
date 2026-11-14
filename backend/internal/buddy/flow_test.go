@@ -88,7 +88,9 @@ func (l *loseResponse) RoundTrip(r *http.Request) (*http.Response, error) {
 	res, e := http.DefaultTransport.RoundTrip(r)
 	if e == nil && r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/tasks") && !l.lost {
 		l.lost = true
-		res.Body.Close()
+		if err := res.Body.Close(); err != nil {
+			return nil, err
+		}
 		return nil, errors.New("simulated lost response after commit")
 	}
 	return res, e
@@ -118,7 +120,7 @@ func testFlow(t *testing.T, real bool) {
 	mux.HandleFunc("GET /internal/interns/{id}/mentor", ih.Mentor)
 	mux.HandleFunc("POST /internal/interns/{id}/tasks", th.Create)
 	mux.HandleFunc("POST /internal/interns/{id}/tasks/{taskID}/complete", th.Complete)
-	trackerServer := httptest.NewServer(httpx.KeyAuth(mux, "buddy", "", false))
+	trackerServer := httptest.NewServer(testutil.Contract(t, "tracker", httpx.KeyAuth(mux, "buddy", "", false)))
 	defer trackerServer.Close()
 	ticketDB := testutil.Database(t, ticketmigrations.Files)
 	ticketService := tickets.New(ticketpostgres.New(ticketDB), tickettracker.New(trackerServer.URL, "buddy", 10*time.Second))
@@ -126,7 +128,7 @@ func testFlow(t *testing.T, real bool) {
 	ticketMux := http.NewServeMux()
 	ticketMux.HandleFunc("GET /internal/interns/{id}/tickets", ticketHandler.Sent)
 	ticketMux.HandleFunc("POST /internal/interns/{id}/tickets", ticketHandler.Create)
-	ticketServer := httptest.NewServer(httpx.KeyAuth(ticketMux, "buddy", "", false))
+	ticketServer := httptest.NewServer(testutil.Contract(t, "ticket", httpx.KeyAuth(ticketMux, "buddy", "", false)))
 	defer ticketServer.Close()
 	wikiDB := testutil.Database(t, wikimigrations.Files)
 	wr := wikipostgres.New(wikiDB)
@@ -153,7 +155,7 @@ func testFlow(t *testing.T, real bool) {
 	wikiHandler := &wikihttp.Handler{Service: &wiki.Service{Store: wr, Embedder: embeddings, Minimum: 0.1}, Teams: teams{}}
 	wikiMux := http.NewServeMux()
 	wikiMux.HandleFunc("POST /internal/users/{id}/search", wikiHandler.Search)
-	wikiServer := httptest.NewServer(httpx.KeyAuth(wikiMux, "buddy", "", false))
+	wikiServer := httptest.NewServer(testutil.Contract(t, "wiki", httpx.KeyAuth(wikiMux, "buddy", "", false)))
 	defer wikiServer.Close()
 	repo := bpostgres.New(testutil.Database(t, bmigrations.Files))
 	trackerClient := remote.New(trackerServer.URL, "buddy", 10*time.Second)
@@ -203,7 +205,9 @@ func testFlow(t *testing.T, real bool) {
 		for _, event := range events {
 			if event.Kind == "usage" {
 				var usage map[string]int
-				json.Unmarshal(event.Data, &usage)
+				if err := json.Unmarshal(event.Data, &usage); err != nil {
+					t.Error(err)
+				}
 				t.Logf("%q: latency=%s prompt_tokens=%d", request, time.Since(started).Round(time.Millisecond), usage["prompt_eval_count"])
 				if usage["prompt_eval_count"] > 3584 {
 					t.Fatal("context reserve exceeded", usage)
@@ -212,6 +216,9 @@ func testFlow(t *testing.T, real bool) {
 		}
 		if len(h.Messages) != 2 || h.Messages[1].Content == "" {
 			t.Fatal(h.Messages)
+		}
+		if real {
+			t.Logf("assistant: %s", h.Messages[1].Content)
 		}
 		return h
 	}
@@ -227,15 +234,15 @@ func testFlow(t *testing.T, real bool) {
 	loss := &loseResponse{}
 	trackerClient.HTTP.Transport = loss
 	s := &buddy.Service{Repo: repo, Executor: tools}
-	a, e := s.Confirm(ctx, u, h.Actions[0].ID, nil, false)
+	a, e := s.Confirm(ctx, u, h.Actions[0].ID, nil)
 	if e != nil || a.Status != "error" {
 		t.Fatal(a, e)
 	}
-	a, e = s.Confirm(ctx, u, a.ID, nil, false)
+	a, e = s.Confirm(ctx, u, a.ID, nil)
 	if e != nil || a.Status != "done" {
 		t.Fatal(a, e)
 	}
-	again, e := s.Confirm(ctx, u, a.ID, nil, false)
+	again, e := s.Confirm(ctx, u, a.ID, nil)
 	if e != nil || string(again.Result) != string(a.Result) {
 		t.Fatal(again, e)
 	}
@@ -252,11 +259,11 @@ func testFlow(t *testing.T, real bool) {
 	if len(h.Actions) != 1 {
 		t.Fatal("missing ticket draft")
 	}
-	a, e = s.Confirm(ctx, u, h.Actions[0].ID, nil, false)
+	a, e = s.Confirm(ctx, u, h.Actions[0].ID, nil)
 	if e != nil || a.Status != "done" {
 		t.Fatal(a, e)
 	}
-	_, e = s.Confirm(ctx, u, a.ID, nil, false)
+	_, e = s.Confirm(ctx, u, a.ID, nil)
 	if e != nil {
 		t.Fatal(e)
 	}

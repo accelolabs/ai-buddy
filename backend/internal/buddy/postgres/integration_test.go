@@ -116,7 +116,7 @@ func TestLifecycleIsolationReplayAndRestart(t *testing.T) {
 	if len(chats) != 1 {
 		t.Fatal(chats)
 	}
-	if _, _, e = p.Claim(ctx, "bob", a.ID, nil, false); !errors.Is(e, buddy.ErrNotFound) {
+	if _, _, e = p.Claim(ctx, "bob", a.ID, nil); !errors.Is(e, buddy.ErrNotFound) {
 		t.Fatal(e)
 	}
 	if e = p.Finish(ctx, "absent", ""); !errors.Is(e, buddy.ErrNotFound) {
@@ -193,19 +193,19 @@ func TestActionsFreezeCancelRetryAndRecovery(t *testing.T) {
 		return a
 	}
 	a := draft()
-	if _, _, e = p.Claim(ctx, "alice", a.ID, json.RawMessage(`{"title":""}`), false); !errors.Is(e, buddy.ErrInvalid) {
+	if _, _, e = p.Claim(ctx, "alice", a.ID, json.RawMessage(`{"title":""}`)); !errors.Is(e, buddy.ErrInvalid) {
 		t.Fatal(e)
 	}
 	edited := json.RawMessage(`{"title":"Edited","description":"d","deadline":"2026-12-02"}`)
-	claimed, execute, e := p.Claim(ctx, "alice", a.ID, edited, false)
+	claimed, execute, e := p.Claim(ctx, "alice", a.ID, edited)
 	must(t, e)
 	if !execute || claimed.Status != "executing" {
 		t.Fatal(claimed)
 	}
-	if _, _, e = p.Claim(ctx, "alice", a.ID, nil, false); !errors.Is(e, buddy.ErrConflict) {
+	if _, _, e = p.Claim(ctx, "alice", a.ID, nil); !errors.Is(e, buddy.ErrConflict) {
 		t.Fatal(e)
 	}
-	if _, _, e = p.Claim(ctx, "alice", a.ID, nil, true); !errors.Is(e, buddy.ErrConflict) {
+	if _, e = p.Cancel(ctx, "alice", a.ID); !errors.Is(e, buddy.ErrConflict) {
 		t.Fatal(e)
 	}
 	failed, e := p.ActionResult(ctx, a.ID, nil, errors.New("lost response"))
@@ -213,10 +213,10 @@ func TestActionsFreezeCancelRetryAndRecovery(t *testing.T) {
 	if failed.Status != "error" {
 		t.Fatal(failed)
 	}
-	if _, _, e = p.Claim(ctx, "alice", a.ID, task, false); !errors.Is(e, buddy.ErrConflict) {
+	if _, _, e = p.Claim(ctx, "alice", a.ID, task); !errors.Is(e, buddy.ErrConflict) {
 		t.Fatal(e)
 	}
-	claimed, execute, e = p.Claim(ctx, "alice", a.ID, edited, false)
+	claimed, execute, e = p.Claim(ctx, "alice", a.ID, edited)
 	must(t, e)
 	if !execute || claimed.ID != a.ID {
 		t.Fatal(claimed)
@@ -226,27 +226,27 @@ func TestActionsFreezeCancelRetryAndRecovery(t *testing.T) {
 	if done.Status != "done" {
 		t.Fatal(done)
 	}
-	done, execute, e = p.Claim(ctx, "alice", a.ID, nil, false)
+	done, execute, e = p.Claim(ctx, "alice", a.ID, nil)
 	must(t, e)
 	if execute || done.Status != "done" {
 		t.Fatal(done)
 	}
 	a = draft()
-	cancelled, execute, e := p.Claim(ctx, "alice", a.ID, nil, true)
+	cancelled, e := p.Cancel(ctx, "alice", a.ID)
 	must(t, e)
-	if execute || cancelled.Status != "cancelled" {
+	if cancelled.Status != "cancelled" {
 		t.Fatal(cancelled)
 	}
-	_, _, e = p.Claim(ctx, "alice", a.ID, nil, true)
+	_, e = p.Cancel(ctx, "alice", a.ID)
 	must(t, e)
-	if _, _, e = p.Claim(ctx, "alice", a.ID, nil, false); !errors.Is(e, buddy.ErrConflict) {
+	if _, _, e = p.Claim(ctx, "alice", a.ID, nil); !errors.Is(e, buddy.ErrConflict) {
 		t.Fatal(e)
 	}
 	a = draft()
-	_, _, e = p.Claim(ctx, "alice", a.ID, nil, false)
+	_, _, e = p.Claim(ctx, "alice", a.ID, nil)
 	must(t, e)
 	must(t, p.Recover(ctx))
-	claimed, execute, e = p.Claim(ctx, "alice", a.ID, nil, false)
+	claimed, execute, e = p.Claim(ctx, "alice", a.ID, nil)
 	must(t, e)
 	if !execute || claimed.ID != a.ID {
 		t.Fatal(claimed)
@@ -267,7 +267,7 @@ func TestConcurrentConfirmation(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, execute, e := p.Claim(ctx, "alice", a.ID, nil, false)
+			_, execute, e := p.Claim(ctx, "alice", a.ID, nil)
 			if e != nil && !errors.Is(e, buddy.ErrConflict) {
 				t.Error(e)
 			}

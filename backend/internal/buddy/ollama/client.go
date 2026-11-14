@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -68,11 +69,15 @@ func (c *Client) Chat(ctx context.Context, messages []Message, tools []Tool, str
 	req.Header.Set("Content-Type", "application/json")
 	res, err := c.HTTP.Do(req)
 	if err != nil {
-		return last, errors.New("Ollama unavailable")
+		return last, errors.New("ollama unavailable")
 	}
-	defer res.Body.Close()
+	defer func() {
+		if err := res.Body.Close(); err != nil {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 	if res.StatusCode != 200 {
-		return last, errors.New("Ollama rejected request")
+		return last, errors.New("ollama rejected request")
 	}
 	d := json.NewDecoder(io.LimitReader(res.Body, 2<<20))
 	for {
@@ -84,7 +89,7 @@ func (c *Client) Chat(ctx context.Context, messages []Message, tools []Tool, str
 			return last, err
 		}
 		if r.Error != "" {
-			return last, errors.New("Ollama generation failed")
+			return last, errors.New("ollama generation failed")
 		}
 		last = r
 		if len(r.Message.Calls) > 0 && stream {

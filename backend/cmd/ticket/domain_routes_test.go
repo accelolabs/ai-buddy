@@ -13,6 +13,7 @@ import (
 	"github.com/alexedwards/scs/v2/memstore"
 
 	"ai-buddy/internal/platform/auth"
+	"ai-buddy/internal/testutil"
 	"ai-buddy/internal/ticket/apperror"
 	"ai-buddy/internal/ticket/tickets"
 	ticketshttp "ai-buddy/internal/ticket/tickets/http"
@@ -47,7 +48,7 @@ func TestDomainRoutes(t *testing.T) {
 	sessions := scs.New()
 	sessions.Store = memstore.NewWithCleanupInterval(0)
 	service := &stubService{created: true}
-	handler := domainRoutes(auth.New(sessions, nil), ticketshttp.New(service), "buddy")
+	handler := testutil.Contract(t, "ticket", domainRoutes(auth.New(sessions, nil), ticketshttp.New(service), "buddy"))
 	cookie := func(id, role string) *http.Cookie {
 		w := httptest.NewRecorder()
 		sessions.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

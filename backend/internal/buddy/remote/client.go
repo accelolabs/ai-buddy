@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -47,7 +48,11 @@ func (c *Client) Do(ctx context.Context, method, path, key string, input, output
 	if err != nil {
 		return fmt.Errorf("dependency unavailable: %w", err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if err := res.Body.Close(); err != nil {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 	if res.StatusCode < 200 || res.StatusCode > 299 {
 		return fmt.Errorf("dependency returned HTTP %d", res.StatusCode)
 	}

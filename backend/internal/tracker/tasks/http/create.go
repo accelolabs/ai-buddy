@@ -1,9 +1,11 @@
 package taskshttp
 
 import (
+	"ai-buddy/internal/tracker/dto"
 	"net/http"
 
-	"ai-buddy/internal/tracker/httpx"
+	"ai-buddy/internal/platform/httpx"
+	domainhttp "ai-buddy/internal/tracker/httpx"
 	"ai-buddy/internal/tracker/tasks"
 )
 
@@ -16,7 +18,7 @@ type createRequest struct {
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var request createRequest
 	if err := httpx.Decode(w, r, &request); err != nil {
-		httpx.Failure(w, err)
+		domainhttp.Failure(w, err)
 		return
 	}
 
@@ -27,7 +29,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	result, created, err := h.service.Create(r.Context(), httpx.Owner(r), r.Header.Get("Idempotency-Key"), input)
 	if err != nil {
-		httpx.Failure(w, err)
+		domainhttp.Failure(w, err)
 		return
 	}
 
@@ -36,5 +38,5 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		code = 201
 	}
 
-	httpx.JSON(w, code, fromTask(result))
+	httpx.JSON(w, code, dto.FromTask(result))
 }

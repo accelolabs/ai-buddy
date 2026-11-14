@@ -46,7 +46,7 @@ type Run struct {
 	CreatedAt                                   time.Time
 }
 
-func (r Run) Active() bool { return r.Status == "queued" || r.Status == "running" }
+func (r Run) Active() bool { return r.Status == RunQueued || r.Status == RunRunning }
 
 type Event struct {
 	ID   int64
@@ -82,7 +82,8 @@ type Repository interface {
 	Finish(context.Context, string, string) error
 	Recover(context.Context) error
 	Draft(context.Context, Action) (Action, error)
-	Claim(context.Context, string, string, json.RawMessage, bool) (Action, bool, error)
+	Claim(context.Context, string, string, json.RawMessage) (Action, bool, error)
+	Cancel(context.Context, string, string) (Action, error)
 	ActionResult(context.Context, string, json.RawMessage, error) (Action, error)
 }
 type Runner interface {

@@ -30,7 +30,9 @@ func Database(t *testing.T, files fs.FS) *sql.DB {
 	}
 	schema := fmt.Sprintf("buddy_test_%d", time.Now().UnixNano())
 	if _, err = admin.ExecContext(ctx, "CREATE SCHEMA "+schema); err != nil {
-		admin.Close()
+		if err := admin.Close(); err != nil {
+			t.Error(err)
+		}
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -38,7 +40,9 @@ func Database(t *testing.T, files fs.FS) *sql.DB {
 		if err != nil {
 			t.Error(err)
 		}
-		admin.Close()
+		if err := admin.Close(); err != nil {
+			t.Error(err)
+		}
 	})
 	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
@@ -46,7 +50,11 @@ func Database(t *testing.T, files fs.FS) *sql.DB {
 	}
 	cfg.RuntimeParams["search_path"] = schema + ",public"
 	db := stdlib.OpenDB(*cfg)
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	if err = migrations.Run(ctx, db, files, "up"); err != nil {
 		t.Fatal(err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -82,7 +83,11 @@ func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, _ := json.Marshal(user)
+	data, err := json.Marshal(user)
+	if err != nil {
+		http.Error(w, "session unavailable", http.StatusInternalServerError)
+		return
+	}
 	a.Sessions.Put(ctx, SessionKeyUser, string(data))
 	http.Redirect(w, r, "/", http.StatusFound)
 }
@@ -90,7 +95,9 @@ func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 func (a *Auth) me(w http.ResponseWriter, r *http.Request) {
 	user, _ := CurrentUser(r.Context())
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(user)
+	if err := json.NewEncoder(w).Encode(user); err != nil {
+		slog.Warn("write JSON response", "error", err)
+	}
 }
 
 func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {

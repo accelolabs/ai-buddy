@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"ai-buddy/internal/platform/auth"
-	"ai-buddy/internal/ticket/httpx"
+	"ai-buddy/internal/platform/httpx"
 	ticketshttp "ai-buddy/internal/ticket/tickets/http"
 )
 

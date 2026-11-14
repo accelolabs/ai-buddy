@@ -3,6 +3,7 @@ package apperror
 import "errors"
 
 var (
+	//nolint:staticcheck // Public API error text is preserved for existing clients.
 	ErrNoMentor = errors.New("Ментор не назначен")
 	ErrTracker  = errors.New("tracker unavailable")
 	ErrNotFound = errors.New("not found")

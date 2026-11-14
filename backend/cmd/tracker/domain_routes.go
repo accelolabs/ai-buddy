@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"ai-buddy/internal/platform/auth"
-	"ai-buddy/internal/tracker/httpx"
+	"ai-buddy/internal/platform/httpx"
 	internshttp "ai-buddy/internal/tracker/interns/http"
 	progresshttp "ai-buddy/internal/tracker/progress/http"
 	taskshttp "ai-buddy/internal/tracker/tasks/http"

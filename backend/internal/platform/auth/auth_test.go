@@ -21,6 +21,7 @@ import (
 	jose "github.com/go-jose/go-jose/v4"
 
 	"ai-buddy/internal/platform/config"
+	"ai-buddy/internal/testutil"
 )
 
 type brokenStore struct {
@@ -53,6 +54,7 @@ func (s *brokenStore) Delete(k string) error {
 }
 
 type fixture struct {
+	test                   *testing.T
 	a                      *Auth
 	provider               *httptest.Server
 	store                  *brokenStore
@@ -83,29 +85,37 @@ func newFixture(t *testing.T) *fixture {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
-			json.NewEncoder(w).Encode(map[string]any{
+			if err := json.NewEncoder(w).Encode(map[string]any{
 				"issuer":                                f.provider.URL,
 				"authorization_endpoint":                f.provider.URL + "/authorize",
 				"token_endpoint":                        f.provider.URL + "/token",
 				"jwks_uri":                              f.provider.URL + "/jwks",
 				"id_token_signing_alg_values_supported": []string{"RS256"},
-			})
+			}); err != nil {
+				t.Error(err)
+			}
 		case "/jwks":
-			json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{
+			if err := json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{
 				Key:       &key.PublicKey,
 				KeyID:     "test",
 				Algorithm: "RS256",
 				Use:       "sig",
-			}}})
+			}}}); err != nil {
+				t.Error(err)
+			}
 		case "/token":
-			r.ParseForm()
+			if err := r.ParseForm(); err != nil {
+				t.Error(err)
+			}
 			hash := sha256.Sum256([]byte(r.Form.Get("code_verifier")))
 			if f.mode == "exchange" || base64.RawURLEncoding.EncodeToString(hash[:]) != f.challenge {
 				http.Error(w, `{"error":"invalid_grant"}`, 400)
 				return
 			}
 			if f.mode == "missing_token" {
-				json.NewEncoder(w).Encode(map[string]any{"access_token": "discard", "token_type": "Bearer"})
+				if err := json.NewEncoder(w).Encode(map[string]any{"access_token": "discard", "token_type": "Bearer"}); err != nil {
+					t.Error(err)
+				}
 				return
 			}
 			c := map[string]any{
@@ -149,11 +159,13 @@ func newFixture(t *testing.T) *fixture {
 			if f.mode == "malformed" {
 				token = "invalid"
 			}
-			json.NewEncoder(w).Encode(map[string]any{
+			if err := json.NewEncoder(w).Encode(map[string]any{
 				"access_token": "discard",
 				"token_type":   "Bearer",
 				"id_token":     token,
-			})
+			}); err != nil {
+				t.Error(err)
+			}
 		default:
 			http.NotFound(w, r)
 		}
@@ -168,7 +180,7 @@ func newFixture(t *testing.T) *fixture {
 	s.Cookie.HttpOnly = true
 	s.Cookie.SameSite = http.SameSiteLaxMode
 	s.ErrorFunc = func(w http.ResponseWriter, r *http.Request, e error) {
-		http.Error(w, "session unavailable", 500)
+		jsonError(w, "session unavailable", http.StatusInternalServerError)
 	}
 	ctx := oidc.ClientContext(context.Background(), f.provider.Client())
 	provider, err := NewOIDCProvider(
@@ -185,6 +197,7 @@ func newFixture(t *testing.T) *fixture {
 	}
 
 	f.a = New(s, provider)
+	f.test = t
 	return f
 }
 
@@ -196,7 +209,11 @@ func (f *fixture) request(method, path string, cookie *http.Cookie) *httptest.Re
 	}
 
 	w := httptest.NewRecorder()
-	f.a.Handler().ServeHTTP(w, r)
+	handler := f.a.Handler()
+	for _, service := range []string{"buddy", "tracker", "ticket", "wiki"} {
+		handler = testutil.Contract(f.test, service, handler)
+	}
+	handler.ServeHTTP(w, r)
 	return w
 }
 
@@ -333,11 +350,12 @@ func TestRejectedCallback(t *testing.T) {
 			}
 
 			var w *httptest.ResponseRecorder
-			if mode == "provider_error" {
+			switch mode {
+			case "provider_error":
 				w = f.request("GET", "/api/auth/callback?error=denied&state="+state, cookie)
-			} else if mode == "missing_code" {
+			case "missing_code":
 				w = f.request("GET", "/api/auth/callback?state="+state, cookie)
-			} else {
+			default:
 				w = f.callback(cookie, state)
 			}
 

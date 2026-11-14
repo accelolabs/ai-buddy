@@ -24,11 +24,11 @@ func Load() (c Config, err error) {
 	if cleanenv.ReadEnv(&c) != nil {
 		return c, errors.New("missing or malformed configuration")
 	}
-	if err = c.Config.Validate(); err != nil {
+	if err = c.Validate(); err != nil {
 		return
 	}
 	if c.ClientID != "buddy" || strings.TrimSpace(c.BuddyAPIKey) == "" {
-		return c, errors.New("Buddy OIDC client and API key required")
+		return c, errors.New("buddy OIDC client and API key required")
 	}
 	for _, u := range []string{c.OllamaURL, c.WikiURL, c.WikiPublicURL, c.TrackerURL, c.TicketURL} {
 		if !remote.ValidURL(u) {

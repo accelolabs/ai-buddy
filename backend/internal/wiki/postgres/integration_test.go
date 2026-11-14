@@ -99,7 +99,9 @@ func TestPostgresLifecycle(t *testing.T) {
 	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", lockID); err != nil {
 		t.Fatal(err)
 	}
-	conn.Close()
+	if err := conn.Close(); err != nil {
+		t.Error(err)
+	}
 	// Preparation failure preserves the old snapshot, including a pending deletion.
 	if err := os.Remove(filepath.Join(root, "common/start.md")); err != nil {
 		t.Fatal(err)

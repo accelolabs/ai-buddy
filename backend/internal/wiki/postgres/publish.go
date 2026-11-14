@@ -3,6 +3,8 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"log/slog"
 
 	"ai-buddy/internal/wiki"
 	"ai-buddy/internal/wiki/indexer"
@@ -13,7 +15,11 @@ func (s *session) Publish(ctx context.Context, changes indexer.Changes) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 
 	for _, id := range changes.Deleted {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM documents WHERE id=$1", id); err != nil {

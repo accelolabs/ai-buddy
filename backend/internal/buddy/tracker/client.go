@@ -3,7 +3,9 @@ package tracker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
+	"strings"
 	"time"
 
 	"ai-buddy/internal/buddy/remote"
@@ -38,6 +40,14 @@ func (c *Client) Progress(ctx context.Context, id string) (p Progress, err error
 }
 func (c *Client) Create(ctx context.Context, id, key string, fields json.RawMessage) (r json.RawMessage, err error) {
 	err = c.Do(ctx, "POST", path(id)+"/tasks", key, fields, &r)
+	if err == nil {
+		var created struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(r, &created) != nil || strings.TrimSpace(created.ID) == "" {
+			err = errors.New("invalid tracker creation response")
+		}
+	}
 	return
 }
 func (c *Client) Complete(ctx context.Context, id, task string) (r json.RawMessage, err error) {

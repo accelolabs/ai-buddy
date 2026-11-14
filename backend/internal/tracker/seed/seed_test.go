@@ -68,7 +68,10 @@ func TestSeed(t *testing.T) {
 	} {
 		t.Run(fail, func(t *testing.T) {
 			db, m, _ := sqlmock.New()
-			defer db.Close()
+			defer func() {
+				// sqlmock cleanup after assertions; Close is not part of this scenario.
+				_ = db.Close()
+			}()
 
 			if fail == "begin" {
 				m.ExpectBegin().WillReturnError(errors.New("failure"))

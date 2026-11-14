@@ -1,6 +1,7 @@
 package internshttp
 
 import (
+	"ai-buddy/internal/tracker/dto"
 	"testing"
 
 	"ai-buddy/internal/testutil"
@@ -21,12 +22,12 @@ func TestResponseContracts(t *testing.T) {
 		Expectations: "expectations",
 	}
 	const profileJSON = `{"authentik_id":"intern","name":"Name","username":"username","email":"user@example.com","role":"intern","team":"backend","start_date":"2026-11-01","goals":"goals","expectations":"expectations"}`
-	testutil.JSON(t, fromProfile(profile), profileJSON)
-	testutil.JSON(t, internsResponse{Interns: fromProfiles([]interns.Profile{profile})}, `{"interns":[`+profileJSON+`]}`)
+	testutil.JSON(t, dto.FromProfile(profile), profileJSON)
+	testutil.JSON(t, internsResponse{Interns: dto.Profiles([]interns.Profile{profile})}, `{"interns":[`+profileJSON+`]}`)
 	testutil.JSON(t, fromMentor(&profile), `{"mentor":`+profileJSON+`}`)
 	testutil.JSON(t, fromMentor(nil), `{"mentor":null}`)
-	testutil.JSON(t, internsResponse{Interns: fromProfiles(nil)}, `{"interns":null}`)
-	testutil.JSON(t, internsResponse{Interns: fromProfiles([]interns.Profile{})}, `{"interns":[]}`)
+	testutil.JSON(t, internsResponse{Interns: dto.Profiles(nil)}, `{"interns":null}`)
+	testutil.JSON(t, internsResponse{Interns: dto.Profiles([]interns.Profile{})}, `{"interns":[]}`)
 	profile.StartDate = nil
-	testutil.JSON(t, fromProfile(profile), `{"authentik_id":"intern","name":"Name","username":"username","email":"user@example.com","role":"intern","team":"backend","start_date":null,"goals":"goals","expectations":"expectations"}`)
+	testutil.JSON(t, dto.FromProfile(profile), `{"authentik_id":"intern","name":"Name","username":"username","email":"user@example.com","role":"intern","team":"backend","start_date":null,"goals":"goals","expectations":"expectations"}`)
 }

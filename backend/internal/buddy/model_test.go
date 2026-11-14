@@ -14,7 +14,6 @@ type repoStub struct {
 	Repository
 	fresh     bool
 	err       error
-	fields    json.RawMessage
 	execute   bool
 	resultErr error
 	finished  chan string
@@ -27,7 +26,7 @@ func (r *repoStub) Retry(context.Context, string, string) (Run, bool, error) {
 	return Run{ID: "run"}, r.fresh, r.err
 }
 func (r *repoStub) Finish(_ context.Context, _ string, e string) error { r.finished <- e; return nil }
-func (r *repoStub) Claim(context.Context, string, string, json.RawMessage, bool) (Action, bool, error) {
+func (r *repoStub) Claim(context.Context, string, string, json.RawMessage) (Action, bool, error) {
 	return Action{ID: "a", Status: "executing"}, r.execute, r.err
 }
 func (r *repoStub) ActionResult(_ context.Context, _ string, _ json.RawMessage, e error) (Action, error) {
@@ -73,23 +72,24 @@ func TestService(t *testing.T) {
 	_, _ = s.Send(ctx, u, "c", "k", "hi")
 	_, _ = s.Retry(ctx, u, "r")
 	s.Wait()
-	if _, e := s.Confirm(ctx, u, "a", nil, false); e != nil {
+	if _, e := s.Confirm(ctx, u, "a", nil); e != nil {
 		t.Fatal(e)
 	}
 	s.Executor = executor{errors.New("network")}
-	_, _ = s.Confirm(ctx, u, "a", nil, false)
+	_, _ = s.Confirm(ctx, u, "a", nil)
 	if r.resultErr == nil {
 		t.Fatal("missing failure")
 	}
 	r.execute = false
-	_, _ = s.Confirm(ctx, u, "a", nil, true)
+	_, _ = s.Cancel(ctx, u, "a")
 	r.err = ErrNotFound
-	if _, e := s.Confirm(ctx, u, "a", nil, false); !errors.Is(e, ErrNotFound) {
+	if _, e := s.Confirm(ctx, u, "a", nil); !errors.Is(e, ErrNotFound) {
 		t.Fatal(e)
 	}
 }
 func TestFieldsAndModels(t *testing.T) {
-	if len(ID()) != 32 || ID() == ID() {
+	first, second := ID(), ID()
+	if len(first) != 32 || first == second {
 		t.Fatal("ID")
 	}
 	if Title(" hello\n world ") != "hello world" || len([]rune(Title(strings.Repeat("я", 90)))) != 80 {
@@ -129,3 +129,5 @@ func TestLoad(t *testing.T) {
 		t.Fatal("malformed")
 	}
 }
+
+func (r *repoStub) Cancel(context.Context, string, string) (Action, error) { return Action{}, r.err }

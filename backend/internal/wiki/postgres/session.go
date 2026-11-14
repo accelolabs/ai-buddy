@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"log/slog"
 	"time"
 
 	"ai-buddy/internal/wiki/indexer"
@@ -25,7 +26,9 @@ func (r *Repository) Acquire(ctx context.Context) (indexer.Session, error) {
 	var acquired bool
 	err = conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", lockID).Scan(&acquired)
 	if err != nil || !acquired {
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
 		if err == nil {
 			err = errors.New("wiki index is already running")
 		}
@@ -36,7 +39,11 @@ func (r *Repository) Acquire(ctx context.Context) (indexer.Session, error) {
 }
 
 func (s *session) Close() {
-	defer s.conn.Close()
+	defer func() {
+		if err := s.conn.Close(); err != nil {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -44,7 +51,9 @@ func (s *session) Close() {
 	err := s.conn.QueryRowContext(ctx, "SELECT pg_advisory_unlock($1)", lockID).Scan(&unlocked)
 	if err != nil || !unlocked {
 		// A connection with an unreleased session lock must not return to the pool.
-		s.conn.Raw(func(any) error { return driver.ErrBadConn })
+		if err := s.conn.Raw(func(any) error { return driver.ErrBadConn }); err != nil {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
 	}
 }
 
@@ -63,7 +72,11 @@ func (s *session) Hashes(ctx context.Context) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 
 	hashes := map[string]string{}
 	for rows.Next() {

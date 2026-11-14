@@ -12,7 +12,7 @@ import (
 	"ai-buddy/internal/tracker/apperror"
 )
 
-var broken = errors.New("database failed")
+var errBroken = errors.New("database failed")
 
 var pcols = []string{
 	"authentik_id",
@@ -52,7 +52,8 @@ func postgres(t *testing.T) (*Repository, sqlmock.Sqlmock) {
 			t.Error(e)
 		}
 
-		db.Close()
+		// sqlmock cleanup after assertions; Close is not part of this scenario.
+		_ = db.Close()
 	})
 	return New(db), m
 }
@@ -71,8 +72,8 @@ func TestProfileRepository(t *testing.T) {
 		t.Fatal(e)
 	}
 
-	m.ExpectQuery("SELECT").WillReturnError(broken)
-	if _, e = p.Intern(ctx, "i"); e != broken {
+	m.ExpectQuery("SELECT").WillReturnError(errBroken)
+	if _, e = p.Intern(ctx, "i"); e != errBroken {
 		t.Fatal(e)
 	}
 
@@ -87,8 +88,8 @@ func TestProfileRepository(t *testing.T) {
 		t.Fatal(mentor, e)
 	}
 
-	m.ExpectQuery("SELECT").WillReturnError(broken)
-	if _, e = p.Mentor(ctx, "i"); e != broken {
+	m.ExpectQuery("SELECT").WillReturnError(errBroken)
+	if _, e = p.Mentor(ctx, "i"); e != errBroken {
 		t.Fatal(e)
 	}
 
@@ -98,8 +99,8 @@ func TestProfileRepository(t *testing.T) {
 		t.Fatal(ok, e)
 	}
 
-	m.ExpectQuery("SELECT EXISTS").WillReturnError(broken)
-	if _, e = p.Assigned(ctx, "m", "i"); e != broken {
+	m.ExpectQuery("SELECT EXISTS").WillReturnError(errBroken)
+	if _, e = p.Assigned(ctx, "m", "i"); e != errBroken {
 		t.Fatal(e)
 	}
 }
@@ -113,8 +114,8 @@ func TestList(t *testing.T) {
 		t.Fatal(list, err)
 	}
 
-	m.ExpectQuery("SELECT").WillReturnError(broken)
-	if _, err = repo.Interns(ctx, "i"); err != broken {
+	m.ExpectQuery("SELECT").WillReturnError(errBroken)
+	if _, err = repo.Interns(ctx, "i"); err != errBroken {
 		t.Fatal(err)
 	}
 
@@ -123,8 +124,8 @@ func TestList(t *testing.T) {
 		t.Fatal("scan failure")
 	}
 
-	m.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows(pcols).AddRow(make([]driver.Value, len(pcols))...).RowError(0, broken))
-	if _, err = repo.Interns(ctx, "i"); err != broken {
+	m.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows(pcols).AddRow(make([]driver.Value, len(pcols))...).RowError(0, errBroken))
+	if _, err = repo.Interns(ctx, "i"); err != errBroken {
 		t.Fatal(err)
 	}
 }

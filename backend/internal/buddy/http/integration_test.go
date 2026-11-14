@@ -32,8 +32,11 @@ func (r runner) Generate(ctx context.Context, _ auth.User, run buddy.Run) error 
 
 type executor struct{}
 
-func (executor) Execute(context.Context, auth.User, buddy.Action) (json.RawMessage, error) {
-	return json.RawMessage(`{"id":"created"}`), nil
+func (executor) Execute(_ context.Context, _ auth.User, a buddy.Action) (json.RawMessage, error) {
+	if a.Kind == "create_ticket" {
+		return json.RawMessage(`{"id":"created","sender_id":"alice","recipient_id":"mentor","question":"Help?","description":"context","created_at":"2026-11-14T12:00:00Z"}`), nil
+	}
+	return json.RawMessage(`{"id":"created","intern_id":"alice","title":"Read","description":"","deadline":"2026-12-01","created_at":"2026-11-14T12:00:00Z","completed_at":null,"status":"pending","overdue":false}`), nil
 }
 func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
 	ctx := context.Background()
@@ -57,7 +60,7 @@ func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
 		}
 		http.SetCookie(w, &http.Cookie{Name: "session", Value: token})
 	})
-	mux.Handle("/", handler.Routes(login))
+	mux.Handle("/", testutil.Contract(t, "buddy", handler.Routes(login)))
 	server := httptest.NewServer(mux)
 	defer server.Close()
 	cookie := func(id, role string) *http.Cookie {
@@ -65,7 +68,11 @@ func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		defer res.Body.Close()
+		defer func() {
+			if err := res.Body.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
 		return res.Cookies()[0]
 	}
 	alice, bob, mentor := cookie("alice", "intern"), cookie("bob", "intern"), cookie("mentor", "mentor")
@@ -82,7 +89,11 @@ func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		defer res.Body.Close()
+		defer func() {
+			if err := res.Body.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
 		b, e := io.ReadAll(res.Body)
 		if e != nil {
 			t.Fatal(e)
@@ -103,10 +114,14 @@ func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
 	call("POST", "/api/chats/"+c.ID+"/messages", `{"content":"hi","owner":"bob"}`, alice, "k", 400)
 	call("POST", "/api/chats/"+c.ID+"/messages", `{"content":"hi"}`, alice, "", 400)
 	var r runDTO
-	json.Unmarshal(call("POST", "/api/chats/"+c.ID+"/messages", `{"content":"hi"}`, alice, "k", 202), &r)
+	if err := json.Unmarshal(call("POST", "/api/chats/"+c.ID+"/messages", `{"content":"hi"}`, alice, "k", 202), &r); err != nil {
+		t.Error(err)
+	}
 	s.Wait()
 	var same runDTO
-	json.Unmarshal(call("POST", "/api/chats/"+c.ID+"/messages", `{"content":"hi"}`, alice, "k", 202), &same)
+	if err := json.Unmarshal(call("POST", "/api/chats/"+c.ID+"/messages", `{"content":"hi"}`, alice, "k", 202), &same); err != nil {
+		t.Error(err)
+	}
 	if same.ID != r.ID {
 		t.Fatal(same)
 	}
@@ -126,7 +141,9 @@ func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
 		t.Fatal(e)
 	}
 	replay, _ := io.ReadAll(res.Body)
-	res.Body.Close()
+	if err := res.Body.Close(); err != nil {
+		t.Error(err)
+	}
 	if strings.Contains(string(replay), "event: text") || !strings.Contains(string(replay), "event: done") {
 		t.Fatal(string(replay))
 	}
@@ -135,7 +152,9 @@ func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	res.Body.Close()
+	if err := res.Body.Close(); err != nil {
+		t.Error(err)
+	}
 	if res.StatusCode != 400 {
 		t.Fatal(res.StatusCode)
 	}
@@ -158,7 +177,9 @@ func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
 	if e != nil || !strings.HasPrefix(line, ": heartbeat") {
 		t.Fatal(line, e)
 	}
-	res.Body.Close()
+	if err := res.Body.Close(); err != nil {
+		t.Error(err)
+	}
 	if e = p.Event(ctx, live.ID, "text", "persisted after disconnect"); e != nil {
 		t.Fatal(e)
 	}
@@ -176,7 +197,7 @@ func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
 		t.Fatal(e)
 	}
 	call("POST", "/api/actions/"+a.ID+"/cancel", "", alice, "", 200)
-	if e = p.Event(ctx, live.ID, "source", map[string]string{"url": "https://wiki/api/documents/doc"}); e != nil {
+	if e = p.Event(ctx, live.ID, "source", map[string]string{"document_id": "doc", "document_title": "Guide", "section_title": "Intro", "text": "Excerpt", "url": "https://wiki.example.invalid/api/documents/doc"}); e != nil {
 		t.Fatal(e)
 	}
 	if e = p.Finish(ctx, live.ID, "failed"); e != nil {

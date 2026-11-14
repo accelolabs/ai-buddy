@@ -27,18 +27,30 @@ func TestNativeChat(t *testing.T) {
 		}
 		switch mode {
 		case "stream":
-			fmt.Fprintln(w, `{"message":{"role":"assistant","content":"hello "},"done":false}`)
-			fmt.Fprintln(w, `{"message":{"content":"world"},"done":true,"prompt_eval_count":123}`)
+			if _, err := fmt.Fprintln(w, `{"message":{"role":"assistant","content":"hello "},"done":false}`); err != nil {
+				t.Error(err)
+			}
+			if _, err := fmt.Fprintln(w, `{"message":{"content":"world"},"done":true,"prompt_eval_count":123}`); err != nil {
+				t.Error(err)
+			}
 		case "tool":
-			fmt.Fprintln(w, `{"message":{"role":"assistant","tool_calls":[{"function":{"name":"get_progress","arguments":{}}}]},"done":true}`)
+			if _, err := fmt.Fprintln(w, `{"message":{"role":"assistant","tool_calls":[{"function":{"name":"get_progress","arguments":{}}}]},"done":true}`); err != nil {
+				t.Error(err)
+			}
 		case "http":
 			w.WriteHeader(503)
 		case "incomplete":
-			fmt.Fprintln(w, `{"message":{"content":"partial"}}`)
+			if _, err := fmt.Fprintln(w, `{"message":{"content":"partial"}}`); err != nil {
+				t.Error(err)
+			}
 		case "error":
-			fmt.Fprintln(w, `{"error":"failed"}`)
+			if _, err := fmt.Fprintln(w, `{"error":"failed"}`); err != nil {
+				t.Error(err)
+			}
 		case "bad":
-			fmt.Fprintln(w, `no json`)
+			if _, err := fmt.Fprintln(w, `no json`); err != nil {
+				t.Error(err)
+			}
 		}
 	}))
 	defer server.Close()

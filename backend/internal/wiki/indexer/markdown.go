@@ -3,6 +3,7 @@ package indexer
 import (
 	"crypto/sha256"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"unicode"
@@ -76,7 +77,7 @@ func Parse(path, markdown string) wiki.Document {
 
 func nodeText(root ast.Node, source []byte) string {
 	var content strings.Builder
-	ast.Walk(root, func(node ast.Node, enter bool) (ast.WalkStatus, error) {
+	if err := ast.Walk(root, func(node ast.Node, enter bool) (ast.WalkStatus, error) {
 		if !enter {
 			if node.Type() == ast.TypeBlock {
 				content.WriteByte('\n')
@@ -97,7 +98,9 @@ func nodeText(root ast.Node, source []byte) string {
 		}
 
 		return ast.WalkContinue, nil
-	})
+	}); err != nil {
+		slog.Warn("resource cleanup failed", "error", err)
+	}
 
 	return strings.TrimSpace(content.String())
 }

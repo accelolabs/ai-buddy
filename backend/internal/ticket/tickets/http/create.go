@@ -3,7 +3,8 @@ package ticketshttp
 import (
 	"net/http"
 
-	"ai-buddy/internal/ticket/httpx"
+	"ai-buddy/internal/platform/httpx"
+	domainhttp "ai-buddy/internal/ticket/httpx"
 	"ai-buddy/internal/ticket/tickets"
 )
 
@@ -15,7 +16,7 @@ type createRequest struct {
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var input createRequest
 	if err := httpx.Decode(w, r, &input); err != nil {
-		httpx.Failure(w, err)
+		domainhttp.Failure(w, err)
 		return
 	}
 	ticket, created, err := h.service.Create(
@@ -28,7 +29,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		httpx.Failure(w, err)
+		domainhttp.Failure(w, err)
 		return
 	}
 	code := http.StatusOK

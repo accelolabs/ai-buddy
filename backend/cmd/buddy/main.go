@@ -50,7 +50,7 @@ type ownedHandler struct {
 	service *buddy.Service
 }
 
-func (h *ownedHandler) Close() error { h.stop(); h.service.Wait(); return nil }
+func (h *ownedHandler) Close() error { h.stop(); h.service.Close(); return nil }
 
 func run() error {
 	c, err := buddy.Load()

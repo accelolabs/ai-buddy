@@ -29,7 +29,9 @@ func Authentik(t *testing.T, mode string) *httptest.Server {
 		}
 
 		if mode == "json" {
-			w.Write([]byte("bad"))
+			if _, err := w.Write([]byte("bad")); err != nil {
+				t.Error(err)
+			}
 			return
 		}
 
@@ -73,6 +75,8 @@ func Authentik(t *testing.T, mode string) *httptest.Server {
 			next = 2
 		}
 
-		json.NewEncoder(w).Encode(map[string]any{"results": results, "pagination": map[string]int{"next": next}})
+		if err := json.NewEncoder(w).Encode(map[string]any{"results": results, "pagination": map[string]int{"next": next}}); err != nil {
+			t.Error(err)
+		}
 	}))
 }

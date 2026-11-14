@@ -3,7 +3,9 @@ package seed
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -45,7 +47,7 @@ func RunWithClient(ctx context.Context, db *sql.DB, c Config, client *http.Clien
 		ON CONFLICT DO NOTHING
 	`
 
-	users, err := demousers.Load(ctx, client, demousers.Config{URL: c.URL, Token: c.Token})
+	users, err := demousers.Load(ctx, client, demousers.Config(c))
 	if err != nil {
 		return err
 	}
@@ -54,7 +56,11 @@ func RunWithClient(ctx context.Context, db *sql.DB, c Config, client *http.Clien
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 
 	mentors := map[string]string{}
 	for _, u := range users {

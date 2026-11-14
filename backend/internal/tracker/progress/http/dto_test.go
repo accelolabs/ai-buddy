@@ -1,6 +1,7 @@
 package progresshttp
 
 import (
+	"ai-buddy/internal/tracker/dto"
 	"testing"
 	"time"
 
@@ -57,9 +58,9 @@ func TestResponseContracts(t *testing.T) {
 	snapshot.Tasks = []tasks.Task{}
 	testutil.JSON(t, fromProgress(snapshot), `{"intern":`+profileJSON+`,"mentor":null,"start_date":null,"goals":"goals","expectations":"expectations","tasks":[],"completed":1,"total":2,"percent":50,"next_task":null}`)
 	task.CompletedAt = nil
-	testutil.JSON(t, fromTask(task), `{"id":"task","intern_id":"intern","title":"Question","description":"Details","deadline":"2026-11-15","created_at":"2026-11-14T12:30:00+03:00","completed_at":null,"status":"completed","overdue":false}`)
+	testutil.JSON(t, dto.FromTask(task), `{"id":"task","intern_id":"intern","title":"Question","description":"Details","deadline":"2026-11-15","created_at":"2026-11-14T12:30:00+03:00","completed_at":null,"status":"completed","overdue":false}`)
 	profile.StartDate = nil
-	testutil.JSON(t, fromProfile(profile), `{"authentik_id":"intern","name":"Name","username":"username","email":"user@example.com","role":"intern","team":"backend","start_date":null,"goals":"goals","expectations":"expectations"}`)
+	testutil.JSON(t, dto.FromProfile(profile), `{"authentik_id":"intern","name":"Name","username":"username","email":"user@example.com","role":"intern","team":"backend","start_date":null,"goals":"goals","expectations":"expectations"}`)
 	snapshot.Tasks = nil
 	testutil.JSON(t, fromProgress(snapshot), `{"intern":`+profileJSON+`,"mentor":null,"start_date":null,"goals":"goals","expectations":"expectations","tasks":null,"completed":1,"total":2,"percent":50,"next_task":null}`)
 }

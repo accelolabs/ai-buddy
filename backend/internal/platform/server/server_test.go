@@ -1,6 +1,7 @@
 package server
 
 import (
+	"ai-buddy/internal/testutil"
 	"context"
 	"errors"
 	"net/http"
@@ -12,7 +13,10 @@ import (
 
 func TestRoutes(t *testing.T) {
 	db, m, _ := sqlmock.New(sqlmock.MonitorPingsOption(true))
-	defer db.Close()
+	defer func() {
+		// sqlmock cleanup after assertions; Close is not part of this scenario.
+		_ = db.Close()
+	}()
 	h := Routes(db, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(401) }), http.NotFoundHandler())
 	for _, tc := range []struct {
 		path string
@@ -26,7 +30,13 @@ func TestRoutes(t *testing.T) {
 			}
 		}
 		w := httptest.NewRecorder()
-		h.ServeHTTP(w, httptest.NewRequest("GET", tc.path, nil))
+		checked := h
+		if tc.path == "/health/live" || tc.path == "/health/ready" {
+			for _, service := range []string{"buddy", "tracker", "ticket", "wiki"} {
+				checked = testutil.Contract(t, service, checked)
+			}
+		}
+		checked.ServeHTTP(w, httptest.NewRequest("GET", tc.path, nil))
 		if w.Code != tc.code {
 			t.Fatal(tc.path, w.Code)
 		}

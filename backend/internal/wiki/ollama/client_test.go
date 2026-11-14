@@ -24,18 +24,26 @@ func TestOllama(t *testing.T) {
 		}
 		if mode == "context" {
 			w.WriteHeader(400)
-			fmt.Fprint(w, `{"error":"input length exceeds context length"}`)
+			if _, err := fmt.Fprint(w, `{"error":"input length exceeds context length"}`); err != nil {
+				t.Error(err)
+			}
 			return
 		}
 		if mode == "invalid" {
-			fmt.Fprint(w, "!")
+			if _, err := fmt.Fprint(w, "!"); err != nil {
+				t.Error(err)
+			}
 			return
 		}
 		if r.URL.Path == "/api/tags" {
 			if mode == "missing" {
-				fmt.Fprint(w, `{"models":[]}`)
+				if _, err := fmt.Fprint(w, `{"models":[]}`); err != nil {
+					t.Error(err)
+				}
 			} else {
-				fmt.Fprint(w, `{"models":[{"name":"embeddinggemma:300m","digest":"sha256:test"}]}`)
+				if _, err := fmt.Fprint(w, `{"models":[{"name":"embeddinggemma:300m","digest":"sha256:test"}]}`); err != nil {
+					t.Error(err)
+				}
 			}
 			return
 		}
@@ -53,7 +61,9 @@ func TestOllama(t *testing.T) {
 		if mode == "zero" {
 			v[0] = 0
 		}
-		json.NewEncoder(w).Encode(map[string]any{"embeddings": [][]float64{v}})
+		if err := json.NewEncoder(w).Encode(map[string]any{"embeddings": [][]float64{v}}); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer srv.Close()
 	o := New(srv.URL)

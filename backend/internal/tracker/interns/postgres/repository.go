@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 
 	"ai-buddy/internal/tracker/apperror"
 	"ai-buddy/internal/tracker/interns"
@@ -99,7 +100,11 @@ func (p *Repository) Interns(ctx context.Context, id string) ([]interns.Profile,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 
 	profiles := []interns.Profile{}
 	for rows.Next() {

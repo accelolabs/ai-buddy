@@ -14,7 +14,7 @@ import (
 	"ai-buddy/internal/tracker/tasks"
 )
 
-var broken = errors.New("database failed")
+var errBroken = errors.New("database failed")
 
 var tcols = []string{
 	"id",
@@ -50,7 +50,8 @@ func postgres(t *testing.T) (*Repository, sqlmock.Sqlmock) {
 			t.Error(e)
 		}
 
-		db.Close()
+		// sqlmock cleanup after assertions; Close is not part of this scenario.
+		_ = db.Close()
 	})
 	return New(db), m
 }
@@ -69,8 +70,8 @@ func TestTaskRepository(t *testing.T) {
 		t.Fatal(v, created, e)
 	}
 
-	m.ExpectQuery("INSERT INTO tasks").WillReturnError(broken)
-	if _, _, e = p.Create(ctx, "i", "k", in); e != broken {
+	m.ExpectQuery("INSERT INTO tasks").WillReturnError(errBroken)
+	if _, _, e = p.Create(ctx, "i", "k", in); e != errBroken {
 		t.Fatal(e)
 	}
 
@@ -78,7 +79,7 @@ func TestTaskRepository(t *testing.T) {
 		m.ExpectQuery("INSERT INTO tasks").WillReturnError(sql.ErrNoRows)
 		q := m.ExpectQuery("SELECT .* FROM tasks WHERE intern_id=\\$1 AND idempotency_key=\\$2").WithArgs("i", "k")
 		if mode == "error" {
-			q.WillReturnError(broken)
+			q.WillReturnError(errBroken)
 		} else {
 			q.WillReturnRows(taskRows())
 		}
@@ -99,7 +100,7 @@ func TestTaskRepository(t *testing.T) {
 				t.Fatal(e)
 			}
 		case "error":
-			if e != broken {
+			if e != errBroken {
 				t.Fatal(e)
 			}
 		}
@@ -115,8 +116,8 @@ func TestTaskRepository(t *testing.T) {
 		t.Fatal(e)
 	}
 
-	m.ExpectQuery("UPDATE tasks").WillReturnError(broken)
-	if _, e = p.Complete(ctx, "i", "t"); e != broken {
+	m.ExpectQuery("UPDATE tasks").WillReturnError(errBroken)
+	if _, e = p.Complete(ctx, "i", "t"); e != errBroken {
 		t.Fatal(e)
 	}
 }
@@ -130,8 +131,8 @@ func TestList(t *testing.T) {
 		t.Fatal(list, err)
 	}
 
-	m.ExpectQuery("SELECT").WillReturnError(broken)
-	if _, err = repo.Tasks(ctx, "i"); err != broken {
+	m.ExpectQuery("SELECT").WillReturnError(errBroken)
+	if _, err = repo.Tasks(ctx, "i"); err != errBroken {
 		t.Fatal(err)
 	}
 
@@ -140,8 +141,8 @@ func TestList(t *testing.T) {
 		t.Fatal("scan failure")
 	}
 
-	m.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows(tcols).AddRow(make([]driver.Value, len(tcols))...).RowError(0, broken))
-	if _, err = repo.Tasks(ctx, "i"); err != broken {
+	m.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows(tcols).AddRow(make([]driver.Value, len(tcols))...).RowError(0, errBroken))
+	if _, err = repo.Tasks(ctx, "i"); err != errBroken {
 		t.Fatal(err)
 	}
 }

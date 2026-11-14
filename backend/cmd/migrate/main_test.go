@@ -20,7 +20,10 @@ func TestSelection(t *testing.T) {
 				t.Fatal(err)
 			}
 			db, m, _ := sqlmock.New()
-			defer db.Close()
+			defer func() {
+				// sqlmock cleanup after assertions; Close is not part of this scenario.
+				_ = db.Close()
+			}()
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 			if op(ctx, db) == nil {

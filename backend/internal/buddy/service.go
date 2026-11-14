@@ -17,10 +17,35 @@ type Service struct {
 	Executor Executor
 	Context  context.Context
 	wg       sync.WaitGroup
+	mu       sync.Mutex
+	closing  bool
 }
 
 func (s *Service) Wait() { s.wg.Wait() }
+
+// Close rejects new work before waiting, so Add cannot race a zero-count Wait.
+func (s *Service) Close() { s.mu.Lock(); s.closing = true; s.mu.Unlock(); s.wg.Wait() }
+func (s *Service) begin() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closing {
+		return false
+	}
+	s.wg.Add(1)
+	return true
+}
+func (s *Service) Cancel(ctx context.Context, u auth.User, id string) (Action, error) {
+	if !s.begin() {
+		return Action{}, ErrConflict
+	}
+	defer s.wg.Done()
+	return s.Repo.Cancel(ctx, u.ID, id)
+}
 func (s *Service) Send(ctx context.Context, u auth.User, chat, key, text string) (Run, error) {
+	if !s.begin() {
+		return Run{}, ErrConflict
+	}
+	defer s.wg.Done()
 	if strings.TrimSpace(key) == "" || len(key) > 200 || strings.TrimSpace(text) == "" || len([]rune(text)) > 2000 {
 		return Run{}, ErrInvalid
 	}
@@ -31,6 +56,10 @@ func (s *Service) Send(ctx context.Context, u auth.User, chat, key, text string)
 	return r, err
 }
 func (s *Service) Retry(ctx context.Context, u auth.User, id string) (Run, error) {
+	if !s.begin() {
+		return Run{}, ErrConflict
+	}
+	defer s.wg.Done()
 	r, fresh, err := s.Repo.Retry(ctx, u.ID, id)
 	if err == nil && fresh {
 		s.launch(u, r)
@@ -55,8 +84,12 @@ func (s *Service) launch(u auth.User, r Run) {
 		}
 	}()
 }
-func (s *Service) Confirm(ctx context.Context, u auth.User, id string, fields json.RawMessage, cancel bool) (Action, error) {
-	a, execute, err := s.Repo.Claim(ctx, u.ID, id, fields, cancel)
+func (s *Service) Confirm(ctx context.Context, u auth.User, id string, fields json.RawMessage) (Action, error) {
+	if !s.begin() {
+		return Action{}, ErrConflict
+	}
+	defer s.wg.Done()
+	a, execute, err := s.Repo.Claim(ctx, u.ID, id, fields)
 	if err != nil || !execute {
 		return a, err
 	}

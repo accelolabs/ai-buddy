@@ -1,0 +1,804 @@
+openapi: 3.1.1
+info:
+  title: Tracker API
+  version: 1.0.0
+  description: Browser POST requests reject cross-origin requests using Sec-Fetch-Site and Origin (HTTP
+    403). Sessions use a Secure, HttpOnly, SameSite=Lax __Host-session cookie scoped to this service.
+    JSON request bodies reject unknown fields and trailing JSON; maximum body size is 1 MiB. Internal
+    routes accept only the documented Bearer service keys. Ownership and team identity come from the session
+    or trusted internal path, never JSON.
+paths:
+  /health/live:
+    get:
+      operationId: tracker_get_health_live
+      summary: Process liveness
+      description: Public endpoint.
+      security: []
+      responses:
+        '204':
+          description: Success; no response body
+  /health/ready:
+    get:
+      operationId: tracker_get_health_ready
+      summary: Database readiness
+      description: Public endpoint.
+      security: []
+      responses:
+        '204':
+          description: Success; no response body
+        '503':
+          description: Database unavailable
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: 'database unavailable
+
+                '
+  /api/auth/login:
+    get:
+      operationId: tracker_get_api_auth_login
+      summary: OIDC login
+      description: OIDC authorization code flow with state, nonce and PKCE. Login state expires in five
+        minutes. Callback is single-use; successful callback renews the session and redirects to /. Login
+        redirects to the configured provider. Session cookie never appears in response JSON.
+      security: []
+      responses:
+        '302':
+          description: Success; no response body
+          headers:
+            Location:
+              description: Configured OIDC authorization URL or /
+              schema:
+                type: string
+        '500':
+          description: Session unavailable
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: 'session unavailable
+
+                '
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/auth/callback:
+    get:
+      operationId: tracker_get_api_auth_callback
+      summary: OIDC callback
+      description: OIDC authorization code flow with state, nonce and PKCE. Login state expires in five
+        minutes. Callback is single-use; successful callback renews the session and redirects to /. Login
+        redirects to the configured provider. Session cookie never appears in response JSON.
+      security: []
+      responses:
+        '302':
+          description: Success; no response body
+          headers:
+            Location:
+              description: Configured OIDC authorization URL or /
+              schema:
+                type: string
+        '500':
+          description: Session unavailable
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: 'session unavailable
+
+                '
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '400':
+          description: Invalid/expired callback or failed authentication
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: 'invalid login
+
+                '
+      parameters:
+      - name: code
+        in: query
+        required: false
+        description: code
+        schema:
+          type: string
+      - name: state
+        in: query
+        required: false
+        description: state
+        schema:
+          type: string
+      - name: error
+        in: query
+        required: false
+        description: error
+        schema:
+          type: string
+  /api/auth/me:
+    get:
+      operationId: tracker_get_api_auth_me
+      summary: Current user
+      description: Authenticated intern or mentor session. Access to another owner or team is rejected;
+        no data are disclosed.
+      security:
+      - Session: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/401'
+        '500':
+          $ref: '#/components/responses/500'
+  /api/auth/logout:
+    post:
+      operationId: tracker_post_api_auth_logout
+      summary: Destroy this service session
+      description: Same-origin browser POST; also succeeds when already logged out. Destroy only this
+        service session.
+      security: []
+      responses:
+        '204':
+          description: Success; no response body
+        '403':
+          $ref: '#/components/responses/403'
+        '500':
+          description: Session unavailable
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: 'session unavailable
+
+                '
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/tasks:
+    get:
+      operationId: tracker_get_api_tasks
+      summary: Read tasks
+      description: Authenticated intern session. Access to another owner or team is rejected; no data
+        are disclosed.
+      security:
+      - Session: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type:
+                    - array
+                    - 'null'
+                    items:
+                      $ref: '#/components/schemas/Task'
+                required:
+                - tasks
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
+    post:
+      operationId: tracker_post_api_tasks
+      summary: Create task
+      description: Authenticated intern session. Access to another owner or team is rejected; no data
+        are disclosed.
+      security:
+      - Session: []
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
+        '200':
+          description: Same key and same normalized fields returns the existing task; changed fields cause
+            409.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+      requestBody:
+        required: true
+        description: JSON, at most 1 MiB. Unknown fields rejected.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTask'
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        description: Idempotency-Key
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 256
+  /api/tasks/{taskID}/complete:
+    post:
+      operationId: tracker_post_api_tasks_taskID_complete
+      summary: Complete task idempotently
+      description: Authenticated intern session. Access to another owner or team is rejected; no data
+        are disclosed.
+      security:
+      - Session: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
+      parameters:
+      - name: taskID
+        in: path
+        required: true
+        description: taskID
+        schema:
+          type: string
+          minLength: 1
+  /api/progress:
+    get:
+      operationId: tracker_get_api_progress
+      summary: Read progress
+      description: Authenticated intern session. Access to another owner or team is rejected; no data
+        are disclosed.
+      security:
+      - Session: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Progress'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
+  /api/interns:
+    get:
+      operationId: tracker_get_api_interns
+      summary: Read interns
+      description: Authenticated mentor session. Access to another owner or team is rejected; no data
+        are disclosed.
+      security:
+      - Session: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  interns:
+                    type:
+                    - array
+                    - 'null'
+                    items:
+                      $ref: '#/components/schemas/Profile'
+                required:
+                - interns
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
+  /api/interns/{id}/progress:
+    get:
+      operationId: tracker_get_api_interns_id_progress
+      summary: Read progress
+      description: Authenticated mentor session. Access to another owner or team is rejected; no data
+        are disclosed.
+      security:
+      - Session: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Progress'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          minLength: 1
+  /internal/interns/{id}/progress:
+    get:
+      operationId: tracker_get_internal_interns_id_progress
+      summary: Read progress
+      description: 'Internal: Bearer Buddy key; path identifies the user. Access to another owner or team
+        is rejected; no data are disclosed.'
+      security:
+      - ServiceKey: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Progress'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          minLength: 1
+  /internal/interns/{id}/tasks:
+    post:
+      operationId: tracker_post_internal_interns_id_tasks
+      summary: Create task
+      description: 'Internal: Bearer Buddy key; path identifies the user. Access to another owner or team
+        is rejected; no data are disclosed.'
+      security:
+      - ServiceKey: []
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
+        '200':
+          description: Same key and same normalized fields returns the existing task; changed fields cause
+            409.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          minLength: 1
+      - name: Idempotency-Key
+        in: header
+        required: true
+        description: Idempotency-Key
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 256
+      requestBody:
+        required: true
+        description: JSON, at most 1 MiB. Unknown fields rejected.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTask'
+  /internal/interns/{id}/tasks/{taskID}/complete:
+    post:
+      operationId: tracker_post_internal_interns_id_tasks_taskID_complete
+      summary: Complete task idempotently
+      description: 'Internal: Bearer Buddy key; path identifies the user. Access to another owner or team
+        is rejected; no data are disclosed.'
+      security:
+      - ServiceKey: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          minLength: 1
+      - name: taskID
+        in: path
+        required: true
+        description: taskID
+        schema:
+          type: string
+          minLength: 1
+  /internal/interns/{id}/mentor:
+    get:
+      operationId: tracker_get_internal_interns_id_mentor
+      summary: Read mentor
+      description: 'Internal: Bearer Buddy key; path identifies the user. Access to another owner or team
+        is rejected; no data are disclosed. Both Buddy and Ticket service keys are allowed here; missing
+        assignment returns mentor: null.'
+      security:
+      - ServiceKey: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mentor:
+                    anyOf:
+                    - $ref: '#/components/schemas/Profile'
+                    - type: 'null'
+                required:
+                - mentor
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: id
+        schema:
+          type: string
+          minLength: 1
+components:
+  securitySchemes:
+    Session:
+      type: apiKey
+      in: cookie
+      name: __Host-session
+    ServiceKey:
+      type: http
+      scheme: bearer
+      description: Buddy service API key. Tracker mentor lookup also permits the Ticket key; other Tracker
+        routes reject it with 403.
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+      example:
+        error: invalid input
+    User:
+      type: object
+      properties:
+        authentik_id:
+          type: string
+        role:
+          type: string
+        team:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        preferred_username:
+          type: string
+      required:
+      - authentik_id
+      - role
+      - team
+      - name
+      - email
+      - preferred_username
+    Profile:
+      type: object
+      properties:
+        authentik_id:
+          type: string
+        name:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        team:
+          type: string
+        goals:
+          type: string
+        expectations:
+          type: string
+        start_date:
+          type:
+          - string
+          - 'null'
+          format: date
+      required:
+      - authentik_id
+      - name
+      - username
+      - email
+      - role
+      - team
+      - goals
+      - expectations
+      - start_date
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+        intern_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        deadline:
+          type: string
+          format: date
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        status:
+          type: string
+          enum:
+          - pending
+          - completed
+        overdue:
+          type: boolean
+      required:
+      - id
+      - intern_id
+      - title
+      - description
+      - deadline
+      - created_at
+      - completed_at
+      - status
+      - overdue
+      description: Overdue is derived from deadline in APP_TIMEZONE, independently of status. Dates are
+        YYYY-MM-DD; timestamps include a timezone.
+    CreateTask:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          description: Trimmed, must contain non-whitespace.
+        description:
+          type: string
+        deadline:
+          type: string
+          format: date
+      required:
+      - title
+      - deadline
+      additionalProperties: false
+      example:
+        title: Read the guide
+        description: First task
+        deadline: '2026-12-01'
+    Progress:
+      type: object
+      properties:
+        intern:
+          $ref: '#/components/schemas/Profile'
+        mentor:
+          anyOf:
+          - $ref: '#/components/schemas/Profile'
+          - type: 'null'
+        start_date:
+          type:
+          - string
+          - 'null'
+          format: date
+        goals:
+          type: string
+        expectations:
+          type: string
+        tasks:
+          type:
+          - array
+          - 'null'
+          items:
+            $ref: '#/components/schemas/Task'
+        completed:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 0
+        percent:
+          type: integer
+          minimum: 0
+          maximum: 100
+        next_task:
+          anyOf:
+          - $ref: '#/components/schemas/Task'
+          - type: 'null'
+      required:
+      - intern
+      - mentor
+      - start_date
+      - goals
+      - expectations
+      - tasks
+      - completed
+      - total
+      - percent
+      - next_task
+      description: No mentor, start date or next task is represented by null. Task/profile collection
+        DTOs preserve null versus []; normal task service lists are []. Mentor can only inspect assigned
+        interns.
+  responses:
+    '400':
+      description: Invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    '401':
+      description: Missing or invalid session / API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    '403':
+      description: Role, service key or cross-origin request forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    '404':
+      description: Resource absent or outside owner/team scope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    '405':
+      description: Method not allowed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    '409':
+      description: Idempotency or state conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    '422':
+      description: Ментор не назначен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    '500':
+      description: Storage or session unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    '503':
+      description: Dependency unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

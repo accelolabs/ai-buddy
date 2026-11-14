@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -69,12 +70,16 @@ func lookup(ctx context.Context, client *http.Client, c Config, d demo) (User, e
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	resp, err := client.Do(req)
 	if err != nil {
-		return User{}, errors.New("Authentik request failed")
+		return User{}, errors.New("authentik request failed")
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return User{}, errors.New("Authentik request rejected")
+		return User{}, errors.New("authentik request rejected")
 	}
 
 	var body struct {

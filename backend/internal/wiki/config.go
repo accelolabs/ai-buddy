@@ -40,7 +40,7 @@ func LoadConfig() (Config, error) {
 		return c, errors.New("invalid wiki configuration")
 	}
 
-	if err := c.Config.Validate(); err != nil {
+	if err := c.Validate(); err != nil {
 		return c, err
 	}
 

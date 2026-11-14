@@ -24,7 +24,7 @@ func Load() (Config, error) {
 	if cleanenv.ReadEnv(&c) != nil {
 		return c, errors.New("missing or malformed configuration")
 	}
-	if err := c.Config.Validate(); err != nil {
+	if err := c.Validate(); err != nil {
 		return c, err
 	}
 	if strings.TrimSpace(c.BuddyAPIKey) == "" || strings.TrimSpace(c.TicketAPIKey) == "" {

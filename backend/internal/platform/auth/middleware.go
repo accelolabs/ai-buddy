@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -70,5 +71,7 @@ func (a *Auth) RequireRoles(next http.Handler, roles ...string) http.Handler {
 func jsonError(w http.ResponseWriter, message string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(map[string]string{"error": message})
+	if err := json.NewEncoder(w).Encode(map[string]string{"error": message}); err != nil {
+		slog.Warn("write JSON response", "error", err)
+	}
 }

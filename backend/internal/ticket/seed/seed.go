@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -97,7 +98,11 @@ func run(ctx context.Context, db *sql.DB, c Config, client *http.Client, finder 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 
 	for _, ticket := range list {
 		_, err = tx.ExecContext(

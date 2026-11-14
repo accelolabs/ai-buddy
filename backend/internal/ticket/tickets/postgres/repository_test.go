@@ -20,21 +20,26 @@ func TestCreate(t *testing.T) {
 	for _, mode := range []string{"new", "repeat", "conflict", "insert error", "read error"} {
 		t.Run(mode, func(t *testing.T) {
 			db, m, _ := sqlmock.New()
-			defer db.Close()
+			defer func() {
+				// sqlmock cleanup after assertions; Close is not part of this scenario.
+				_ = db.Close()
+			}()
 			repo := New(db)
 			insert := m.ExpectQuery("INSERT INTO tickets").WithArgs(sqlmock.AnyArg(), "s", "m", "q", "d", "k")
-			if mode == "insert error" {
+			switch mode {
+			case "insert error":
 				insert.WillReturnError(errors.New("down"))
-			} else if mode == "new" {
+			case "new":
 				insert.WillReturnRows(ticketRows("q"))
-			} else {
+			default:
 				insert.WillReturnRows(sqlmock.NewRows([]string{"id"}))
 				find := m.ExpectQuery("SELECT").WithArgs("s", "k")
-				if mode == "read error" {
+				switch mode {
+				case "read error":
 					find.WillReturnError(errors.New("down"))
-				} else if mode == "conflict" {
+				case "conflict":
 					find.WillReturnRows(ticketRows("other"))
-				} else {
+				default:
 					find.WillReturnRows(ticketRows("q"))
 				}
 			}
@@ -57,7 +62,10 @@ func TestCreate(t *testing.T) {
 }
 func TestFindAndLists(t *testing.T) {
 	db, m, _ := sqlmock.New()
-	defer db.Close()
+	defer func() {
+		// sqlmock cleanup after assertions; Close is not part of this scenario.
+		_ = db.Close()
+	}()
 	repo := New(db)
 	ctx := context.Background()
 	m.ExpectQuery("SELECT").WithArgs("s", "missing").WillReturnError(sql.ErrNoRows)

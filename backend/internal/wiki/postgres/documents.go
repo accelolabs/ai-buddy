@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 
 	"ai-buddy/internal/wiki"
 )
@@ -19,7 +20,11 @@ func (r *Repository) List(ctx context.Context, team string) ([]wiki.Document, er
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			slog.Warn("resource cleanup failed", "error", err)
+		}
+	}()
 
 	documents := []wiki.Document{}
 	for rows.Next() {
