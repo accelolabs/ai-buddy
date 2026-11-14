@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+version: 1
+metadata:
+  name: AI Buddy - Demo users
+entries:
+  - model: authentik_core.user
+    state: present
+    identifiers:
+      username: mentor.backend
+    attrs:
+      name: Алексей Смирнов
+      email: mentor.backend@example.test
+      is_active: true
+      type: internal
+      attributes:
+        role: mentor
+        team: backend
+      password: !Env MENTOR_BACKEND_PASSWORD
+
+  - model: authentik_core.user
+    state: present
+    identifiers:
+      username: intern.backend.1
+    attrs:
+      name: Иван Петров
+      email: intern.backend.1@example.test
+      is_active: true
+      type: internal
+      attributes:
+        role: intern
+        team: backend
+      password: !Env INTERN_BACKEND_1_PASSWORD
+
+  - model: authentik_core.user
+    state: present
+    identifiers:
+      username: intern.backend.2
+    attrs:
+      name: Анна Соколова
+      email: intern.backend.2@example.test
+      is_active: true
+      type: internal
+      attributes:
+        role: intern
+        team: backend
+      password: !Env INTERN_BACKEND_2_PASSWORD
+
+  - model: authentik_core.user
+    state: present
+    identifiers:
+      username: mentor.platform
+    attrs:
+      name: Мария Волкова
+      email: mentor.platform@example.test
+      is_active: true
+      type: internal
+      attributes:
+        role: mentor
+        team: platform
+      password: !Env MENTOR_PLATFORM_PASSWORD
+
+  - model: authentik_core.user
+    state: present
+    identifiers:
+      username: intern.platform.1
+    attrs:
+      name: Дмитрий Орлов
+      email: intern.platform.1@example.test
+      is_active: true
+      type: internal
+      attributes:
+        role: intern
+        team: platform
+      password: !Env INTERN_PLATFORM_1_PASSWORD
+
+  - model: authentik_core.user
+    state: present
+    identifiers:
+      username: intern.platform.2
+    attrs:
+      name: Елена Морозова
+      email: intern.platform.2@example.test
+      is_active: true
+      type: internal
+      attributes:
+        role: intern
+        team: platform
+      password: !Env INTERN_PLATFORM_2_PASSWORD

@@ -1,0 +1,87 @@
+name: ai-buddy-authentik
+
+x-authentik: &authentik
+  image: ghcr.io/goauthentik/server:2026.8.5
+  restart: unless-stopped
+  shm_size: 512mb
+  env_file: .env
+  environment: &authentik-environment
+    AUTHENTIK_POSTGRESQL__HOST: authentik-db
+    AUTHENTIK_POSTGRESQL__NAME: authentik
+    AUTHENTIK_POSTGRESQL__USER: authentik
+    AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS:?Set PG_PASS in .env}
+    AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?Set AUTHENTIK_SECRET_KEY in .env}
+    AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS: ${AUTHENTIK_TRUSTED_PROXY_CIDRS:?Set AUTHENTIK_TRUSTED_PROXY_CIDRS in .env}
+    AUTHENTIK_PUBLIC_URL: ${AUTHENTIK_PUBLIC_URL:?Set AUTHENTIK_PUBLIC_URL in .env}
+    BUDDY_PUBLIC_URL: ${BUDDY_PUBLIC_URL:?Set BUDDY_PUBLIC_URL in .env}
+    WIKI_PUBLIC_URL: ${WIKI_PUBLIC_URL:?Set WIKI_PUBLIC_URL in .env}
+    TRACKER_PUBLIC_URL: ${TRACKER_PUBLIC_URL:?Set TRACKER_PUBLIC_URL in .env}
+    TICKET_PUBLIC_URL: ${TICKET_PUBLIC_URL:?Set TICKET_PUBLIC_URL in .env}
+    BUDDY_CLIENT_SECRET: ${BUDDY_CLIENT_SECRET:?Set BUDDY_CLIENT_SECRET in .env}
+    WIKI_CLIENT_SECRET: ${WIKI_CLIENT_SECRET:?Set WIKI_CLIENT_SECRET in .env}
+    TRACKER_CLIENT_SECRET: ${TRACKER_CLIENT_SECRET:?Set TRACKER_CLIENT_SECRET in .env}
+    TICKET_CLIENT_SECRET: ${TICKET_CLIENT_SECRET:?Set TICKET_CLIENT_SECRET in .env}
+    AUTHENTIK_BOOTSTRAP_EMAIL: ${AUTHENTIK_BOOTSTRAP_EMAIL:?Set AUTHENTIK_BOOTSTRAP_EMAIL in .env}
+    AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:?Set AUTHENTIK_BOOTSTRAP_PASSWORD in .env}
+    MENTOR_BACKEND_PASSWORD: ${MENTOR_BACKEND_PASSWORD:?Set MENTOR_BACKEND_PASSWORD in .env}
+    INTERN_BACKEND_1_PASSWORD: ${INTERN_BACKEND_1_PASSWORD:?Set INTERN_BACKEND_1_PASSWORD in .env}
+    INTERN_BACKEND_2_PASSWORD: ${INTERN_BACKEND_2_PASSWORD:?Set INTERN_BACKEND_2_PASSWORD in .env}
+    MENTOR_PLATFORM_PASSWORD: ${MENTOR_PLATFORM_PASSWORD:?Set MENTOR_PLATFORM_PASSWORD in .env}
+    INTERN_PLATFORM_1_PASSWORD: ${INTERN_PLATFORM_1_PASSWORD:?Set INTERN_PLATFORM_1_PASSWORD in .env}
+    INTERN_PLATFORM_2_PASSWORD: ${INTERN_PLATFORM_2_PASSWORD:?Set INTERN_PLATFORM_2_PASSWORD in .env}
+  depends_on:
+    authentik-db:
+      condition: service_healthy
+  volumes:
+    - data:/data
+    - ./blueprints:/blueprints/ai-buddy:ro
+  networks:
+    - backend
+  healthcheck:
+    test: [CMD, ak, healthcheck]
+    interval: 30s
+    timeout: 10s
+    start_period: 120s
+    retries: 5
+
+services:
+  authentik-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: authentik
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD: ${PG_PASS:?Set PG_PASS in .env}
+    volumes:
+      - database:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -d "$${POSTGRES_DB}" -U "$${POSTGRES_USER}"']
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+
+  server:
+    <<: *authentik
+    command: server
+    ports:
+      - '${AUTHENTIK_HTTP_BIND:-127.0.0.1}:${AUTHENTIK_HTTP_PORT:-9000}:9000'
+    networks:
+      - backend
+      - shared
+
+  worker:
+    <<: *authentik
+    command: worker
+    user: root
+
+volumes:
+  database:
+  data:
+
+networks:
+  backend:
+  shared:
+    name: ai-buddy-shared
