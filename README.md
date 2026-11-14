@@ -8,6 +8,8 @@
 
 Backend Tracker: [backend-tracker/README.md](backend-tracker/README.md) — задачи, прогресс, наставники, внутренний API и seed.
 
+Backend Ticket: [backend-ticket/README.md](backend-ticket/README.md) — вопросы наставникам, входящие, идемпотентность и seed.
+
 Каталоги, Go-модули и сервисы развёртывания создавать с именами `backend-[service]`
 (например, `backend-buddy`). Существующие OIDC-клиенты Authentik сохраняют имена
 `buddy`, `wiki`, `tracker`, `ticket` и зарегистрированные callback URL.
