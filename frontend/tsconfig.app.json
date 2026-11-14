@@ -22,7 +22,12 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* shadcn ui */
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": ["src", "setupTests.ts"]
 }
