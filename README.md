@@ -20,3 +20,5 @@ cd backend
 Tracker и Ticket запускаются отдельными процессами со своими PostgreSQL и сессиями.
 Будущий frontend — один React-проект с общими компонентами и четырьмя самостоятельными
 сборками для Buddy, Tracker, Ticket и Wiki на своих доменах.
+
+[Wiki: запуск, индексация и API](backend/deploy/wiki/README.md) · [Knowledge base](knowledge-base/README.md)

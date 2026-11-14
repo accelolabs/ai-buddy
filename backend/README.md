@@ -6,14 +6,20 @@
 - [Ollama: локальные модели на CPU](deploy/ollama/README.md).
 - [Tracker: задачи, прогресс, наставники](deploy/tracker/README.md).
 - [Ticket: вопросы наставникам](deploy/ticket/README.md).
+- [Wiki: документы и гибридный поиск](deploy/wiki/README.md).
 
 ## Структура
 
 ```text
-cmd/tracker, cmd/ticket         серверные команды
+cmd/tracker, cmd/ticket, cmd/wiki серверные команды
+cmd/wiki-index                  явное обновление индекса Wiki
 cmd/migrate, cmd/seed           общие команды с обязательным выбором сервиса
 internal/tracker               задачи, стажёры, прогресс, миграции и seed Tracker
 internal/ticket                тикеты, HTTP-клиент Tracker, миграции и seed Ticket
+internal/wiki                  модели, поиск и конфигурация Wiki
+internal/wiki/{postgres,indexer} SQL и координация обновления индекса
+internal/wiki/{ollama,authentik}  внешние клиенты Wiki
+internal/wiki/http              маршруты, DTO и проверка запросов Wiki
 internal/platform              auth, config, database, server, httpx, migrations, demousers, cli
 internal/testutil              только тестовые HTTP-заглушки и временные схемы PostgreSQL
 deploy/                       Compose, окружение и инструкции сервисов и Ollama
@@ -43,7 +49,7 @@ go run ./cmd/ticket
 go run ./cmd/seed ticket
 ```
 
-`migrate <tracker|ticket> [up|down|status]` и `seed <tracker|ticket>` требуют сервис;
+`migrate <tracker|ticket|wiki> [up|down|status]` и `seed <tracker|ticket>` требуют сервис;
 неизвестные и лишние аргументы отклоняются до подключения к БД. Каждый запуск работает
 только с переданным `DATABASE_URL` и миграциями выбранного сервиса. SQL и номера миграций сохранены.
 Seed выполняется в порядке **Authentik → Tracker → Ticket**. Административный токен Authentik
@@ -98,18 +104,17 @@ Docker запускает Ollama на CPU и загружает `embeddinggemma:
 TEST_DATABASE_URL=postgres://user:password@localhost/test ./scripts/check.sh
 ```
 
-Скрипт проверяет форматирование, `go vet`, сборку всех четырёх команд и `go test -race`.
-Три независимых профиля (`tracker.cover`, `ticket.cover`, `platform.cover`) сохраняются
+Скрипт проверяет форматирование, `go vet`, сборку всех команд и `go test -race`.
+Четыре независимых профиля (`tracker.cover`, `ticket.cover`, `wiki.cover`, `platform.cover`) сохраняются
 в `/tmp/ai-buddy-check` или `CHECK_OUTPUT_DIR`. В каждом покрытие по операторам должно быть
 **строго больше 80%**. Tracker включает только `cmd/tracker` и `internal/tracker`, Ticket —
-`cmd/ticket` и `internal/ticket`; platform — `internal/platform`, `cmd/migrate`, `cmd/seed`.
+`cmd/ticket` и `internal/ticket`; Wiki — `internal/wiki`, `cmd/wiki`, `cmd/wiki-index`; platform — `internal/platform`, `cmd/migrate`, `cmd/seed`.
 Все тесты могут вызывать выбранную группу, но общий код не засчитывается сервисам.
 `internal/testutil` исключён из всех знаменателей. Порог проверяется по числу операторов до округления.
 
 PostgreSQL-тесты создают и удаляют изолированные схемы. Без `TEST_DATABASE_URL` они явно
 пропускаются. Проверяются миграции, ограничения, конкурентная идемпотентность, сессии,
 повтор seed и откат транзакций. Compose проверяется без daemon; сборки образов требуют Docker daemon.
-Результаты и измерения рефакторинга: [docs/refactoring.md](docs/refactoring.md).
 
 ## Добавление сервиса
 
@@ -122,6 +127,8 @@ PostgreSQL-тесты создают и удаляют изолированны�
 4. Создать `deploy/<service>` с отдельными БД, credentials, томом и приватной сетью;
    расширить выбор `SERVICE` Dockerfile каталога `backend/` и добавить отдельную группу покрытия.
 
-Копирование шаблона больше не требуется. Buddy и Wiki будут добавлены отдельно.
+Копирование шаблона больше не требуется. Buddy будет добавлен отдельно.
 Будущий frontend — **один React-проект**, общие компоненты и **четыре самостоятельные сборки**
 для Buddy, Tracker, Ticket и Wiki на своих доменах. Их реализация в этот рефакторинг не входит.
+
+Wiki: [развёртывание и JSON API](deploy/wiki/README.md), [база знаний](../knowledge-base/README.md).
