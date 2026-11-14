@@ -2,13 +2,11 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
-	"log/slog"
 	"reflect"
 
 	"ai-buddy/internal/buddy"
+	"ai-buddy/internal/platform/cleanup"
 )
 
 func (p *Repository) Draft(ctx context.Context, a buddy.Action) (buddy.Action, error) {
@@ -21,11 +19,7 @@ func (p *Repository) Claim(ctx context.Context, owner, id string, fields json.Ra
 	if err != nil {
 		return a, false, err
 	}
-	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			slog.Warn("resource cleanup failed", "error", err)
-		}
-	}()
+	defer cleanup.Rollback(tx)
 	a, err = scanAction(tx.QueryRowContext(ctx, "SELECT "+actionCols+" FROM actions WHERE id=$1 AND owner_id=$2 FOR UPDATE", id, owner))
 	if err != nil {
 		return a, false, err
@@ -80,11 +74,7 @@ func (p *Repository) Cancel(ctx context.Context, owner, id string) (a buddy.Acti
 	if err != nil {
 		return a, err
 	}
-	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			slog.Warn("resource cleanup failed", "error", err)
-		}
-	}()
+	defer cleanup.Rollback(tx)
 	a, err = scanAction(tx.QueryRowContext(ctx, "SELECT "+actionCols+" FROM actions WHERE id=$1 AND owner_id=$2 FOR UPDATE", id, owner))
 	if err != nil {
 		return a, err

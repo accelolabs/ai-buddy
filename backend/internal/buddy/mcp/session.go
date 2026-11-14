@@ -3,12 +3,12 @@ package mcp
 
 import (
 	"context"
-	"log/slog"
+
+	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"ai-buddy/internal/buddy"
 	"ai-buddy/internal/platform/auth"
-
-	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	"ai-buddy/internal/platform/cleanup"
 )
 
 type Session struct {
@@ -17,12 +17,8 @@ type Session struct {
 }
 
 func (s *Session) Close() {
-	if err := s.Client.Close(); err != nil {
-		slog.Warn("resource cleanup failed", "error", err)
-	}
-	if err := s.server.Close(); err != nil {
-		slog.Warn("resource cleanup failed", "error", err)
-	}
+	cleanup.Close(s.Client)
+	cleanup.Close(s.server)
 }
 
 func (t *Tools) Open(ctx context.Context, u auth.User, run buddy.Run, request string) (*Session, error) {
@@ -35,9 +31,7 @@ func (t *Tools) Open(ctx context.Context, u auth.User, run buddy.Run, request st
 	client := sdk.NewClient(&sdk.Implementation{Name: "buddy-agent", Version: "1"}, nil)
 	cs, e := client.Connect(ctx, ct, nil)
 	if e != nil {
-		if err := ss.Close(); err != nil {
-			slog.Warn("resource cleanup failed", "error", err)
-		}
+		cleanup.Close(ss)
 		return nil, e
 	}
 	return &Session{cs, ss}, nil

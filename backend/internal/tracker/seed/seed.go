@@ -3,13 +3,12 @@ package seed
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
+	"ai-buddy/internal/platform/cleanup"
 	"ai-buddy/internal/platform/demousers"
 )
 
@@ -56,11 +55,7 @@ func RunWithClient(ctx context.Context, db *sql.DB, c Config, client *http.Clien
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			slog.Warn("resource cleanup failed", "error", err)
-		}
-	}()
+	defer cleanup.Rollback(tx)
 
 	mentors := map[string]string{}
 	for _, u := range users {

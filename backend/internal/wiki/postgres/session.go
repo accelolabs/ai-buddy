@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"ai-buddy/internal/platform/cleanup"
 	"ai-buddy/internal/wiki/indexer"
 )
 
@@ -26,9 +27,7 @@ func (r *Repository) Acquire(ctx context.Context) (indexer.Session, error) {
 	var acquired bool
 	err = conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", lockID).Scan(&acquired)
 	if err != nil || !acquired {
-		if err := conn.Close(); err != nil {
-			slog.Warn("resource cleanup failed", "error", err)
-		}
+		cleanup.Close(conn)
 		if err == nil {
 			err = errors.New("wiki index is already running")
 		}
@@ -39,11 +38,7 @@ func (r *Repository) Acquire(ctx context.Context) (indexer.Session, error) {
 }
 
 func (s *session) Close() {
-	defer func() {
-		if err := s.conn.Close(); err != nil {
-			slog.Warn("resource cleanup failed", "error", err)
-		}
-	}()
+	defer cleanup.Close(s.conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

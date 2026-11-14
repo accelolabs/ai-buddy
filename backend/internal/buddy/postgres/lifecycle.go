@@ -2,11 +2,9 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
-	"errors"
-	"log/slog"
 
 	"ai-buddy/internal/buddy"
+	"ai-buddy/internal/platform/cleanup"
 )
 
 func (p *Repository) Finish(ctx context.Context, id, failure string) error {
@@ -14,11 +12,7 @@ func (p *Repository) Finish(ctx context.Context, id, failure string) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			slog.Warn("resource cleanup failed", "error", err)
-		}
-	}()
+	defer cleanup.Rollback(tx)
 	var status string
 	err = tx.QueryRowContext(ctx, "SELECT status FROM runs WHERE id=$1 FOR UPDATE", id).Scan(&status)
 	if err != nil {
@@ -51,19 +45,13 @@ func (p *Repository) Recover(ctx context.Context) error {
 	for rows.Next() {
 		var id string
 		if err = rows.Scan(&id); err != nil {
-			defer func() {
-				if err := rows.Close(); err != nil {
-					slog.Warn("resource cleanup failed", "error", err)
-				}
-			}()
+			cleanup.Close(rows)
 			return err
 		}
 		ids = append(ids, id)
 	}
 	err = rows.Err()
-	if err := rows.Close(); err != nil {
-		slog.Warn("resource cleanup failed", "error", err)
-	}
+	cleanup.Close(rows)
 	if err != nil {
 		return err
 	}

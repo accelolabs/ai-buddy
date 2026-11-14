@@ -2,11 +2,10 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"errors"
-	"log/slog"
 
 	"ai-buddy/internal/buddy"
+	"ai-buddy/internal/platform/cleanup"
 )
 
 func (p *Repository) Start(ctx context.Context, owner, chat, key, text string) (buddy.Run, bool, error) {
@@ -27,11 +26,7 @@ func (p *Repository) start(ctx context.Context, owner, chat, key, text, retry st
 	if err != nil {
 		return r, false, err
 	}
-	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			slog.Warn("resource cleanup failed", "error", err)
-		}
-	}()
+	defer cleanup.Rollback(tx)
 	var title string
 	err = tx.QueryRowContext(ctx, "SELECT title FROM chats WHERE id=$1 AND owner_id=$2 FOR UPDATE", chat, owner).Scan(&title)
 	if err != nil {

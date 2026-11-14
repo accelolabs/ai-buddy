@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"ai-buddy/internal/platform/auth"
+	"ai-buddy/internal/platform/cleanup"
 	"ai-buddy/internal/platform/config"
 )
 
@@ -23,11 +24,7 @@ func Run(ctx context.Context, c config.Config, open OpenDatabase, domain Domain)
 	if err != nil {
 		return errors.New("database connection failed")
 	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			slog.Warn("resource cleanup failed", "error", err)
-		}
-	}()
+	defer cleanup.Close(db)
 	sessions, stop := auth.NewSessions(db, c)
 	defer stop()
 	provider, err := auth.NewOIDCProvider(startup, c)
@@ -40,11 +37,7 @@ func Run(ctx context.Context, c config.Config, open OpenDatabase, domain Domain)
 		return err
 	}
 	if closer, ok := api.(io.Closer); ok {
-		defer func() {
-			if err := closer.Close(); err != nil {
-				slog.Warn("resource cleanup failed", "error", err)
-			}
-		}()
+		defer cleanup.Close(closer)
 	}
 	return ServeHTTP(ctx, c.HTTPAddr, Routes(db, login.Handler(), api))
 }
@@ -75,11 +68,7 @@ func ServeHTTP(ctx context.Context, addr string, handler http.Handler) error {
 		IdleTimeout:       60 * time.Second,
 		WriteTimeout:      0, // Future SSE responses may outlive a fixed write timeout.
 	}
-	defer func() {
-		if err := server.Close(); err != nil {
-			slog.Warn("resource cleanup failed", "error", err)
-		}
-	}()
+	defer cleanup.Close(server)
 	done := make(chan error, 1)
 	go func() { done <- server.ListenAndServe() }()
 	slog.Info("server listening", "address", addr)

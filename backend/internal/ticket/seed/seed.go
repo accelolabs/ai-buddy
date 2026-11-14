@@ -4,13 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"ai-buddy/internal/platform/cleanup"
 	"ai-buddy/internal/platform/demousers"
 	"ai-buddy/internal/ticket/tickets"
 	"ai-buddy/internal/ticket/tracker"
@@ -98,11 +98,7 @@ func run(ctx context.Context, db *sql.DB, c Config, client *http.Client, finder 
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			slog.Warn("resource cleanup failed", "error", err)
-		}
-	}()
+	defer cleanup.Rollback(tx)
 
 	for _, ticket := range list {
 		_, err = tx.ExecContext(

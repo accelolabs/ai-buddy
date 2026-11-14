@@ -3,10 +3,10 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"log/slog"
 
 	"ai-buddy/internal/buddy"
+	"ai-buddy/internal/platform/cleanup"
 )
 
 func (p *Repository) CreateChat(ctx context.Context, owner string) (c buddy.Chat, err error) {
@@ -40,11 +40,7 @@ func (p *Repository) History(ctx context.Context, owner, id string) (h buddy.His
 	if err != nil {
 		return h, err
 	}
-	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			slog.Warn("resource cleanup failed", "error", err)
-		}
-	}()
+	defer cleanup.Rollback(tx)
 	err = tx.QueryRowContext(ctx, "SELECT id,owner_id,title,created_at FROM chats WHERE id=$1 AND owner_id=$2", id, owner).Scan(&h.Chat.ID, &h.Chat.Owner, &h.Chat.Title, &h.Chat.CreatedAt)
 	if err != nil {
 		return h, missing(err)
@@ -59,19 +55,13 @@ func (p *Repository) History(ctx context.Context, owner, id string) (h buddy.His
 	for rows.Next() {
 		var m buddy.Message
 		if err = rows.Scan(&m.ID, &m.ChatID, &m.RunID, &m.Role, &m.Content, &m.CreatedAt); err != nil {
-			defer func() {
-				if err := rows.Close(); err != nil {
-					slog.Warn("resource cleanup failed", "error", err)
-				}
-			}()
+			cleanup.Close(rows)
 			return h, err
 		}
 		h.Messages = append(h.Messages, m)
 	}
 	err = rows.Err()
-	if err := rows.Close(); err != nil {
-		slog.Warn("resource cleanup failed", "error", err)
-	}
+	cleanup.Close(rows)
 	if err != nil {
 		return h, err
 	}
@@ -82,19 +72,13 @@ func (p *Repository) History(ctx context.Context, owner, id string) (h buddy.His
 	for rows.Next() {
 		r, e := scanRun(rows)
 		if e != nil {
-			defer func() {
-				if err := rows.Close(); err != nil {
-					slog.Warn("resource cleanup failed", "error", err)
-				}
-			}()
+			cleanup.Close(rows)
 			return h, e
 		}
 		h.Runs = append(h.Runs, r)
 	}
 	err = rows.Err()
-	if err := rows.Close(); err != nil {
-		slog.Warn("resource cleanup failed", "error", err)
-	}
+	cleanup.Close(rows)
 	if err != nil {
 		return h, err
 	}
@@ -105,19 +89,13 @@ func (p *Repository) History(ctx context.Context, owner, id string) (h buddy.His
 	for rows.Next() {
 		a, e := scanAction(rows)
 		if e != nil {
-			defer func() {
-				if err := rows.Close(); err != nil {
-					slog.Warn("resource cleanup failed", "error", err)
-				}
-			}()
+			cleanup.Close(rows)
 			return h, e
 		}
 		h.Actions = append(h.Actions, a)
 	}
 	err = rows.Err()
-	if err := rows.Close(); err != nil {
-		slog.Warn("resource cleanup failed", "error", err)
-	}
+	cleanup.Close(rows)
 	if err != nil {
 		return h, err
 	}
@@ -130,19 +108,13 @@ func (p *Repository) History(ctx context.Context, owner, id string) (h buddy.His
 	for rows.Next() {
 		var c buddy.Card
 		if err = rows.Scan(&c.RunID, &c.Kind, &c.Data); err != nil {
-			defer func() {
-				if err := rows.Close(); err != nil {
-					slog.Warn("resource cleanup failed", "error", err)
-				}
-			}()
+			cleanup.Close(rows)
 			return h, err
 		}
 		h.Cards = append(h.Cards, c)
 	}
 	err = rows.Err()
-	if err := rows.Close(); err != nil {
-		slog.Warn("resource cleanup failed", "error", err)
-	}
+	cleanup.Close(rows)
 	if err != nil {
 		return h, err
 	}

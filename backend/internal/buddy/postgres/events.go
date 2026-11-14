@@ -4,10 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"log/slog"
 
 	"ai-buddy/internal/buddy"
+	"ai-buddy/internal/platform/cleanup"
 )
 
 func appendEvent(ctx context.Context, tx *sql.Tx, id, kind string, data any) error {
@@ -23,11 +23,7 @@ func (p *Repository) Event(ctx context.Context, id, kind string, data any) error
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			slog.Warn("resource cleanup failed", "error", err)
-		}
-	}()
+	defer cleanup.Rollback(tx)
 	var status string
 	err = tx.QueryRowContext(ctx, "SELECT status FROM runs WHERE id=$1 FOR UPDATE", id).Scan(&status)
 	if err != nil {
