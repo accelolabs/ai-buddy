@@ -1,30 +1,18 @@
 # AI Buddy
 
-AI Buddy — сервисы Buddy, Tracker, Ticket и Wiki с авторизацией через Authentik.
+AI Buddy — демо для адаптации стажёров: чат с инструментами MCP, задачи и прогресс,
+вопросы наставнику и поиск по базе знаний. Один Go backend, одна PostgreSQL с pgvector,
+локальные модели Ollama. Пользователь выбирается cookie `demo_user`.
 
-- [Архитектура и требования](docs/SDD.md).
-- [Бэкенд: структура, запуск, сборка и проверки](backend/README.md).
-- [Authentik: OIDC и демо-пользователи](backend/deploy/authentik/README.md).
-- [Ollama: локальные модели на CPU](backend/deploy/ollama/README.md).
-- [Tracker: задачи, прогресс и наставники](backend/deploy/tracker/README.md).
-- [Ticket: вопросы наставникам](backend/deploy/ticket/README.md).
-
-Весь код бэкенда, Go-модуль, Dockerfile и файлы развёртывания находятся в `backend/`.
-Go-команды выполняются из этого каталога:
+- [Запуск, конфигурация и проверки](backend/README.md)
+- [Архитектура и требования](docs/SDD.md)
+- [Единый OpenAPI](backend/api/openapi.yaml)
+- [База знаний](knowledge-base/README.md)
 
 ```sh
 cd backend
-env -u TEST_DATABASE_URL go test -race ./...
+docker compose -f deploy/compose.yaml --env-file deploy/.env.example up -d --build
 ```
 
-Buddy, Tracker, Ticket и Wiki запускаются отдельными процессами со своими PostgreSQL и сессиями.
-Полная проверка требует тестовую PostgreSQL с pgvector: [команды и CI](backend/README.md#api-и-проверки).
-Будущий frontend — один React-проект с общими компонентами и четырьмя самостоятельными
-сборками для Buddy, Tracker, Ticket и Wiki на своих доменах.
-
-[Wiki: запуск, индексация и API](backend/deploy/wiki/README.md) · [Knowledge base](knowledge-base/README.md)
-
-[Buddy — чат, Qwen и встроенный MCP: запуск и API](backend/deploy/buddy/README.md).
-
-Контракты OpenAPI 3.1.1: [Buddy](backend/api/buddy.yaml), [Tracker](backend/api/tracker.yaml),
-[Ticket](backend/api/ticket.yaml), [Wiki](backend/api/wiki.yaml).
+API доступен на `http://localhost:8080`. `GET /api/users` возвращает шесть демо-профилей.
+Frontend в эту работу не входит; контракт переключателя описан в README бэкенда.
