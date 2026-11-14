@@ -25,11 +25,13 @@ func (s *serviceStub) Progress(_ context.Context, id string) (progress.Progress,
 	s.id = id
 	return progress.Progress{Intern: interns.Profile{ID: id}}, s.err
 }
+
 func (s *serviceStub) MentorProgress(_ context.Context, mentor, id string) (progress.Progress, error) {
 	s.id = id
 	s.mentorID = mentor
 	return progress.Progress{Intern: interns.Profile{ID: id}}, s.err
 }
+
 func mentorRequest(t *testing.T, handler http.HandlerFunc) *httptest.ResponseRecorder {
 	t.Helper()
 	sessions := scs.New()
@@ -37,12 +39,18 @@ func mentorRequest(t *testing.T, handler http.HandlerFunc) *httptest.ResponseRec
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, _ := json.Marshal(auth.User{ID: "m", Role: "mentor", Team: "backend"})
+
+	raw, _ := json.Marshal(auth.User{
+		ID:   "m",
+		Role: "mentor",
+		Team: "backend",
+	})
 	sessions.Put(ctx, auth.SessionKeyUser, string(raw))
 	token, _, err := sessions.Commit(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	r := httptest.NewRequest("GET", "/api/interns/i/progress", nil)
 	r.SetPathValue("id", "i")
 	r.AddCookie(&http.Cookie{Name: sessions.Cookie.Name, Value: token})
@@ -51,6 +59,7 @@ func mentorRequest(t *testing.T, handler http.HandlerFunc) *httptest.ResponseRec
 	a.WithSession(a.RequireRoles(handler, "mentor")).ServeHTTP(w, r)
 	return w
 }
+
 func TestHandlers(t *testing.T) {
 	service := &serviceStub{}
 	h := New(service)
@@ -65,10 +74,12 @@ func TestHandlers(t *testing.T) {
 	if w.Code != 200 || service.id != "i" {
 		t.Fatal(w, service)
 	}
+
 	w = mentorRequest(t, h.Mentor)
 	if w.Code != 200 || service.id != "i" || service.mentorID != "m" {
 		t.Fatal(w, service)
 	}
+
 	for _, tc := range []struct {
 		err  error
 		code int

@@ -15,6 +15,7 @@ import (
 type Database struct {
 	URL string `env:"DATABASE_URL" env-required:"true"`
 }
+
 type Config struct {
 	Database
 	BuddyAPIKey        string        `env:"BUDDY_API_KEY" env-required:"true"`
@@ -34,43 +35,63 @@ func LoadDatabase() (Database, error) {
 	if cleanenv.ReadEnv(&c) != nil || !validDatabase(c.URL) {
 		return c, errors.New("invalid DATABASE_URL")
 	}
+
 	return c, nil
 }
+
 func validDatabase(raw string) bool {
-	u, e := url.Parse(raw)
-	return e == nil && (u.Scheme == "postgres" || u.Scheme == "postgresql") && u.Hostname() != ""
+	u, err := url.Parse(raw)
+	return err == nil && (u.Scheme == "postgres" || u.Scheme == "postgresql") && u.Hostname() != ""
 }
+
 func Load() (Config, error) {
 	var c Config
 	if cleanenv.ReadEnv(&c) != nil {
 		return c, errors.New("missing or malformed configuration")
 	}
-	if strings.TrimSpace(c.BuddyAPIKey) == "" || strings.TrimSpace(c.TicketAPIKey) == "" || c.BuddyAPIKey == c.TicketAPIKey {
+
+	if strings.TrimSpace(c.BuddyAPIKey) == "" ||
+		strings.TrimSpace(c.TicketAPIKey) == "" ||
+		c.BuddyAPIKey == c.TicketAPIKey {
 		return c, errors.New("distinct service keys are required")
 	}
-	if _, e := time.LoadLocation(c.AppTimezone); e != nil {
+
+	if _, err := time.LoadLocation(c.AppTimezone); err != nil {
 		return c, errors.New("invalid APP_TIMEZONE")
 	}
+
 	_, _, addrErr := net.SplitHostPort(c.HTTPAddr)
-	if addrErr != nil || !validDatabase(c.URL) ||
-		strings.TrimSpace(c.ClientID) == "" || strings.TrimSpace(c.ClientSecret) == "" ||
-		!validHTTPS(c.Issuer) || !validHTTPS(c.RedirectURI) ||
-		c.SessionLifetime <= 0 || c.SessionIdleTimeout <= 0 || c.SessionIdleTimeout > c.SessionLifetime {
+	if addrErr != nil ||
+		!validDatabase(c.URL) ||
+		strings.TrimSpace(c.ClientID) == "" ||
+		strings.TrimSpace(c.ClientSecret) == "" ||
+		!validHTTPS(c.Issuer) ||
+		!validHTTPS(c.RedirectURI) ||
+		c.SessionLifetime <= 0 ||
+		c.SessionIdleTimeout <= 0 ||
+		c.SessionIdleTimeout > c.SessionLifetime {
 		return c, errors.New("invalid HTTP, database, OIDC or session configuration")
 	}
+
 	return c, nil
 }
+
 func MustLoad() Config {
-	c, e := Load()
-	if e != nil {
-		slog.Error("configuration rejected", "error", e)
+	c, err := Load()
+	if err != nil {
+		slog.Error("configuration rejected", "error", err)
 		os.Exit(1)
 	}
+
 	return c
 }
 
 func validHTTPS(raw string) bool {
 	u, err := url.Parse(raw)
-	return err == nil && u.Scheme == "https" && u.Hostname() != "" &&
-		u.User == nil && u.Fragment == "" && u.RawQuery == ""
+	return err == nil &&
+		u.Scheme == "https" &&
+		u.Hostname() != "" &&
+		u.User == nil &&
+		u.Fragment == "" &&
+		u.RawQuery == ""
 }

@@ -19,15 +19,22 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		httpx.Failure(w, err)
 		return
 	}
-	input := tasks.CreateInput{Title: request.Title, Description: request.Description, Deadline: request.Deadline}
+
+	input := tasks.CreateInput{
+		Title:       request.Title,
+		Description: request.Description,
+		Deadline:    request.Deadline,
+	}
 	result, created, err := h.service.Create(r.Context(), httpx.Owner(r), r.Header.Get("Idempotency-Key"), input)
 	if err != nil {
 		httpx.Failure(w, err)
 		return
 	}
+
 	code := 200
 	if created {
 		code = 201
 	}
+
 	httpx.JSON(w, code, result)
 }

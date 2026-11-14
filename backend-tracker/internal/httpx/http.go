@@ -18,6 +18,7 @@ func JSON(w http.ResponseWriter, code int, v any) {
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(v)
 }
+
 func Failure(w http.ResponseWriter, err error) {
 	code, message := 500, "storage unavailable"
 	switch {
@@ -28,6 +29,7 @@ func Failure(w http.ResponseWriter, err error) {
 	case errors.Is(err, apperror.ErrConflict):
 		code, message = 409, apperror.ErrConflict.Error()
 	}
+
 	JSON(w, code, map[string]string{"error": message})
 }
 
@@ -39,10 +41,12 @@ func Fallbacks(mux *http.ServeMux, methods map[string][]string) {
 			JSON(w, 405, map[string]string{"error": "method not allowed"})
 		})
 	}
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		JSON(w, 404, map[string]string{"error": "not found"})
 	})
 }
+
 func KeyAuth(next http.Handler, buddyKey, ticketKey string, ticketAllowed bool) http.Handler {
 	buddy, ticket := sha256.Sum256([]byte(buddyKey)), sha256.Sum256([]byte(ticketKey))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -51,6 +55,7 @@ func KeyAuth(next http.Handler, buddyKey, ticketKey string, ticketAllowed bool) 
 			JSON(w, 401, map[string]string{"error": "unauthorized"})
 			return
 		}
+
 		token := sha256.Sum256([]byte(parts[1]))
 		isBuddy := subtle.ConstantTimeCompare(token[:], buddy[:]) == 1 && buddyKey != ""
 		isTicket := subtle.ConstantTimeCompare(token[:], ticket[:]) == 1 && ticketKey != ""
@@ -58,17 +63,21 @@ func KeyAuth(next http.Handler, buddyKey, ticketKey string, ticketAllowed bool) 
 			JSON(w, 401, map[string]string{"error": "unauthorized"})
 			return
 		}
+
 		if !isBuddy && !ticketAllowed {
 			JSON(w, 403, map[string]string{"error": "forbidden"})
 			return
 		}
+
 		next.ServeHTTP(w, r)
 	})
 }
+
 func Owner(r *http.Request) string {
 	if strings.HasPrefix(r.URL.Path, "/internal/") {
 		return r.PathValue("id")
 	}
+
 	u, _ := auth.CurrentUser(r.Context())
 	return u.ID
 }
@@ -80,5 +89,6 @@ func Decode(w http.ResponseWriter, r *http.Request, target any) error {
 	if decoder.Decode(target) != nil || decoder.Decode(new(any)) != io.EOF {
 		return apperror.ErrInvalid
 	}
+
 	return nil
 }

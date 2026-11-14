@@ -21,7 +21,9 @@ const (
 )
 
 // SCS stores values as gob interfaces, including the pending login expiry.
-func init() { gob.Register(time.Time{}) }
+func init() {
+	gob.Register(time.Time{})
+}
 
 func NewSessions(db *sql.DB, c config.Config) (*scs.SessionManager, func()) {
 	store := postgresstore.New(db)

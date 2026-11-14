@@ -23,16 +23,20 @@ func (r *internRepositoryStub) Intern(_ context.Context, id string) (interns.Pro
 	if r.fail == "intern" {
 		return interns.Profile{}, r.err
 	}
+
 	return interns.Profile{ID: id}, nil
 }
+
 func (r *internRepositoryStub) Mentor(_ context.Context, id string) (*interns.Profile, error) {
 	r.calls = append(r.calls, "mentor")
 	r.id = id
 	if r.fail == "mentor" {
 		return nil, r.err
 	}
+
 	return r.mentor, nil
 }
+
 func (r *internRepositoryStub) Assigned(_ context.Context, mentor, id string) (bool, error) {
 	r.mentorID = mentor
 	r.id = id
@@ -50,35 +54,57 @@ func (r *taskRepositoryStub) Tasks(_ context.Context, id string) ([]tasks.Task, 
 	r.id = id
 	return []tasks.Task{{ID: "task"}}, r.err
 }
+
 func TestComposition(t *testing.T) {
-	for _, fail := range []string{"", "intern", "mentor", "tasks"} {
+	for _, fail := range []string{
+		"",
+		"intern",
+		"mentor",
+		"tasks",
+	} {
 		t.Run(fail, func(t *testing.T) {
 			want := errors.New("storage failure")
-			internRepo := &internRepositoryStub{fail: fail, err: want, mentor: &interns.Profile{ID: "m"}}
+			internRepo := &internRepositoryStub{
+				fail:   fail,
+				err:    want,
+				mentor: &interns.Profile{ID: "m"},
+			}
 			taskRepo := &taskRepositoryStub{}
 			if fail == "tasks" {
 				taskRepo.err = want
 			}
+
 			repo := New(internRepo, taskRepo)
 			snapshot, err := repo.Load(context.Background(), "i")
 			if fail != "" {
 				if err != want {
 					t.Fatal(err)
 				}
-			} else if err != nil || snapshot.Intern.ID != "i" || snapshot.Mentor.ID != "m" || len(snapshot.Tasks) != 1 || taskRepo.id != "i" {
+			} else if err != nil ||
+				snapshot.Intern.ID != "i" ||
+				snapshot.Mentor.ID != "m" ||
+				len(snapshot.Tasks) != 1 ||
+				taskRepo.id != "i" {
 				t.Fatal(snapshot, err)
 			}
-			if (fail == "intern" && len(internRepo.calls) != 1) || ((fail == "intern" || fail == "mentor") && taskRepo.called) {
+
+			if (fail == "intern" &&
+				len(internRepo.calls) != 1) ||
+				((fail == "intern" ||
+					fail == "mentor") &&
+					taskRepo.called) {
 				t.Fatal("read continued after error")
 			}
 		})
 	}
+
 	repo := New(&internRepositoryStub{}, &taskRepositoryStub{})
 	snapshot, err := repo.Load(context.Background(), "i")
 	if err != nil || snapshot.Mentor != nil {
 		t.Fatal(snapshot, err)
 	}
 }
+
 func TestAssigned(t *testing.T) {
 	internRepo := &internRepositoryStub{}
 	repo := New(internRepo, &taskRepositoryStub{})
@@ -87,10 +113,12 @@ func TestAssigned(t *testing.T) {
 	if err != nil || !ok || internRepo.mentorID != "m" || internRepo.id != "i" {
 		t.Fatal(ok, err)
 	}
+
 	ok, err = repo.Assigned(ctx, "m", "other")
 	if err != nil || ok {
 		t.Fatal(ok, err)
 	}
+
 	want := errors.New("storage error")
 	internRepo.err = want
 	if _, err = repo.Assigned(ctx, "m", "i"); err != want {

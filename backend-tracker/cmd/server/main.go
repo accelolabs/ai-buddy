@@ -30,28 +30,40 @@ var openDatabase = database.Open
 func serve(ctx context.Context, c config.Config) error {
 	startup, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+
 	db, err := openDatabase(startup, c.URL)
 	if err != nil {
 		return errors.New("database connection failed")
 	}
 	defer db.Close()
+
 	sessions, stop := auth.NewSessions(db, c)
 	defer stop()
+
 	provider, err := auth.NewOIDCProvider(startup, c)
 	if err != nil {
 		return err
 	}
+
 	login := auth.New(sessions, provider)
 	loc, err := time.LoadLocation(c.AppTimezone)
 	if err != nil {
 		return errors.New("invalid APP_TIMEZONE")
 	}
+
 	internRepository := internspostgres.New(db)
 	taskRepository := taskspostgres.New(db)
 	internService := interns.New(internRepository)
 	taskService := tasks.New(taskRepository, internService, loc, time.Now)
 	progressService := progress.New(progresspostgres.New(internRepository, taskRepository), loc, time.Now)
-	api := domainRoutes(login, taskshttp.New(taskService), internshttp.New(internService), progresshttp.New(progressService), c.BuddyAPIKey, c.TicketAPIKey)
+	api := domainRoutes(
+		login,
+		taskshttp.New(taskService),
+		internshttp.New(internService),
+		progresshttp.New(progressService),
+		c.BuddyAPIKey,
+		c.TicketAPIKey,
+	)
 	return serveHTTP(ctx, c.HTTPAddr, routes(db, login.Handler(), api))
 }
 
@@ -62,14 +74,22 @@ func routes(db *sql.DB, login http.Handler, api ...http.Handler) http.Handler {
 		mux.Handle("/api/", api[0])
 		mux.Handle("/internal/", api[0])
 	}
-	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
+
+	mux.HandleFunc(
+		"GET /health/live",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		},
+	)
 	mux.HandleFunc("GET /health/ready", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
+
 		if db.PingContext(ctx) != nil {
 			http.Error(w, "database unavailable", 503)
 			return
 		}
+
 		w.WriteHeader(http.StatusNoContent)
 	})
 	return mux
@@ -77,15 +97,20 @@ func routes(db *sql.DB, login http.Handler, api ...http.Handler) http.Handler {
 
 func serveHTTP(ctx context.Context, addr string, handler http.Handler) error {
 	server := &http.Server{
-		Addr: addr, Handler: handler,
+		Addr:              addr,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		IdleTimeout:       60 * time.Second,
-		WriteTimeout:      0, // Future SSE responses may outlive a fixed write timeout.
+		// Future SSE responses may outlive a fixed write timeout.
+		WriteTimeout: 0,
 	}
 	defer server.Close()
+
 	done := make(chan error, 1)
-	go func() { done <- server.ListenAndServe() }()
+	go func() {
+		done <- server.ListenAndServe()
+	}()
 	slog.Info("server listening", "address", addr)
 	select {
 	case err := <-done:
@@ -96,10 +121,12 @@ func serveHTTP(ctx context.Context, addr string, handler http.Handler) error {
 		return server.Shutdown(shutdown)
 	}
 }
+
 func main() {
 	c := config.MustLoad()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
 	if err := serve(ctx, c); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)

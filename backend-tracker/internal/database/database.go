@@ -13,6 +13,7 @@ func Open(ctx context.Context, dsn string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(30 * time.Minute)
@@ -20,5 +21,6 @@ func Open(ctx context.Context, dsn string) (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
+
 	return db, nil
 }

@@ -18,19 +18,24 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
+
 	db, err := openDatabase(ctx, c.URL)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
+
 	command := "up"
 	if len(os.Args) > 1 {
 		command = os.Args[1]
 	}
+
 	return migrations.Run(ctx, db, command)
 }
+
 func main() {
 	if run() != nil {
 		slog.Error("migration failed; check database configuration and migration command")

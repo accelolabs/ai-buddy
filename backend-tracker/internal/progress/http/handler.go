@@ -10,6 +10,11 @@ type Service interface {
 	Progress(context.Context, string) (progress.Progress, error)
 	MentorProgress(context.Context, string, string) (progress.Progress, error)
 }
-type Handler struct{ service Service }
 
-func New(service Service) *Handler { return &Handler{service: service} }
+type Handler struct {
+	service Service
+}
+
+func New(service Service) *Handler {
+	return &Handler{service: service}
+}

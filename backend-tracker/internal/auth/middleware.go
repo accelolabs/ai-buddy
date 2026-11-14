@@ -21,13 +21,17 @@ func CurrentUser(ctx context.Context) (User, bool) {
 }
 
 func validUser(u User) bool {
-	return strings.TrimSpace(u.ID) != "" && (u.Role == RoleIntern || u.Role == RoleMentor) && strings.TrimSpace(u.Team) != ""
+	return strings.TrimSpace(u.ID) != "" &&
+		(u.Role == RoleIntern || u.Role == RoleMentor) &&
+		strings.TrimSpace(u.Team) != ""
 }
 
 // WithSession wraps a route group once, outside its authentication middleware.
 func (a *Auth) WithSession(next http.Handler) http.Handler {
 	protection := http.NewCrossOriginProtection()
-	protection.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { jsonError(w, "forbidden", 403) }))
+	protection.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		jsonError(w, "forbidden", 403)
+	}))
 	return protection.Handler(a.Sessions.LoadAndSave(next))
 }
 
@@ -38,11 +42,13 @@ func (a *Auth) RequireUser(next http.Handler) http.Handler {
 			jsonError(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
+
 		var u User
 		if json.Unmarshal([]byte(raw), &u) != nil || !validUser(u) {
 			jsonError(w, "invalid session", http.StatusInternalServerError)
 			return
 		}
+
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userKey{}, u)))
 	})
 }
@@ -56,6 +62,7 @@ func (a *Auth) RequireRoles(next http.Handler, roles ...string) http.Handler {
 			jsonError(w, "forbidden", http.StatusForbidden)
 			return
 		}
+
 		next.ServeHTTP(w, r)
 	}))
 }

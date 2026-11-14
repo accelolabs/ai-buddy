@@ -18,6 +18,7 @@ func Run(ctx context.Context, db *sql.DB, command string) error {
 	if err != nil {
 		return err
 	}
+
 	switch command {
 	case "up":
 		_, err = p.Up(ctx)
@@ -34,5 +35,6 @@ func Run(ctx context.Context, db *sql.DB, command string) error {
 	default:
 		return errors.New("command must be up, down or status")
 	}
+
 	return err
 }

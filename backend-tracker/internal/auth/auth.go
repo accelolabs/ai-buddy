@@ -19,6 +19,7 @@ type User struct {
 	Email    string `json:"email"`
 	Username string `json:"preferred_username"`
 }
+
 type Auth struct {
 	Sessions     *scs.SessionManager
 	oidcProvider *OIDCProvider
@@ -56,23 +57,31 @@ func (a *Auth) callback(w http.ResponseWriter, r *http.Request) {
 	pkce := a.Sessions.PopString(ctx, SessionKeyOIDCPKCE)
 	expiry := a.Sessions.PopTime(ctx, SessionKeyOIDCExpiry)
 	query := r.URL.Query()
-	if state == "" || nonce == "" || pkce == "" || !time.Now().Before(expiry) ||
+	if state == "" ||
+		nonce == "" ||
+		pkce == "" ||
+		!time.Now().Before(expiry) ||
 		subtle.ConstantTimeCompare([]byte(query.Get("state")), []byte(state)) != 1 ||
-		query.Get("error") != "" || query.Get("code") == "" {
+		query.Get("error") != "" ||
+		query.Get("code") == "" {
 		http.Error(w, "invalid login", http.StatusBadRequest)
 		return
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
+
 	user, err := a.oidcProvider.Authenticate(ctx, query.Get("code"), pkce, nonce)
 	if err != nil {
 		http.Error(w, "invalid login", http.StatusBadRequest)
 		return
 	}
+
 	if a.Sessions.RenewToken(ctx) != nil {
 		http.Error(w, "session unavailable", http.StatusInternalServerError)
 		return
 	}
+
 	data, _ := json.Marshal(user)
 	a.Sessions.Put(ctx, SessionKeyUser, string(data))
 	http.Redirect(w, r, "/", http.StatusFound)
@@ -89,5 +98,6 @@ func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session unavailable", http.StatusInternalServerError)
 		return
 	}
+
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -12,5 +12,6 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		httpx.Failure(w, err)
 		return
 	}
+
 	httpx.JSON(w, 200, result)
 }

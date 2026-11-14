@@ -16,6 +16,7 @@ type Task struct {
 	Status      string     `json:"status"`
 	Overdue     bool       `json:"overdue"`
 }
+
 type CreateInput struct {
 	Title       string
 	Description string
@@ -28,6 +29,7 @@ func (t Task) WithState(today string) Task {
 	if t.CompletedAt != nil {
 		t.Status = "completed"
 	}
+
 	t.Overdue = t.CompletedAt == nil && t.Deadline < today
 	return t
 }
@@ -40,11 +42,13 @@ func PrepareList(list []Task, today string) []Task {
 		if list[i].CreatedAt.Equal(list[j].CreatedAt) {
 			return list[i].ID < list[j].ID
 		}
+
 		return list[i].CreatedAt.Before(list[j].CreatedAt)
 	})
 	for i := range list {
 		list[i] = list[i].WithState(today)
 	}
+
 	return list
 }
 

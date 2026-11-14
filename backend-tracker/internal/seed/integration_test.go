@@ -18,13 +18,16 @@ func TestPostgresSeedIntegration(t *testing.T) {
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_URL is not set")
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
+
 	admin, e := database.Open(ctx, dsn)
 	if e != nil {
 		t.Fatal(e)
 	}
 	defer admin.Close()
+
 	schema := fmt.Sprintf("backend_tracker_seed_%d", time.Now().UnixNano())
 	if _, e = admin.ExecContext(ctx, "CREATE SCHEMA "+schema); e != nil {
 		t.Fatal(e)
@@ -34,18 +37,23 @@ func TestPostgresSeedIntegration(t *testing.T) {
 			t.Error(e)
 		}
 	}()
+
 	cfg, e := pgx.ParseConfig(dsn)
 	if e != nil {
 		t.Fatal(e)
 	}
+
 	cfg.RuntimeParams["search_path"] = schema
 	db := stdlib.OpenDB(*cfg)
 	defer db.Close()
+
 	if e = migrations.Run(ctx, db, "up"); e != nil {
 		t.Fatal(e)
 	}
+
 	srv := api(t, "")
 	defer srv.Close()
+
 	c := Config{srv.URL, "token"}
 	now := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
 	run := func() {
@@ -57,7 +65,11 @@ func TestPostgresSeedIntegration(t *testing.T) {
 	run()
 	counts := func(profiles, assignments, tasks int) {
 		t.Helper()
-		for table, want := range map[string]int{"profiles": profiles, "assignments": assignments, "tasks": tasks} {
+		for table, want := range map[string]int{
+			"profiles":    profiles,
+			"assignments": assignments,
+			"tasks":       tasks,
+		} {
 			var n int
 			if e := db.QueryRowContext(ctx, "SELECT count(*) FROM "+table).Scan(&n); e != nil || n != want {
 				t.Fatalf("%s: %d want %d: %v", table, n, want, e)
@@ -85,18 +97,33 @@ func TestPostgresSeedIntegration(t *testing.T) {
 	if e = db.QueryRowContext(ctx, `SELECT goals FROM profiles WHERE authentik_id='2'`).Scan(&goals); e != nil || goals != "Custom goals" {
 		t.Fatal(goals, e)
 	}
-	if e = db.QueryRowContext(ctx, `SELECT to_char(deadline,'YYYY-MM-DD'),completed_at FROM tasks WHERE id='demo:intern.backend.1:1'`).Scan(&deadline, &completed); e != nil || deadline != "2026-11-13" || !completed.Equal(time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)) {
+
+	if e = db.QueryRowContext(
+		ctx,
+		`SELECT to_char(deadline,'YYYY-MM-DD'),completed_at FROM tasks WHERE id='demo:intern.backend.1:1'`,
+	).Scan(
+		&deadline,
+		&completed,
+	); e != nil ||
+		deadline != "2026-11-13" ||
+		!completed.Equal(time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)) {
 		t.Fatal(deadline, completed, e)
 	}
+
 	if e = db.QueryRowContext(ctx, `SELECT mentor_id FROM assignments WHERE intern_id='5'`).Scan(&mentor); e != nil || mentor != "extra" {
 		t.Fatal(mentor, e)
 	}
 	// Force a failure after inserting profiles, proving PostgreSQL rolls them back.
-	if _, e = db.ExecContext(ctx, `TRUNCATE tasks,assignments,profiles; ALTER TABLE tasks ADD CONSTRAINT reject_demo CHECK (title='never')`); e != nil {
+	if _, e = db.ExecContext(
+		ctx,
+		`TRUNCATE tasks,assignments,profiles; ALTER TABLE tasks ADD CONSTRAINT reject_demo CHECK (title='never')`,
+	); e != nil {
 		t.Fatal(e)
 	}
+
 	if e = RunWithClient(ctx, db, c, srv.Client(), now); e == nil {
 		t.Fatal("expected constraint failure")
 	}
+
 	counts(0, 0, 0)
 }

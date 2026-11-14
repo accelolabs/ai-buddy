@@ -20,43 +20,108 @@ func TestRequireRoles(t *testing.T) {
 		storeError bool
 		status     int
 	}{
-		{name: "intern", role: RoleIntern, roles: []string{RoleIntern}, status: 204},
-		{name: "mentor", role: RoleMentor, roles: []string{RoleMentor}, status: 204},
-		{name: "either intern", role: RoleIntern, roles: []string{RoleIntern, RoleMentor}, status: 204},
-		{name: "either mentor", role: RoleMentor, roles: []string{RoleIntern, RoleMentor}, status: 204},
-		{name: "wrong role", role: RoleMentor, roles: []string{RoleIntern}, status: 403},
-		{name: "empty list", role: RoleIntern, status: 403},
-		{name: "unknown allowed role", role: RoleIntern, roles: []string{"admin"}, status: 403},
-		{name: "anonymous", roles: []string{RoleIntern}, status: 401},
+		{
+			name:   "intern",
+			role:   RoleIntern,
+			roles:  []string{RoleIntern},
+			status: 204,
+		},
+		{
+			name:   "mentor",
+			role:   RoleMentor,
+			roles:  []string{RoleMentor},
+			status: 204,
+		},
+		{
+			name:   "either intern",
+			role:   RoleIntern,
+			roles:  []string{RoleIntern, RoleMentor},
+			status: 204,
+		},
+		{
+			name:   "either mentor",
+			role:   RoleMentor,
+			roles:  []string{RoleIntern, RoleMentor},
+			status: 204,
+		},
+		{
+			name:   "wrong role",
+			role:   RoleMentor,
+			roles:  []string{RoleIntern},
+			status: 403,
+		},
+		{
+			name:   "empty list",
+			role:   RoleIntern,
+			status: 403,
+		},
+		{
+			name:   "unknown allowed role",
+			role:   RoleIntern,
+			roles:  []string{"admin"},
+			status: 403,
+		},
+		{
+			name:   "anonymous",
+			roles:  []string{RoleIntern},
+			status: 401,
+		},
 		{name: "anonymous empty list", status: 401},
-		{name: "corrupted snapshot", raw: "invalid", roles: []string{RoleIntern}, status: 500},
-		{name: "invalid snapshot", raw: `{"authentik_id":"42","role":"admin","team":"backend"}`, roles: []string{"admin"}, status: 500},
-		{name: "store failure", role: RoleIntern, roles: []string{RoleIntern}, storeError: true, status: 500},
+		{
+			name:   "corrupted snapshot",
+			raw:    "invalid",
+			roles:  []string{RoleIntern},
+			status: 500,
+		},
+		{
+			name:   "invalid snapshot",
+			raw:    `{"authentik_id":"42","role":"admin","team":"backend"}`,
+			roles:  []string{"admin"},
+			status: 500,
+		},
+		{
+			name:       "store failure",
+			role:       RoleIntern,
+			roles:      []string{RoleIntern},
+			storeError: true,
+			status:     500,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a, store := newMiddlewareAuth(t)
 			var want User
 			raw := tc.raw
 			if tc.role != "" {
-				want = User{ID: "42", Role: tc.role, Team: "backend", Name: "Alice", Email: "a@example.com", Username: "alice"}
+				want = User{
+					ID:       "42",
+					Role:     tc.role,
+					Team:     "backend",
+					Name:     "Alice",
+					Email:    "a@example.com",
+					Username: "alice",
+				}
 				data, err := json.Marshal(want)
 				if err != nil {
 					t.Fatal(err)
 				}
+
 				raw = string(data)
 			}
+
 			var token string
 			if raw != "" {
 				ctx, err := a.Sessions.Load(context.Background(), "")
 				if err != nil {
 					t.Fatal(err)
 				}
+
 				a.Sessions.Put(ctx, SessionKeyUser, raw)
 				token, _, err = a.Sessions.Commit(ctx)
 				if err != nil {
 					t.Fatal(err)
 				}
 			}
+
 			store.find = tc.storeError
 			called := false
 			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -65,6 +130,7 @@ func TestRequireRoles(t *testing.T) {
 				if !ok || got != want {
 					t.Fatalf("user = %+v, want %+v", got, want)
 				}
+
 				w.WriteHeader(http.StatusNoContent)
 			})
 			handler := a.WithSession(a.RequireRoles(next, tc.roles...))
@@ -72,6 +138,7 @@ func TestRequireRoles(t *testing.T) {
 			if token != "" {
 				r.AddCookie(&http.Cookie{Name: a.Sessions.Cookie.Name, Value: token})
 			}
+
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, r)
 			if w.Code != tc.status || called != (tc.status == 204) {
@@ -87,7 +154,9 @@ func newMiddlewareAuth(t *testing.T) (*Auth, *brokenStore) {
 	store := &brokenStore{Store: memory}
 	sessions := scs.New()
 	sessions.Store = store
-	sessions.ErrorFunc = func(w http.ResponseWriter, r *http.Request, err error) { http.Error(w, "session unavailable", 500) }
+	sessions.ErrorFunc = func(w http.ResponseWriter, r *http.Request, err error) {
+		http.Error(w, "session unavailable", 500)
+	}
 	return New(sessions, nil), store
 }
 
@@ -104,6 +173,7 @@ func TestWithSession(t *testing.T) {
 	if first.Code != 200 || len(cookies) != 1 {
 		t.Fatalf("first request: %d, cookies %d", first.Code, len(cookies))
 	}
+
 	second := httptest.NewRequest("GET", "https://app.example/", nil)
 	second.AddCookie(cookies[0])
 	w := httptest.NewRecorder()
@@ -117,8 +187,12 @@ func TestWithSessionCrossOrigin(t *testing.T) {
 	a, store := newMiddlewareAuth(t)
 	// Rejection happens before reading the session or calling the protected handler.
 	store.find = true
-	handler := a.WithSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { t.Fatal("cross-origin request reached handler") }))
-	for _, header := range []struct{ key, value string }{
+	handler := a.WithSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("cross-origin request reached handler")
+	}))
+	for _, header := range []struct {
+		key, value string
+	}{
 		{"Sec-Fetch-Site", "cross-site"},
 		{"Origin", "https://other.example"},
 	} {

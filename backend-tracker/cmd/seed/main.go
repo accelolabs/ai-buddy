@@ -18,19 +18,24 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
 	seedConfig, err := seed.LoadConfig()
 	if err != nil {
 		return err
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
+
 	db, err := openDatabase(ctx, c.URL)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
+
 	return seed.Run(ctx, db, seedConfig)
 }
+
 func main() {
 	if run() != nil {
 		slog.Error("seed failed; check database and Authentik seed configuration")
