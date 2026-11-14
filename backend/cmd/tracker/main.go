@@ -15,14 +15,10 @@ import (
 	"ai-buddy/internal/platform/database"
 	"ai-buddy/internal/platform/server"
 	"ai-buddy/internal/tracker/config"
-	"ai-buddy/internal/tracker/interns"
-	internshttp "ai-buddy/internal/tracker/interns/http"
-	internspostgres "ai-buddy/internal/tracker/interns/postgres"
+	trackerhttp "ai-buddy/internal/tracker/http"
+	"ai-buddy/internal/tracker/postgres"
 	"ai-buddy/internal/tracker/progress"
-	progresshttp "ai-buddy/internal/tracker/progress/http"
 	"ai-buddy/internal/tracker/tasks"
-	taskshttp "ai-buddy/internal/tracker/tasks/http"
-	taskspostgres "ai-buddy/internal/tracker/tasks/postgres"
 )
 
 var openDatabase = database.Open
@@ -34,32 +30,30 @@ func serve(ctx context.Context, c config.Config) error {
 			return nil, errors.New("invalid APP_TIMEZONE")
 		}
 
-		internRepository := internspostgres.New(db)
-		taskRepository := taskspostgres.New(db)
-		internService := interns.New(internRepository)
-		taskService := tasks.New(taskRepository, internService, loc, time.Now)
-		progressService := progress.New(internRepository, taskRepository, loc, time.Now)
-		api := domainRoutes(
+		repository := postgres.New(db)
+		taskService := tasks.New(repository, repository, loc, time.Now)
+		progressService := progress.New(repository, repository, loc, time.Now)
+		return trackerhttp.Routes(
 			login,
-			taskshttp.New(taskService),
-			internshttp.New(internService),
-			progresshttp.New(progressService),
+			trackerhttp.New(taskService, repository, progressService),
 			c.BuddyAPIKey,
 			c.TicketAPIKey,
-		)
-		mux := http.NewServeMux()
-		mux.Handle("/api/", api)
-		mux.Handle("/internal/", api)
-		return mux, nil
+		), nil
 	})
 }
 
-func main() {
-	c := config.MustLoad()
+func run() error {
+	c, err := config.Load()
+	if err != nil {
+		return err
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	return serve(ctx, c)
+}
 
-	if err := serve(ctx, c); err != nil {
+func main() {
+	if err := run(); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
 	}

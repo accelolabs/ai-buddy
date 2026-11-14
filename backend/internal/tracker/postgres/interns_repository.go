@@ -10,14 +10,6 @@ import (
 	"ai-buddy/internal/tracker/interns"
 )
 
-type Repository struct {
-	db *sql.DB
-}
-
-type scanner interface {
-	Scan(...any) error
-}
-
 const profileColumns = `
 	authentik_id,
 	name,
@@ -29,10 +21,6 @@ const profileColumns = `
 	goals,
 	expectations
 `
-
-func New(db *sql.DB) *Repository {
-	return &Repository{db: db}
-}
 
 func scanProfile(row scanner) (interns.Profile, error) {
 	var profile interns.Profile

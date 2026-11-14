@@ -34,8 +34,8 @@ func TestLoad(t *testing.T) {
 		t.Fatalf("unexpected config: %v", err)
 	}
 
-	if MustLoad().ClientID != "buddy" {
-		t.Fatal("MustLoad")
+	if c.ClientID != "buddy" {
+		t.Fatal("ClientID")
 	}
 }
 

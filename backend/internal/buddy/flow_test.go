@@ -25,21 +25,18 @@ import (
 	bwiki "ai-buddy/internal/buddy/wiki"
 	"ai-buddy/internal/platform/auth"
 	"ai-buddy/internal/platform/httpx"
+	platformmigrations "ai-buddy/internal/platform/migrations"
 	"ai-buddy/internal/testutil"
 	ticketmigrations "ai-buddy/internal/ticket/migrations"
 	"ai-buddy/internal/ticket/tickets"
 	ticketshttp "ai-buddy/internal/ticket/tickets/http"
 	ticketpostgres "ai-buddy/internal/ticket/tickets/postgres"
 	tickettracker "ai-buddy/internal/ticket/tracker"
-	"ai-buddy/internal/tracker/interns"
-	internshttp "ai-buddy/internal/tracker/interns/http"
-	internspostgres "ai-buddy/internal/tracker/interns/postgres"
+	trackerhttp "ai-buddy/internal/tracker/http"
 	trackermigrations "ai-buddy/internal/tracker/migrations"
+	internspostgres "ai-buddy/internal/tracker/postgres"
 	"ai-buddy/internal/tracker/progress"
-	progresshttp "ai-buddy/internal/tracker/progress/http"
 	"ai-buddy/internal/tracker/tasks"
-	taskshttp "ai-buddy/internal/tracker/tasks/http"
-	taskspostgres "ai-buddy/internal/tracker/tasks/postgres"
 	"ai-buddy/internal/wiki"
 	wikihttp "ai-buddy/internal/wiki/http"
 	"ai-buddy/internal/wiki/indexer"
@@ -103,16 +100,15 @@ func testFlow(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	ir, tr := internspostgres.New(db), taskspostgres.New(db)
-	ts := tasks.New(tr, interns.New(ir), time.UTC, time.Now)
-	ph := progresshttp.New(progress.New(ir, tr, time.UTC, time.Now))
-	th := taskshttp.New(ts)
-	ih := internshttp.New(interns.New(ir))
+	ir := internspostgres.New(db)
+	tr := ir
+	ts := tasks.New(tr, ir, time.UTC, time.Now)
+	trackerHandler := trackerhttp.New(ts, ir, progress.New(ir, tr, time.UTC, time.Now))
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /internal/interns/{id}/progress", ph.Get)
-	mux.HandleFunc("GET /internal/interns/{id}/mentor", ih.Mentor)
-	mux.HandleFunc("POST /internal/interns/{id}/tasks", th.Create)
-	mux.HandleFunc("POST /internal/interns/{id}/tasks/{taskID}/complete", th.Complete)
+	mux.HandleFunc("GET /internal/interns/{id}/progress", trackerHandler.Progress)
+	mux.HandleFunc("GET /internal/interns/{id}/mentor", trackerHandler.Mentor)
+	mux.HandleFunc("POST /internal/interns/{id}/tasks", trackerHandler.Create)
+	mux.HandleFunc("POST /internal/interns/{id}/tasks/{taskID}/complete", trackerHandler.Complete)
 	trackerServer := httptest.NewServer(httpx.KeyAuth(mux, "buddy", "", false))
 	defer trackerServer.Close()
 	ticketDB := testutil.Database(t, ticketmigrations.Files)
@@ -124,6 +120,11 @@ func testFlow(t *testing.T) {
 	ticketServer := httptest.NewServer(httpx.KeyAuth(ticketMux, "buddy", "", false))
 	defer ticketServer.Close()
 	wikiDB := testutil.Database(t, wikimigrations.Files)
+	for _, command := range []string{"status", "down", "up"} {
+		if err := platformmigrations.Run(ctx, wikiDB, wikimigrations.Files, command); err != nil {
+			t.Fatal(err)
+		}
+	}
 	wr := wikipostgres.New(wikiDB)
 	root := t.TempDir()
 	if e = os.MkdirAll(filepath.Join(root, "common"), 0755); e != nil {

@@ -10,6 +10,7 @@ import (
 )
 
 type Repository interface {
+	// Tasks returns a fresh caller-owned slice ordered by created_at, then ID.
 	Tasks(context.Context, string) ([]Task, error)
 	Create(context.Context, string, string, CreateInput) (Task, bool, error)
 	Complete(context.Context, string, string) (Task, error)
@@ -58,10 +59,6 @@ func (s *Service) Create(ctx context.Context, id, key string, in CreateInput) (T
 
 	if _, err := time.Parse(time.DateOnly, in.Deadline); err != nil {
 		return Task{}, false, apperror.ErrInvalid
-	}
-
-	if _, err := s.interns.Intern(ctx, id); err != nil {
-		return Task{}, false, err
 	}
 
 	t, created, err := s.repository.Create(ctx, id, key, in)

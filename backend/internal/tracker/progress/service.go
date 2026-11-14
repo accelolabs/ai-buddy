@@ -16,6 +16,7 @@ type InternRepository interface {
 }
 
 type TaskRepository interface {
+	// Tasks returns a fresh caller-owned slice ordered by created_at, then ID.
 	Tasks(context.Context, string) ([]tasks.Task, error)
 }
 

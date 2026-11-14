@@ -94,17 +94,15 @@ func (p *Repository) Create(ctx context.Context, id, key string, input tasks.Cre
 		ON CONFLICT (intern_id,idempotency_key) DO NOTHING
 		RETURNING ` + taskColumns
 
-	token := make([]byte, 16)
-	if _, err := rand.Read(token); err != nil {
-		return tasks.Task{}, false, err
-	}
+	var token [16]byte
+	_, _ = rand.Read(token[:]) // crypto/rand.Read always fills the buffer or terminates.
 
 	// A conflicting INSERT waits for the winning transaction. The following SELECT
 	// gets a fresh READ COMMITTED snapshot and sees its committed task.
 	row := p.db.QueryRowContext(
 		ctx,
 		insertQuery,
-		hex.EncodeToString(token),
+		hex.EncodeToString(token[:]),
 		id,
 		input.Title,
 		input.Description,

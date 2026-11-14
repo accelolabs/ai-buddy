@@ -1,4 +1,4 @@
-package internshttp
+package trackerhttp
 
 import (
 	"context"
@@ -15,18 +15,18 @@ import (
 	"ai-buddy/internal/tracker/interns"
 )
 
-type serviceStub struct {
+type internsStub struct {
 	err    error
 	mentor *interns.Profile
 	id     string
 }
 
-func (s *serviceStub) Interns(_ context.Context, id string) ([]interns.Profile, error) {
+func (s *internsStub) Interns(_ context.Context, id string) ([]interns.Profile, error) {
 	s.id = id
 	return []interns.Profile{{ID: "i"}}, s.err
 }
 
-func (s *serviceStub) Mentor(_ context.Context, id string) (*interns.Profile, error) {
+func (s *internsStub) Mentor(_ context.Context, id string) (*interns.Profile, error) {
 	s.id = id
 	return s.mentor, s.err
 }
@@ -59,10 +59,10 @@ func sessionRequest(t *testing.T, handler http.HandlerFunc) *httptest.ResponseRe
 	return w
 }
 
-func TestHandlers(t *testing.T) {
-	service := &serviceStub{mentor: &interns.Profile{ID: "mentor"}}
-	h := New(service)
-	w := sessionRequest(t, h.List)
+func TestInternsHandlers(t *testing.T) {
+	service := &internsStub{mentor: &interns.Profile{ID: "mentor"}}
+	h := New(nil, service, nil)
+	w := sessionRequest(t, h.ListInterns)
 	if w.Code != 200 || service.id != "m" || !strings.Contains(w.Body.String(), `"interns":[`) {
 		t.Fatal(w, service)
 	}
@@ -86,9 +86,13 @@ func TestHandlers(t *testing.T) {
 	}
 
 	service.err = errors.New("SQL secret")
-	for _, w := range []*httptest.ResponseRecorder{sessionRequest(t, h.List), mentorRequest()} {
+	for _, w := range []*httptest.ResponseRecorder{sessionRequest(t, h.ListInterns), mentorRequest()} {
 		if w.Code != 500 || strings.Contains(w.Body.String(), "secret") {
 			t.Fatal(w)
 		}
 	}
+}
+
+func (s *internsStub) Intern(_ context.Context, id string) (interns.Profile, error) {
+	return interns.Profile{ID: id}, s.err
 }
