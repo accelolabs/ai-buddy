@@ -11,8 +11,10 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
 } from '@/shared/ui/sidebar';
-import { Bot, SquarePen, MessageSquare } from 'lucide-react';
+import { SquarePen, MessageSquare } from 'lucide-react';
 import { useDialogs } from '../api/useDialogs';
+import { Picture } from '@/shared/ui/picture';
+import chipLogo from '@/assets/chip-logo.svg';
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { data: dialogs = [] } = useDialogs();
@@ -24,8 +26,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarHeader className="border-b border-sidebar-border px-3 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 overflow-hidden">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Bot className="h-4 w-4" />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+              <Picture src={chipLogo} alt="chip logo" priority={true} />
             </div>
             <span className="truncate font-semibold text-sidebar-foreground">AI-buddy</span>
           </div>
