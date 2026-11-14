@@ -1,9 +1,16 @@
 import { PromptButton, Picture } from '@/shared/ui';
 import chipLogo from '@/assets/chip-logo.svg';
-import { useChatStore } from '@/entities/chat';
+import { useChatStore, type ChatStore } from '@/entities/chat';
 import { ChatInput } from './ChatInput';
+import { MessageList } from './MessageList';
 
-const PROMPT_ACTIONS = [
+interface PromptAction {
+  title: string;
+  subtitle: string;
+  promptText: string;
+}
+
+const PROMPT_ACTIONS: PromptAction[] = [
   {
     title: 'Покажи документы команды',
     subtitle: 'ссылка на нужный раздел',
@@ -27,7 +34,22 @@ const PROMPT_ACTIONS = [
 ];
 
 export function BuddyChat() {
-  const applyPrompt = useChatStore((state) => state.applyPrompt);
+  const applyPrompt = useChatStore((state: ChatStore) => state.applyPrompt);
+  const messages = useChatStore((state: ChatStore) => state.messages);
+  const retryMessage = useChatStore((state: ChatStore) => state.retryMessage);
+
+  const hasMessages = messages.length > 0;
+
+  if (hasMessages) {
+    return (
+      <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
+        <MessageList messages={messages} onRetry={retryMessage} />
+        <div className="mx-auto flex w-full max-w-[760px] justify-center px-4 pb-6 pt-2">
+          <ChatInput />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-4 py-8">

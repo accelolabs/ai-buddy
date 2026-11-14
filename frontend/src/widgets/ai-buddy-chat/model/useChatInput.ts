@@ -1,14 +1,15 @@
 import { useRef, useEffect, type KeyboardEvent, type FocusEvent } from 'react';
-import { useChatStore } from '@/entities/chat';
+import { useChatStore, type ChatStore } from '@/entities/chat';
 
 export function useChatInput(onSubmit?: (value: string) => void) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const draft = useChatStore((state) => state.draft);
-  const isExpanded = useChatStore((state) => state.isExpanded);
-  const setDraft = useChatStore((state) => state.setDraft);
-  const setIsExpanded = useChatStore((state) => state.setIsExpanded);
-  const resetDraft = useChatStore((state) => state.resetDraft);
+  const draft = useChatStore((state: ChatStore) => state.draft);
+  const isExpanded = useChatStore((state: ChatStore) => state.isExpanded);
+  const setDraft = useChatStore((state: ChatStore) => state.setDraft);
+  const setIsExpanded = useChatStore((state: ChatStore) => state.setIsExpanded);
+  const resetDraft = useChatStore((state: ChatStore) => state.resetDraft);
+  const sendMessage = useChatStore((state: ChatStore) => state.sendMessage);
 
   useEffect(() => {
     if (isExpanded) {
@@ -24,12 +25,20 @@ export function useChatInput(onSubmit?: (value: string) => void) {
     }
   };
 
+  const submitValue = (val: string) => {
+    if (onSubmit) {
+      onSubmit(val);
+    } else {
+      sendMessage(val);
+    }
+    resetDraft();
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (draft.trim()) {
-        onSubmit?.(draft.trim());
-        resetDraft();
+        submitValue(draft.trim());
       }
     } else if (e.key === 'Escape' && !draft.trim()) {
       setIsExpanded(false);
@@ -38,8 +47,7 @@ export function useChatInput(onSubmit?: (value: string) => void) {
 
   const handleSend = () => {
     if (draft.trim()) {
-      onSubmit?.(draft.trim());
-      resetDraft();
+      submitValue(draft.trim());
     }
   };
 
