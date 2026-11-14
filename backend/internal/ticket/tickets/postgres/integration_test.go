@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	platformmigrations "ai-buddy/internal/platform/migrations"
 	"ai-buddy/internal/testutil"
 	"ai-buddy/internal/ticket/apperror"
 	"ai-buddy/internal/ticket/migrations"
@@ -16,7 +17,7 @@ import (
 func TestPostgresIntegration(t *testing.T) {
 	db := testutil.Database(t, migrations.Files)
 	for _, command := range []string{"up", "status", "down", "up"} {
-		if err := migrations.Run(context.Background(), db, command); err != nil {
+		if err := platformmigrations.Run(context.Background(), db, migrations.Files, command); err != nil {
 			t.Fatal(command, err)
 		}
 	}

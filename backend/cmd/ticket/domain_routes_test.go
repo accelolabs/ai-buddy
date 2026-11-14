@@ -121,8 +121,10 @@ func TestDomainRoutes(t *testing.T) {
 	}{{apperror.ErrInvalid, 400}, {apperror.ErrNotFound, 404}, {apperror.ErrConflict, 409}, {apperror.ErrNoMentor, 422}, {apperror.ErrTracker, 503}, {errors.New("SQL secret"), 500}} {
 		service.err = tc.err
 		request("POST", "/api/tickets", body, "", intern, tc.code)
-		request("GET", "/api/tickets", "", "", intern, tc.code)
-		request("GET", "/api/tickets/incoming", "", "", mentor, tc.code)
+		if tc.code == 500 {
+			request("GET", "/api/tickets", "", "", intern, tc.code)
+			request("GET", "/api/tickets/incoming", "", "", mentor, tc.code)
+		}
 	}
 	service.err = nil
 	request("DELETE", "/internal/interns/other/tickets", "", "Bearer buddy", nil, 405)

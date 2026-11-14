@@ -5,6 +5,7 @@ import (
 
 	"ai-buddy/internal/platform/httpx"
 	domainhttp "ai-buddy/internal/ticket/httpx"
+	"ai-buddy/internal/ticket/tickets"
 )
 
 func (h *Handler) Sent(w http.ResponseWriter, r *http.Request) {
@@ -13,5 +14,8 @@ func (h *Handler) Sent(w http.ResponseWriter, r *http.Request) {
 		domainhttp.Failure(w, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, fromTickets(list))
+	if list == nil {
+		list = []tickets.Ticket{}
+	}
+	httpx.JSON(w, http.StatusOK, ticketsResponse{Tickets: list})
 }

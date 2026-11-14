@@ -39,11 +39,18 @@ func serve(ctx context.Context, c config.Config) error {
 	})
 }
 
-func main() {
-	c := config.MustLoad()
+func run() error {
+	c, err := config.Load()
+	if err != nil {
+		return err
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	if err := serve(ctx, c); err != nil {
+	return serve(ctx, c)
+}
+
+func main() {
+	if err := run(); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
 	}

@@ -2,8 +2,6 @@ package config
 
 import (
 	"errors"
-	"log/slog"
-	"os"
 	"strings"
 	"time"
 
@@ -36,12 +34,4 @@ func Load() (Config, error) {
 		return c, errors.New("invalid tracker configuration")
 	}
 	return c, nil
-}
-func MustLoad() Config {
-	c, err := Load()
-	if err != nil {
-		slog.Error("configuration rejected", "error", err)
-		os.Exit(1)
-	}
-	return c
 }

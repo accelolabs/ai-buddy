@@ -66,10 +66,8 @@ func (p *Repository) Find(ctx context.Context, sender, key string) (tickets.Tick
 }
 
 func (p *Repository) Create(ctx context.Context, sender, recipient, key string, input tickets.CreateInput) (tickets.Ticket, bool, error) {
-	token := make([]byte, 16)
-	if _, err := rand.Read(token); err != nil {
-		return tickets.Ticket{}, false, err
-	}
+	var token [16]byte
+	_, _ = rand.Read(token[:]) // crypto/rand.Read always fills the buffer or terminates.
 	ticket, err := scan(p.db.QueryRowContext(
 		ctx,
 		`INSERT INTO tickets (
@@ -83,7 +81,7 @@ func (p *Repository) Create(ctx context.Context, sender, recipient, key string, 
   VALUES ($1,$2,$3,$4,$5,$6)
   ON CONFLICT (sender_id,idempotency_key) DO NOTHING
   RETURNING `+columns,
-		hex.EncodeToString(token),
+		hex.EncodeToString(token[:]),
 		sender,
 		recipient,
 		input.Question,

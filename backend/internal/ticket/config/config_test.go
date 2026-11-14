@@ -17,8 +17,8 @@ func TestLoad(t *testing.T) {
 	if err != nil || c.HTTPAddr != ":8080" || c.SessionLifetime != 24*time.Hour || c.SessionIdleTimeout != time.Hour {
 		t.Fatalf("unexpected config: %v", err)
 	}
-	if MustLoad().ClientID != "buddy" {
-		t.Fatal("MustLoad")
+	if c.ClientID != "buddy" {
+		t.Fatal("ClientID")
 	}
 }
 func TestInvalid(t *testing.T) {

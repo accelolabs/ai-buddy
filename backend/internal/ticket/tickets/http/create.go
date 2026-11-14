@@ -8,13 +8,8 @@ import (
 	"ai-buddy/internal/ticket/tickets"
 )
 
-type createRequest struct {
-	Question    string `json:"question"`
-	Description string `json:"description"`
-}
-
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
-	var input createRequest
+	var input tickets.CreateInput
 	if err := httpx.Decode(w, r, &input); err != nil {
 		domainhttp.Failure(w, err)
 		return
@@ -23,10 +18,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		r.Context(),
 		httpx.Owner(r),
 		r.Header.Get("Idempotency-Key"),
-		tickets.CreateInput{
-			Question:    input.Question,
-			Description: input.Description,
-		},
+		input,
 	)
 	if err != nil {
 		domainhttp.Failure(w, err)
@@ -36,5 +28,5 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	if created {
 		code = http.StatusCreated
 	}
-	httpx.JSON(w, code, fromTicket(ticket))
+	httpx.JSON(w, code, ticket)
 }
