@@ -1,4 +1,4 @@
-package tracker
+package main
 
 import (
 	"context"
@@ -8,8 +8,15 @@ import (
 	"testing"
 	"time"
 
+	"ai-buddy/backend-tracker/internal/apperror"
 	"ai-buddy/backend-tracker/internal/database"
+	"ai-buddy/backend-tracker/internal/interns"
+	internspostgres "ai-buddy/backend-tracker/internal/interns/postgres"
 	"ai-buddy/backend-tracker/internal/migrations"
+	"ai-buddy/backend-tracker/internal/progress"
+	progresspostgres "ai-buddy/backend-tracker/internal/progress/postgres"
+	"ai-buddy/backend-tracker/internal/tasks"
+	taskspostgres "ai-buddy/backend-tracker/internal/tasks/postgres"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 )
@@ -66,8 +73,12 @@ func TestPostgresIntegration(t *testing.T) {
 			t.Fatal("invalid assignment accepted", q)
 		}
 	}
-	s := New(&Postgres{DB: db}, time.UTC)
-	in := Input{Title: "Task", Description: "Concurrent", Deadline: "2020-01-01"}
+	internRepository := internspostgres.New(db)
+	taskRepository := taskspostgres.New(db)
+	internService := interns.New(internRepository)
+	s := tasks.New(taskRepository, internService, time.UTC, time.Now)
+	progressService := progress.New(progresspostgres.New(internRepository, taskRepository), time.UTC, time.Now)
+	in := tasks.CreateInput{Title: "Task", Description: "Concurrent", Deadline: "2020-01-01"}
 	var wg sync.WaitGroup
 	ids := make(chan string, 20)
 	created := make(chan bool, 20)
@@ -113,7 +124,7 @@ func TestPostgresIntegration(t *testing.T) {
 	if e != nil || len(ts) != 1 || !ts[0].Overdue {
 		t.Fatal(ts, e)
 	}
-	if _, e = s.Complete(ctx, "j", id); e != ErrNotFound {
+	if _, e = s.Complete(ctx, "j", id); e != apperror.ErrNotFound {
 		t.Fatal("foreign completion", e)
 	}
 	first, e := s.Complete(ctx, "i", id)
@@ -125,14 +136,14 @@ func TestPostgresIntegration(t *testing.T) {
 		t.Fatal("completion persistence", e)
 	}
 	in.Description = "changed"
-	if _, _, e = s.Create(ctx, "i", "concurrent", in); e != ErrConflict {
+	if _, _, e = s.Create(ctx, "i", "concurrent", in); e != apperror.ErrConflict {
 		t.Fatal("conflict", e)
 	}
-	p, e := s.MentorProgress(ctx, "m", "i")
+	p, e := progressService.MentorProgress(ctx, "m", "i")
 	if e != nil || p.Percent != 100 || p.Mentor.ID != "m" {
 		t.Fatal(p, e)
 	}
-	if m, e := s.Mentor(ctx, "j"); e != nil || m != nil {
+	if m, e := internService.Mentor(ctx, "j"); e != nil || m != nil {
 		t.Fatal(m, e)
 	}
 }

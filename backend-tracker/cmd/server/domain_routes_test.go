@@ -1,4 +1,4 @@
-package tracker
+package main
 
 import (
 	"encoding/json"
@@ -6,8 +6,16 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"ai-buddy/backend-tracker/internal/auth"
+	"ai-buddy/backend-tracker/internal/interns"
+	internshttp "ai-buddy/backend-tracker/internal/interns/http"
+	"ai-buddy/backend-tracker/internal/progress"
+	progresshttp "ai-buddy/backend-tracker/internal/progress/http"
+	progresspostgres "ai-buddy/backend-tracker/internal/progress/postgres"
+	"ai-buddy/backend-tracker/internal/tasks"
+	taskshttp "ai-buddy/backend-tracker/internal/tasks/http"
 	"github.com/alexedwards/scs/v2"
 )
 
@@ -18,10 +26,15 @@ type httpFixture struct {
 }
 
 func newHTTP() httpFixture {
-	s, m := fixture()
+	m := newMemory()
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	now := func() time.Time { return time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC) }
+	internService := interns.New(m)
+	taskService := tasks.New(m, internService, loc, now)
+	progressService := progress.New(progresspostgres.New(m, m), loc, now)
 	sessions := scs.New()
 	a := auth.New(sessions, nil)
-	return httpFixture{(&API{Service: s, Auth: a, BuddyKey: "buddy", TicketKey: "ticket"}).Handler(), m, sessions}
+	return httpFixture{domainRoutes(a, taskshttp.New(taskService), internshttp.New(internService), progresshttp.New(progressService), "buddy", "ticket"), m, sessions}
 }
 func (f httpFixture) cookie(t *testing.T, id, role string) *http.Cookie {
 	t.Helper()
@@ -69,15 +82,15 @@ func TestBrowserAPI(t *testing.T) {
 		check(t, f.request(tc.method, tc.path, "", "", "", tc.cookie), 403)
 	}
 	check(t, f.request("GET", "/api/tasks?intern_id=j", "", "", "", intern), 200)
-	body := `{"title":"  Task  ","description":" test ","deadline":"2020-01-01"}`
+	body := `{"title":"  tasks.Task  ","description":" test ","deadline":"2020-01-01"}`
 	w := f.request("POST", "/api/tasks", body, "key", "", intern)
 	check(t, w, 201)
-	var task Task
-	if e := json.Unmarshal(w.Body.Bytes(), &task); e != nil || task.InternID != "i" || task.Title != "Task" {
+	var task tasks.Task
+	if e := json.Unmarshal(w.Body.Bytes(), &task); e != nil || task.InternID != "i" || task.Title != "tasks.Task" {
 		t.Fatal(task, e)
 	}
 	check(t, f.request("POST", "/api/tasks", body, "key", "", intern), 200)
-	check(t, f.request("POST", "/api/tasks", strings.Replace(body, "Task", "Other", 1), "key", "", intern), 409)
+	check(t, f.request("POST", "/api/tasks", strings.Replace(body, "tasks.Task", "Other", 1), "key", "", intern), 409)
 	check(t, f.request("POST", "/api/tasks/"+task.ID+"/complete", "", "", "", other), 404)
 	w = f.request("POST", "/api/tasks/"+task.ID+"/complete", "", "", "", intern)
 	check(t, w, 200)
@@ -104,14 +117,14 @@ func TestInternalAPI(t *testing.T) {
 		check(t, f.request(tc.method, tc.path, "", "", "Bearer ticket", nil), code)
 	}
 	check(t, f.request("GET", "/internal/interns/i/progress", "", "", "Bearer buddy", nil), 200)
-	body := `{"title":"Task","deadline":"2026-01-01"}`
+	body := `{"title":"tasks.Task","deadline":"2026-01-01"}`
 	w := f.request("POST", "/internal/interns/i/tasks", body, "shared", "Bearer buddy", nil)
 	check(t, w, 201)
-	var task Task
+	var task tasks.Task
 	json.Unmarshal(w.Body.Bytes(), &task)
 	check(t, f.request("POST", "/api/tasks", body, "shared", "", cookie), 200)
 	check(t, f.request("POST", "/internal/interns/i/tasks", body, "shared", "Bearer buddy", nil), 200)
-	check(t, f.request("POST", "/internal/interns/i/tasks", strings.Replace(body, "Task", "other", 1), "shared", "Bearer buddy", nil), 409)
+	check(t, f.request("POST", "/internal/interns/i/tasks", strings.Replace(body, "tasks.Task", "other", 1), "shared", "Bearer buddy", nil), 409)
 	check(t, f.request("POST", "/internal/interns/j/tasks/"+task.ID+"/complete", "", "", "Bearer buddy", nil), 404)
 	w = f.request("POST", "/internal/interns/i/tasks/"+task.ID+"/complete", "", "", "Bearer buddy", nil)
 	check(t, w, 200)

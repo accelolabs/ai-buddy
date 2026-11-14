@@ -14,7 +14,15 @@ import (
 	"ai-buddy/backend-tracker/internal/auth"
 	"ai-buddy/backend-tracker/internal/config"
 	"ai-buddy/backend-tracker/internal/database"
-	"ai-buddy/backend-tracker/internal/tracker"
+	"ai-buddy/backend-tracker/internal/interns"
+	internshttp "ai-buddy/backend-tracker/internal/interns/http"
+	internspostgres "ai-buddy/backend-tracker/internal/interns/postgres"
+	"ai-buddy/backend-tracker/internal/progress"
+	progresshttp "ai-buddy/backend-tracker/internal/progress/http"
+	progresspostgres "ai-buddy/backend-tracker/internal/progress/postgres"
+	"ai-buddy/backend-tracker/internal/tasks"
+	taskshttp "ai-buddy/backend-tracker/internal/tasks/http"
+	taskspostgres "ai-buddy/backend-tracker/internal/tasks/postgres"
 )
 
 var openDatabase = database.Open
@@ -38,7 +46,12 @@ func serve(ctx context.Context, c config.Config) error {
 	if err != nil {
 		return errors.New("invalid APP_TIMEZONE")
 	}
-	api := (&tracker.API{Service: tracker.New(&tracker.Postgres{DB: db}, loc), Auth: login, BuddyKey: c.BuddyAPIKey, TicketKey: c.TicketAPIKey}).Handler()
+	internRepository := internspostgres.New(db)
+	taskRepository := taskspostgres.New(db)
+	internService := interns.New(internRepository)
+	taskService := tasks.New(taskRepository, internService, loc, time.Now)
+	progressService := progress.New(progresspostgres.New(internRepository, taskRepository), loc, time.Now)
+	api := domainRoutes(login, taskshttp.New(taskService), internshttp.New(internService), progresshttp.New(progressService), c.BuddyAPIKey, c.TicketAPIKey)
 	return serveHTTP(ctx, c.HTTPAddr, routes(db, login.Handler(), api))
 }
 
