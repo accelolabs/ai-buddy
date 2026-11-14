@@ -1,5 +1,6 @@
+import { getUserInitials, getUserRoleLabel } from '@/entities/user/model/helpers';
 import { useUser } from '../api/useUser';
-import { getUserInitials, getUserRoleLabel, type User } from '../model/types';
+import type { User } from '../model/types';
 
 export interface UserCardProps {
   user?: User;

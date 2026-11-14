@@ -1,4 +1,4 @@
-export type UserRole = 'trainee' | 'intern' | 'mentor';
+export type UserRole = 'trainee' | 'mentor';
 
 export interface User {
   id: string;
@@ -10,27 +10,10 @@ export interface User {
 
 export function isTrainee(user?: User | null): boolean {
   if (!user) return false;
-  return user.role === 'trainee' || user.role === 'intern';
+  return user.role === 'trainee';
 }
 
 export function isMentor(user?: User | null): boolean {
   if (!user) return false;
   return user.role === 'mentor';
-}
-
-export function getUserRoleLabel(role?: UserRole): string {
-  switch (role) {
-    case 'mentor':
-      return 'Наставник';
-    case 'trainee':
-    case 'intern':
-    default:
-      return 'Стажер';
-  }
-}
-
-export function getUserInitials(name?: string): string {
-  if (!name) return '?';
-  const trimmed = name.trim();
-  return trimmed.charAt(0).toUpperCase();
 }

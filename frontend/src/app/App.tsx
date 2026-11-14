@@ -1,9 +1,10 @@
 import { BrowserRouter, Routes, Route } from 'react-router';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from '@/shared/api';
 import { AppLayout } from '@/app/AppLayout';
-import { ChatPage } from '@/pages';
-
-const queryClient = new QueryClient();
+import { TraineeRoute } from '@/app/routes';
+import { ChatPage } from '@/pages/chat';
+import { DashboardPage } from '@/pages/dashboard';
 
 function App() {
   return (
@@ -11,7 +12,15 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route element={<AppLayout />}>
-            <Route path="/" element={<ChatPage />} />
+            <Route
+              path="/"
+              element={
+                <TraineeRoute>
+                  <ChatPage />
+                </TraineeRoute>
+              }
+            />
+            <Route path="/dashboard" element={<DashboardPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

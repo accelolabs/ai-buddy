@@ -1,0 +1,1 @@
+export { TraineeRoute } from './TraineeRoute';
