@@ -23,7 +23,6 @@ jobs:
           --health-interval 5s --health-timeout 3s --health-retries 20
     env:
       TEST_DATABASE_URL: postgres://postgres:test@localhost:5432/buddy_test?sslmode=disable
-      CHECK_OUTPUT_DIR: ${{ github.workspace }}/check-output
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -34,11 +33,24 @@ jobs:
         run: |
           curl -sSfL https://golangci-lint.run/install.sh -o /tmp/install-golangci.sh
           sh /tmp/install-golangci.sh -b "$(go env GOPATH)/bin" v2.13.2
-      - name: Full verification
+      - name: Check formatting
         working-directory: backend
-        run: scripts/check.sh
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: backend-check
-          path: check-output/
+        run: golangci-lint fmt --diff
+      - name: Lint
+        working-directory: backend
+        run: golangci-lint run ./...
+      - name: Vet
+        working-directory: backend
+        run: go vet ./...
+      - name: Build
+        working-directory: backend
+        run: go build ./cmd/...
+      - name: Race tests
+        working-directory: backend
+        run: go test -race ./...
+      - name: Validate Compose configurations
+        working-directory: backend
+        run: |
+          for service in buddy tracker ticket wiki ollama; do
+            docker compose -f "deploy/$service/compose.yaml" --env-file "deploy/$service/.env.example" config --quiet
+          done

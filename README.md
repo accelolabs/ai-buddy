@@ -9,12 +9,12 @@ AI Buddy — сервисы Buddy, Tracker, Ticket и Wiki с авторизац
 - [Tracker: задачи, прогресс и наставники](backend/deploy/tracker/README.md).
 - [Ticket: вопросы наставникам](backend/deploy/ticket/README.md).
 
-Весь код бэкенда, Go-модуль, Dockerfile, скрипты и файлы развёртывания находятся в `backend/`.
+Весь код бэкенда, Go-модуль, Dockerfile и файлы развёртывания находятся в `backend/`.
 Go-команды выполняются из этого каталога:
 
 ```sh
 cd backend
-./scripts/check.sh --unit
+env -u TEST_DATABASE_URL go test -race ./...
 ```
 
 Buddy, Tracker, Ticket и Wiki запускаются отдельными процессами со своими PostgreSQL и сессиями.

@@ -1,66 +1,51 @@
 # Authentik
 
-Authentik 2026.8.5 и PostgreSQL 16. Все команды выполняются из `backend/deploy/authentik`.
+Команды выполняются из `backend/deploy/authentik`.
 
-## Запуск
+## Настройка и запуск
 
-```bash
+```sh
 cp .env.example .env
 chmod 600 .env
 ```
 
-Заполнить `.env`: пять публичных HTTPS URL без завершающего `/`, пароли и секреты.
-Каждый секрет генерировать отдельно: `openssl rand -hex 32`.
+В `.env` заполните публичные HTTPS-адреса без завершающего `/`, пароль БД,
+`AUTHENTIK_SECRET_KEY`, начальные данные администратора, секреты OIDC-клиентов
+и пароли демо-пользователей. Каждый секрет генерируйте отдельно: `openssl rand -hex 32`.
+`AUTHENTIK_TRUSTED_PROXY_CIDRS` должен включать адрес непосредственного прокси.
 
-```bash
-docker compose config -q
+```sh
 docker compose up -d --wait --wait-timeout 300
 curl --fail http://127.0.0.1:9000/-/health/ready/
+docker compose logs --tail 100 server worker
 ```
 
-Админка: `<AUTHENTIK_PUBLIC_URL>/if/admin/`, логин `akadmin`, начальный пароль —
-`AUTHENTIK_BOOTSTRAP_PASSWORD`. Bootstrap-параметры действуют только при первом запуске.
-В **Customization → Blueprints** проверить статус **Successful** обоих blueprints.
-Логи: `docker compose logs --tail 100 server worker`. `down -v` удаляет данные.
+Админка: `<AUTHENTIK_PUBLIC_URL>/if/admin/`, логин `akadmin`, пароль —
+`AUTHENTIK_BOOTSTRAP_PASSWORD`. Начальные данные применяются только при первом запуске.
+В **Customization → Blueprints** проверьте статус **Successful**.
+Compose создаёт общую сеть `ai-buddy-shared`.
 
-## Сеть
+Проксируйте HTTPS на `127.0.0.1:9000`, сохраняя `Host` и передавая
+`X-Forwarded-Proto: https` и `X-Forwarded-For`. Публичный адрес Authentik
+должен быть доступен браузеру и контейнерам сервисов.
 
-Caddy → Rathole → `127.0.0.1:9000`. Адрес и порт настраиваются в `.env`.
-Если Rathole в контейнере, настроить доступ к хосту. Сохранять исходный `Host`,
-передавать `X-Forwarded-Proto: https` и `X-Forwarded-For`;
-`AUTHENTIK_TRUSTED_PROXY_CIDRS` должен включать фактический адрес непосредственного прокси.
-Публичный HTTPS Authentik должен быть доступен браузеру и Go-контейнерам.
+## OIDC и пользователи
 
-Compose создаёт `ai-buddy-shared`; будущие сервисы подключаются к ней как к external network.
+Для каждого сервиса (`buddy`, `wiki`, `tracker`, `ticket`):
 
-## Blueprints
+- `OIDC_CLIENT_ID` — имя сервиса.
+- `OIDC_CLIENT_SECRET` — соответствующий `<SERVICE>_CLIENT_SECRET` из `.env`.
+- `OIDC_ISSUER` — `<AUTHENTIK_PUBLIC_URL>/application/o/<service>/`.
+- `OIDC_REDIRECT_URI` — `<SERVICE_PUBLIC_URL>/api/auth/callback`.
 
-- `01-oidc.yaml` — отдельные OIDC-клиенты `buddy`, `wiki`, `tracker`, `ticket`.
-- `02-users.yaml` — по наставнику и два стажёра в командах `backend` и `platform`.
-  Логины: `mentor.<team>`, `intern.<team>.1`, `intern.<team>.2`;
-  email: `<username>@example.test`, отдельные пароли — в `.env`.
+Демо-логины: `mentor.<team>`, `intern.<team>.1`, `intern.<team>.2`,
+где `<team>` — `backend` или `platform`. Пароли задаются в `.env`.
 
-Автоприменение асинхронное. Для проверки добавить `--dry-run` к команде применения:
+После изменения `.env` пересоздайте контейнеры и примените blueprints:
 
-```bash
+```sh
+docker compose up -d
 docker compose exec worker ak apply_blueprint /blueprints/ai-buddy/01-oidc.yaml /blueprints/ai-buddy/02-users.yaml
 ```
 
-После изменения `.env` сначала выполнить `docker compose up -d`, затем применить blueprints.
-`state: present` сохраняет ID, но перезаписывает объявленные поля, включая пароли и attributes.
-Назначения хранит будущий Tracker: стажёры закреплены за наставником своей команды,
-кроме `intern.platform.2` — у него назначения нет.
-
-## Контракт OIDC
-
-- Client ID: имя сервиса; client secret: соответствующий `<SERVICE>_CLIENT_SECRET`.
-- Issuer: `<AUTHENTIK_PUBLIC_URL>/application/o/<service>/`.
-- Discovery: `<issuer>.well-known/openid-configuration`.
-- Единственный callback: `<SERVICE_PUBLIC_URL>/api/auth/callback`, строгое совпадение.
-- Authorization Code, PKCE S256, state и nonce; scopes: `openid profile email ai_buddy`.
-- Общий ID: `authentik_id` — строковый ID пользователя Authentik, а не `sub`.
-- Claims: `role` (`intern` / `mentor`), `team` (`backend` / `platform`),
-  `name`, `email`, `preferred_username`. Отсутствующие или неизвестные роль/команда означают отказ.
-- Сервисы проверяют подпись RS256 через JWKS, issuer, audience, срок действия и nonce.
-  Сессии и проверка прав принадлежат сервисам; наставнику закрывает чат сам Buddy.
-
+Применение перезаписывает объявленные поля пользователей, включая пароли.

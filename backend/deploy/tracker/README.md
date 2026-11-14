@@ -1,91 +1,47 @@
-# Backend Tracker
+# Tracker
 
-Задачи стажёров, прогресс и назначения наставников. Go, PostgreSQL, вход через Authentik OIDC.
-OIDC-клиент сервиса — `tracker`. Код находится в общем модуле `ai-buddy`.
+Команды выполняются из `backend/deploy/tracker`. Сначала запустите
+[Authentik](../authentik/README.md).
 
-## Запуск
-
-Команды Compose выполнять из `backend/deploy/tracker`. Сначала запустить [Authentik](../authentik/README.md), который создаёт сеть `ai-buddy-shared`.
+## Настройка и запуск
 
 ```sh
 cp .env.example .env
-# Заполнить .env, затем:
-docker compose up --build -d backend-tracker
 ```
 
-В `.env` указать пароль БД, разные `BUDDY_API_KEY` и `TICKET_API_KEY`, OIDC issuer,
-секрет существующего клиента `tracker` и зарегистрированный HTTPS callback.
-Секреты можно генерировать командой `openssl rand -hex 32`.
+В `.env` заполните пароль БД и OIDC-настройки клиента `tracker`.
+`BUDDY_API_KEY` должен совпадать с ключом Buddy, `TICKET_API_KEY` — с ключом Ticket;
+эти два ключа должны различаться. `APP_TIMEZONE` задаёт часовой пояс дедлайнов.
 
-Сервер доступен на `127.0.0.1:8083`; для браузера нужен HTTPS-прокси.
-Миграции выполняются перед запуском. БД хранится в отдельном томе, её порт не публикуется.
-Вход: `/api/auth/login`, текущий пользователь: `/api/auth/me`, выход: `POST /api/auth/logout`.
+```sh
+docker compose up --build -d backend-tracker
+docker compose logs -f backend-tracker
+```
 
-## Демо-данные
+HTTPS-прокси направьте на `127.0.0.1:8083`; порт задаётся `HTTP_PORT`.
+Миграции выполняются при запуске Compose.
 
-В Authentik создать служебную учётную запись с правом просмотра демо-пользователей и API-токен.
-Указать `AUTHENTIK_URL` и `AUTHENTIK_API_TOKEN` в окружении или `.env`, затем выполнить:
+Для демо-данных укажите `AUTHENTIK_URL` и `AUTHENTIK_API_TOKEN` с правом чтения
+демо-пользователей, затем выполните:
 
 ```sh
 docker compose --profile tools run --rm seed
 ```
 
-Токен передаётся только seed. Seed проверяет шесть пользователей до записи в БД и добавляет
-профили, назначения и примеры задач одной транзакцией. Повторный запуск сохраняет существующие
-данные. У `intern.platform.2` наставника нет.
-
 ## API
 
-Ответы — JSON. Браузерные маршруты требуют сессию; стажёр работает со своими задачами,
-наставник читает данные закреплённых стажёров.
-
-| Метод и путь | Назначение |
-| --- | --- |
-| `GET /api/tasks`, `POST /api/tasks` | Список и создание задач стажёра |
-| `POST /api/tasks/{id}/complete` | Завершение задачи |
-| `GET /api/progress` | Свой прогресс |
-| `GET /api/interns` | Стажёры наставника |
-| `GET /api/interns/{id}/progress` | Прогресс закреплённого стажёра |
-| `GET /internal/interns/{id}/progress` | Прогресс для Buddy |
-| `POST /internal/interns/{id}/tasks` | Создание задачи через Buddy |
-| `POST /internal/interns/{id}/tasks/{taskID}/complete` | Завершение через Buddy |
-| `GET /internal/interns/{id}/mentor` | Поиск наставника для Buddy и Ticket |
-
-Внутренние маршруты требуют `Authorization: Bearer <ключ>`; Ticket доступен только поиск наставника.
-Создание требует `Idempotency-Key` и тело `{"title":"Задача","description":"Описание","deadline":"2026-12-01"}`.
-Название и дата обязательны. Создание возвращает `201`, повтор — `200`, конфликт содержимого — `409`.
-Повторное завершение сохраняет первую дату завершения.
-
-Прогресс содержит профиль, наставника, задачи, счётчики, процент и следующую задачу.
-Следующая — первая просроченная незавершённая, иначе с ближайшим дедлайном.
-Часовой пояс задаётся `APP_TIMEZONE` (по умолчанию `Europe/Moscow`); сегодняшний дедлайн не просрочен.
-Проверки доступности: `/health/live`, `/health/ready`.
-
-## Структура и проверки
-
-Сервер: `cmd/tracker`. Предметные пакеты: `internal/tracker`, общая инфраструктура:
-`internal/platform`. DTO находятся рядом с HTTP-обработчиками, SQL и миграции принадлежат сервису.
-Прогресс напрямую использует интерфейсы репозиториев стажёров и задач.
-
-Из каталога `backend/`:
+[Описание API](../../api/tracker.yaml). Браузерный вход — `GET /api/auth/login`.
+Внутренние запросы Buddy используют `BUDDY_API_KEY`; Ticket использует
+`TICKET_API_KEY` для получения наставника.
 
 ```sh
-./scripts/check.sh --unit
-# Для PostgreSQL-проверок добавить TEST_DATABASE_URL отдельной тестовой БД.
+curl http://127.0.0.1:8083/internal/interns/2/progress \
+  -H "Authorization: Bearer $BUDDY_API_KEY"
+curl http://127.0.0.1:8083/internal/interns/2/tasks \
+  -H "Authorization: Bearer $BUDDY_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: task-1' \
+  -d '{"title":"Изучить проект","description":"Прочитать документацию","deadline":"2026-12-01"}'
 ```
 
-Полная проверка требует тестовую PostgreSQL с pgvector и Docker CLI.
-Покрытие каждой из пяти групп (Buddy, Tracker, Ticket, Wiki, Platform) строго выше 80%.
-Общий код не увеличивает покрытие сервиса, тестовые помощники исключены.
-Без `TEST_DATABASE_URL` PostgreSQL-тесты пропускаются; с ним создают временные схемы.
-Проверки, архитектура и добавление сервисов описаны в [README бэкенда](../../README.md).
-
-Compose явно задаёт историческое имя проекта `backend-tracker`, сохраняя существующий том.
-При прежнем нестандартном `-p` используйте его и дальше. SQL и номера миграций сохранены,
-сброс данных не требуется. Образ собирается Dockerfile каталога `backend/` с `SERVICE=tracker`.
-
-Контракт API: [OpenAPI 3.1.1](../../api/tracker.yaml).
-Общие быстрые и полные проверки, установка линтера и CI: [README бэкенда](../../README.md#api-и-проверки).
-
-После очистки тестов покрытие Tracker: **88,74% (331/373 оператора)**.
-Итоговые пять групп и выполненные проверки: [README бэкенда](../../README.md#api-и-проверки).
+Замените `2` на ID стажёра в Authentik. Для новой задачи используйте новый `Idempotency-Key`.
