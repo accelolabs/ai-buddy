@@ -13,7 +13,7 @@ func TestSelection(t *testing.T) {
 	original, args := openDatabase, os.Args
 	defer func() { openDatabase = original; os.Args = args }()
 	t.Setenv("DATABASE_URL", "postgres://selected/app")
-	for _, service := range []string{"tracker", "ticket"} {
+	for _, service := range []string{"tracker", "ticket", "wiki"} {
 		for _, command := range []string{"up", "down", "status"} {
 			op, err := prepare(service, command)
 			if err != nil {

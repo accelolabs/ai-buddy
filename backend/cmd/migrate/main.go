@@ -10,6 +10,7 @@ import (
 	"ai-buddy/internal/platform/migrations"
 	ticket "ai-buddy/internal/ticket/migrations"
 	tracker "ai-buddy/internal/tracker/migrations"
+	wiki "ai-buddy/internal/wiki/migrations"
 )
 
 var openDatabase = cli.Open
@@ -18,6 +19,9 @@ func prepare(service, command string) (cli.Operation, error) {
 	files := tracker.Files
 	if service == "ticket" {
 		files = ticket.Files
+	}
+	if service == "wiki" {
+		files = wiki.Files
 	}
 	return func(ctx context.Context, db *sql.DB) error { return migrations.Run(ctx, db, files, command) }, nil
 }

@@ -15,13 +15,13 @@ type Prepare func(service, command string) (Operation, error)
 
 // Run validates the entire invocation before reading secrets or opening a database.
 func Run(args []string, migration bool, prepare Prepare, open func(context.Context, string) (*sql.DB, error)) error {
-	if len(args) < 1 || (args[0] != "tracker" && args[0] != "ticket") {
-		return errors.New("service must be tracker or ticket")
+	if len(args) < 1 || (args[0] != "tracker" && args[0] != "ticket" && !(migration && args[0] == "wiki")) {
+		return errors.New("service must be tracker, ticket or wiki (migrations only)")
 	}
 	command := "up"
 	if migration {
 		if len(args) > 2 {
-			return errors.New("usage: migrate <tracker|ticket> [up|down|status]")
+			return errors.New("usage: migrate <tracker|ticket|wiki> [up|down|status]")
 		}
 		if len(args) == 2 {
 			command = args[1]
