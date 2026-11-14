@@ -17,9 +17,11 @@ import { SquarePen, MessageSquare } from 'lucide-react';
 import { useDialogs } from '../api/useDialogs';
 import { Picture } from '@/shared/ui';
 import chipLogo from '@/assets/chip-logo.svg';
+import { UserCard, useUser } from '@/entities/user';
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { data: dialogs = [] } = useDialogs();
+  const { data: user } = useUser();
   const { setOpen } = useSidebar();
 
   const handleNewChat = () => {};
@@ -72,15 +74,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
-            Л
-          </div>
-          <div className="flex min-w-0 flex-col">
-            <span className="truncate text-sm font-medium text-sidebar-foreground">Люси</span>
-            <span className="truncate text-xs text-sidebar-foreground/60">Стажер</span>
-          </div>
-        </div>
+        <UserCard user={user} />
       </SidebarFooter>
     </Sidebar>
   );
