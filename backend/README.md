@@ -132,3 +132,5 @@ PostgreSQL-тесты создают и удаляют изолированны�
 для Buddy, Tracker, Ticket и Wiki на своих доменах. Их реализация в этот рефакторинг не входит.
 
 Wiki: [развёртывание и JSON API](deploy/wiki/README.md), [база знаний](../knowledge-base/README.md).
+
+Buddy: [запуск, API, SSE и подтверждения](deploy/buddy/README.md). Миграции: `go run ./cmd/migrate buddy up`; сервер: `go run ./cmd/buddy`.

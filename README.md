@@ -22,3 +22,5 @@ Tracker и Ticket запускаются отдельными процессам
 сборками для Buddy, Tracker, Ticket и Wiki на своих доменах.
 
 [Wiki: запуск, индексация и API](backend/deploy/wiki/README.md) · [Knowledge base](knowledge-base/README.md)
+
+[Buddy — чат, Qwen и встроенный MCP: запуск и API](backend/deploy/buddy/README.md).
