@@ -1,0 +1,1996 @@
+openapi: 3.1.1
+info:
+  title: AI Buddy Demo API
+  version: 2.0.0
+  description: One backend and one database. demo_user selects a database profile
+    without authentication. Set demo_user=<id>; Path=/; SameSite=Lax on the same origin.
+    Cookies apply to fetch and EventSource. Missing, empty or unknown IDs return JSON
+    400; database failures return JSON 503. Role and team come from the database.
+    Selection is pinned to each Buddy run. JSON bodies reject unknown fields and trailing
+    JSON, maximum 1 MiB. Unsupported API methods return JSON 405 and unknown paths
+    JSON 404.
+servers:
+- url: https://{host}
+  variables:
+    host:
+      default: buddy.example.com
+  description: Public HTTPS
+- url: http://localhost:8080
+  description: Local demo
+tags:
+- name: Users
+- name: Buddy
+- name: Tracker
+- name: Ticket
+- name: Wiki
+security:
+- DemoUser: []
+paths:
+  /health/live:
+    get:
+      operationId: buddy_get_health_live
+      summary: Process liveness
+      description: Public endpoint.
+      responses:
+        '204':
+          $ref: '#/components/responses/BuddyNoContent'
+      tags:
+      - Buddy
+      security: []
+  /health/ready:
+    get:
+      operationId: buddy_get_health_ready
+      summary: Database readiness
+      description: Public endpoint.
+      responses:
+        '204':
+          $ref: '#/components/responses/BuddyNoContent'
+        '503':
+          description: Database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+      - Buddy
+      security: []
+  /api/chats:
+    post:
+      operationId: buddy_post_api_chats
+      summary: chats post
+      description: Selected intern profile. Access to another owner
+        or team is rejected; no data are disclosed.
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuddyChat'
+        '403':
+          $ref: '#/components/responses/Buddy403'
+        '500':
+          $ref: '#/components/responses/Buddy500'
+        '405':
+          $ref: '#/components/responses/Buddy405'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+      - Buddy
+    get:
+      operationId: buddy_get_api_chats
+      summary: chats get
+      description: Selected intern profile. Access to another owner
+        or team is rejected; no data are disclosed.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chats:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BuddyChat'
+                required:
+                - chats
+        '403':
+          $ref: '#/components/responses/Buddy403'
+        '500':
+          $ref: '#/components/responses/Buddy500'
+        '405':
+          $ref: '#/components/responses/Buddy405'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+      - Buddy
+  /api/chats/{id}:
+    get:
+      operationId: buddy_get_api_chats_id
+      summary: '{id} get'
+      description: Selected intern profile. Access to another owner
+        or team is rejected; no data are disclosed.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuddyHistory'
+        '403':
+          $ref: '#/components/responses/Buddy403'
+        '404':
+          $ref: '#/components/responses/Buddy404'
+        '500':
+          $ref: '#/components/responses/Buddy500'
+        '405':
+          $ref: '#/components/responses/Buddy405'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - $ref: '#/components/parameters/BuddyID'
+      tags:
+      - Buddy
+  /api/chats/{id}/messages:
+    post:
+      operationId: buddy_post_api_chats_id_messages
+      summary: messages post
+      description: Selected intern profile. Access to another owner
+        or team is rejected; no data are disclosed. Content must contain non-whitespace.
+        Same key and identical original content returns the same run (202); changed
+        content or another active run yields 409. Disconnecting does not stop generation.
+      responses:
+        '202':
+          $ref: '#/components/responses/BuddyRun'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Buddy403'
+        '404':
+          $ref: '#/components/responses/Buddy404'
+        '409':
+          $ref: '#/components/responses/Buddy409'
+        '500':
+          $ref: '#/components/responses/Buddy500'
+        '405':
+          $ref: '#/components/responses/Buddy405'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - $ref: '#/components/parameters/BuddyID'
+      - name: Idempotency-Key
+        in: header
+        required: true
+        description: Non-whitespace key, at most 200 UTF-8 bytes. Preserved verbatim;
+          maxLength is only a character upper bound.
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Non-whitespace; scoped to chat.
+          x-maxBytes: 200
+      requestBody:
+        required: true
+        description: JSON, at most 1 MiB. Unknown fields rejected.
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+              required:
+              - content
+              additionalProperties: false
+              example:
+                content: Help me find the onboarding guide
+      tags:
+      - Buddy
+  /api/runs/{id}/retry:
+    post:
+      operationId: buddy_post_api_runs_id_retry
+      summary: retry post
+      description: Selected intern profile. Access to another owner
+        or team is rejected; no data are disclosed. Only error runs can be retried.
+        The original message is reused. Repeated retry of the same original error
+        returns one new run. Another active run causes 409. No automatic retry after
+        restart.
+      responses:
+        '202':
+          $ref: '#/components/responses/BuddyRun'
+        '403':
+          $ref: '#/components/responses/Buddy403'
+        '404':
+          $ref: '#/components/responses/Buddy404'
+        '409':
+          $ref: '#/components/responses/Buddy409'
+        '500':
+          $ref: '#/components/responses/Buddy500'
+        '405':
+          $ref: '#/components/responses/Buddy405'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - $ref: '#/components/parameters/BuddyID'
+      tags:
+      - Buddy
+  /api/actions/{id}/confirm:
+    post:
+      operationId: buddy_post_api_actions_id_confirm
+      summary: confirm post
+      description: Selected intern profile. Access to another owner
+        or team is rejected; no data are disclosed.
+      responses:
+        '200':
+          $ref: '#/components/responses/BuddyAction'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Buddy403'
+        '404':
+          $ref: '#/components/responses/Buddy404'
+        '409':
+          $ref: '#/components/responses/Buddy409'
+        '500':
+          $ref: '#/components/responses/Buddy500'
+        '405':
+          $ref: '#/components/responses/Buddy405'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - $ref: '#/components/parameters/BuddyID'
+      requestBody:
+        required: true
+        description: Required JSON body. Both {} and top-level null reuse stored fields;
+          omitted or null fields also reuse them.
+        content:
+          application/json:
+            schema:
+              type:
+              - object
+              - 'null'
+              properties:
+                fields:
+                  anyOf:
+                  - $ref: '#/components/schemas/BuddyFields'
+                  - type: 'null'
+              required: []
+              additionalProperties: false
+              example: {}
+      tags:
+      - Buddy
+  /api/actions/{id}/cancel:
+    post:
+      operationId: buddy_post_api_actions_id_cancel
+      summary: cancel post
+      description: Selected intern profile. Access to another owner
+        or team is rejected; no data are disclosed.
+      responses:
+        '200':
+          $ref: '#/components/responses/BuddyAction'
+        '403':
+          $ref: '#/components/responses/Buddy403'
+        '404':
+          $ref: '#/components/responses/Buddy404'
+        '409':
+          $ref: '#/components/responses/Buddy409'
+        '500':
+          $ref: '#/components/responses/Buddy500'
+        '405':
+          $ref: '#/components/responses/Buddy405'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - $ref: '#/components/parameters/BuddyID'
+      tags:
+      - Buddy
+  /api/runs/{id}/events:
+    get:
+      operationId: buddy_get_api_runs_id_events
+      summary: Replay and follow persisted run events
+      description: 'Selected intern profile. Access to another owner
+        or team is rejected; no data are disclosed. Each frame has an integer id (per-run
+        sequence), event name and one JSON data value. Every 15 seconds of inactivity
+        a comment : heartbeat is sent without an id. Client disconnect does not cancel
+        the run. Reconnect with Last-Event-ID for replay, including partial text and
+        terminal events; duplicate IDs should be ignored. After restart queued/running
+        runs terminate with error and require manual retry. Comment heartbeats are
+        periodic, have no ID, and do not advance the replay cursor. Payloads are validated
+        per event, not as a JSON stream.'
+      responses:
+        '200':
+          description: SSE stream; closes after terminal event. Late subscribers replay
+            stored events.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                stream:
+                  value: ': heartbeat
+
+
+                    id: 1
+
+                    event: stage
+
+                    data: "answering"
+
+
+                    id: 2
+
+                    event: text
+
+                    data: "Hello"
+
+
+                    id: 3
+
+                    event: usage
+
+                    data: {"prompt_eval_count":128,"num_ctx":4096}
+
+
+                    id: 4
+
+                    event: done
+
+                    data: {"status":"done","error":""}
+
+
+                    '
+                source:
+                  value: 'id: 5
+
+                    event: source
+
+                    data: {"document_id":"guide","document_title":"Guide","section_title":"Setup","text":"Excerpt","url":"https://wiki.example.invalid/api/documents/guide"}
+
+
+                    '
+                action:
+                  value: 'id: 6
+
+                    event: action
+
+                    data: {"id":"action","kind":"create_task","status":"draft","fields":{"title":"Read
+                    guide","description":"","deadline":"2026-12-01"}}
+
+
+                    '
+                result:
+                  value: 'id: 7
+
+                    event: result
+
+                    data: {"id": "task", "intern_id": "intern", "title": "Read guide",
+                    "description": "Setup", "deadline": "2026-12-01", "created_at":
+                    "2026-11-14T12:00:00Z", "completed_at": "2026-11-14T12:05:00Z",
+                    "status": "completed", "overdue": false}
+
+
+                    '
+                error:
+                  value: 'id: 8
+
+                    event: error
+
+                    data: {"status":"error","error":"service restarted; retry manually"}
+
+
+                    '
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                enum:
+                - no-cache
+            X-Accel-Buffering:
+              schema:
+                type: string
+                enum:
+                - 'no'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Buddy403'
+        '404':
+          $ref: '#/components/responses/Buddy404'
+        '500':
+          $ref: '#/components/responses/Buddy500'
+        '405':
+          $ref: '#/components/responses/Buddy405'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - $ref: '#/components/parameters/BuddyID'
+      - name: Last-Event-ID
+        in: header
+        required: false
+        description: Nonnegative signed int64 parsed in base 10; +1 and -0 are accepted.
+          Replay strictly after this per-run sequence ID; overflow is rejected.
+        schema:
+          type: string
+          pattern: ^([+]?[0-9]+|-0+)$
+          description: Nonnegative signed int64 decimal.
+      x-event-payloads:
+        stage:
+          $ref: '#/components/schemas/BuddyStageEvent'
+        text:
+          $ref: '#/components/schemas/BuddyTextEvent'
+        source:
+          $ref: '#/components/schemas/BuddySourceEvent'
+        action:
+          $ref: '#/components/schemas/BuddyActionEvent'
+        result:
+          $ref: '#/components/schemas/BuddyResultEvent'
+        usage:
+          $ref: '#/components/schemas/BuddyUsageEvent'
+        done:
+          $ref: '#/components/schemas/BuddyDoneEvent'
+        error:
+          $ref: '#/components/schemas/BuddyErrorEvent'
+      tags:
+      - Buddy
+  /api/tasks:
+    get:
+      operationId: tracker_get_api_tasks
+      summary: Read tasks
+      description: Selected intern profile. Access to another owner
+        or team is rejected; no data are disclosed.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type:
+                    - array
+                    - 'null'
+                    items:
+                      $ref: '#/components/schemas/TrackerTask'
+                required:
+                - tasks
+        '403':
+          $ref: '#/components/responses/Tracker403'
+        '404':
+          $ref: '#/components/responses/Tracker404'
+        '500':
+          $ref: '#/components/responses/Tracker500'
+        '405':
+          $ref: '#/components/responses/Tracker405'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+      - Tracker
+    post:
+      operationId: tracker_post_api_tasks
+      summary: Create task
+      description: Selected intern profile. Access to another owner
+        or team is rejected; no data are disclosed.
+      responses:
+        '201':
+          $ref: '#/components/responses/TrackerTask'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Tracker403'
+        '404':
+          $ref: '#/components/responses/Tracker404'
+        '409':
+          $ref: '#/components/responses/Tracker409'
+        '500':
+          $ref: '#/components/responses/Tracker500'
+        '200':
+          $ref: '#/components/responses/TrackerTaskReplay'
+        '405':
+          $ref: '#/components/responses/Tracker405'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        $ref: '#/components/requestBodies/TrackerCreateTask'
+      parameters:
+      - $ref: '#/components/parameters/TrackerIdempotencyKey'
+      tags:
+      - Tracker
+  /api/tasks/{taskID}/complete:
+    post:
+      operationId: tracker_post_api_tasks_taskID_complete
+      summary: Complete task idempotently
+      description: Selected intern profile. Access to another owner
+        or team is rejected; no data are disclosed.
+      responses:
+        '200':
+          $ref: '#/components/responses/TrackerTask'
+        '403':
+          $ref: '#/components/responses/Tracker403'
+        '404':
+          $ref: '#/components/responses/Tracker404'
+        '500':
+          $ref: '#/components/responses/Tracker500'
+        '405':
+          $ref: '#/components/responses/Tracker405'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - $ref: '#/components/parameters/TrackerTaskID'
+      tags:
+      - Tracker
+  /api/progress:
+    get:
+      operationId: tracker_get_api_progress
+      summary: Read progress
+      description: Selected intern profile. Access to another owner
+        or team is rejected; no data are disclosed.
+      responses:
+        '200':
+          $ref: '#/components/responses/TrackerProgress'
+        '403':
+          $ref: '#/components/responses/Tracker403'
+        '404':
+          $ref: '#/components/responses/Tracker404'
+        '500':
+          $ref: '#/components/responses/Tracker500'
+        '405':
+          $ref: '#/components/responses/Tracker405'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+      - Tracker
+  /api/interns:
+    get:
+      operationId: tracker_get_api_interns
+      summary: Read interns
+      description: Selected mentor profile. Access to another owner
+        or team is rejected; no data are disclosed.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  interns:
+                    type:
+                    - array
+                    - 'null'
+                    items:
+                      $ref: '#/components/schemas/Profile'
+                required:
+                - interns
+        '403':
+          $ref: '#/components/responses/Tracker403'
+        '500':
+          $ref: '#/components/responses/Tracker500'
+        '405':
+          $ref: '#/components/responses/Tracker405'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+      - Tracker
+  /api/interns/{id}/progress:
+    get:
+      operationId: tracker_get_api_interns_id_progress
+      summary: Read progress
+      description: Selected mentor profile. Access to another owner
+        or team is rejected; no data are disclosed.
+      responses:
+        '200':
+          $ref: '#/components/responses/TrackerProgress'
+        '403':
+          $ref: '#/components/responses/Tracker403'
+        '404':
+          $ref: '#/components/responses/Tracker404'
+        '500':
+          $ref: '#/components/responses/Tracker500'
+        '405':
+          $ref: '#/components/responses/Tracker405'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - $ref: '#/components/parameters/TrackerID'
+      tags:
+      - Tracker
+  /api/tickets:
+    get:
+      operationId: ticket_get_api_tickets
+      summary: List own sent questions
+      description: Selected intern profile. Access to another owner
+        or team is rejected; no data are disclosed.
+      responses:
+        '200':
+          $ref: '#/components/responses/TicketTickets'
+        '403':
+          $ref: '#/components/responses/Ticket403'
+        '500':
+          $ref: '#/components/responses/Ticket500'
+        '405':
+          $ref: '#/components/responses/Ticket405'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+      - Ticket
+    post:
+      operationId: ticket_post_api_tickets
+      summary: Send question to assigned mentor
+      description: Selected intern profile. Access to another owner
+        or team is rejected; no data are disclosed. Question and description are trimmed
+        and must contain non-whitespace. Recipient is resolved by Tracker, never accepted
+        from the caller. Retry checks an existing ticket before looking up the mentor;
+        changed fields cause 409.
+      responses:
+        '201':
+          $ref: '#/components/responses/TicketTicket'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Ticket403'
+        '404':
+          $ref: '#/components/responses/Ticket404'
+        '409':
+          $ref: '#/components/responses/Ticket409'
+        '422':
+          $ref: '#/components/responses/Ticket422'
+        '500':
+          $ref: '#/components/responses/Ticket500'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '200':
+          $ref: '#/components/responses/TicketTicketReplay'
+        '405':
+          $ref: '#/components/responses/Ticket405'
+      requestBody:
+        $ref: '#/components/requestBodies/TicketCreateTicket'
+      parameters:
+      - $ref: '#/components/parameters/TicketIdempotencyKey'
+      tags:
+      - Ticket
+  /api/tickets/incoming:
+    get:
+      operationId: ticket_get_api_tickets_incoming
+      summary: List incoming questions
+      description: Selected mentor profile. Access to another owner
+        or team is rejected; no data are disclosed.
+      responses:
+        '200':
+          $ref: '#/components/responses/TicketTickets'
+        '403':
+          $ref: '#/components/responses/Ticket403'
+        '500':
+          $ref: '#/components/responses/Ticket500'
+        '405':
+          $ref: '#/components/responses/Ticket405'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+      - Ticket
+  /api/documents:
+    get:
+      operationId: wiki_get_api_documents
+      summary: Read team documentation
+      description: Selected intern or mentor profile. Access to another
+        owner or team is rejected; no data are disclosed. Only common and current
+        team documents are visible. Empty results are []. URLs are relative /api/documents/{id};
+        markdown is returned as source text. Internal search resolves team through
+        Authentik, does not trust a team parameter.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WikiMetadata'
+        '403':
+          $ref: '#/components/responses/Wiki403'
+        '500':
+          $ref: '#/components/responses/Wiki500'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '405':
+          $ref: '#/components/responses/Wiki405'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+      - Wiki
+  /api/documents/{id}:
+    get:
+      operationId: wiki_get_api_documents_id
+      summary: Read team documentation
+      description: Selected intern or mentor profile. Access to another
+        owner or team is rejected; no data are disclosed. Only common and current
+        team documents are visible. Empty results are []. URLs are relative /api/documents/{id};
+        markdown is returned as source text. Internal search resolves team through
+        Authentik, does not trust a team parameter.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WikiDocument'
+        '403':
+          $ref: '#/components/responses/Wiki403'
+        '404':
+          $ref: '#/components/responses/Wiki404'
+        '500':
+          $ref: '#/components/responses/Wiki500'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '405':
+          $ref: '#/components/responses/Wiki405'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - $ref: '#/components/parameters/WikiID'
+      tags:
+      - Wiki
+  /api/search:
+    post:
+      operationId: wiki_post_api_search
+      summary: Search team documentation
+      description: Selected intern or mentor profile. Access to another
+        owner or team is rejected; no data are disclosed. Only common and current
+        team documents are visible. Empty results are []. URLs are relative /api/documents/{id};
+        markdown is returned as source text. Internal search resolves team through
+        Authentik, does not trust a team parameter.
+      responses:
+        '200':
+          $ref: '#/components/responses/WikiSearchResults'
+        '400':
+          description: Invalid input or missing, empty or unknown demo_user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Wiki403'
+        '500':
+          $ref: '#/components/responses/Wiki500'
+        '503':
+          description: Dependency or profile database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '405':
+          $ref: '#/components/responses/Wiki405'
+      requestBody:
+        $ref: '#/components/requestBodies/WikiQuery'
+      tags:
+      - Wiki
+  /api/users:
+    get:
+      operationId: listUsers
+      tags:
+      - Users
+      summary: Demo profiles sorted by ID
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - users
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Profile'
+        '503':
+          description: Profile database unavailable
+      security: []
+  /api/me:
+    get:
+      operationId: selectedUser
+      tags:
+      - Users
+      summary: Selected demo profile
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '503':
+          description: Profile database unavailable
+        '400':
+          description: Missing, empty or unknown demo_user
+components:
+  securitySchemes:
+    DemoUser:
+      type: apiKey
+      in: cookie
+      name: demo_user
+      description: Demo profile selector; no authentication or identity verification.
+  schemas:
+    BuddyError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+      example:
+        error: invalid input
+      additionalProperties: false
+    BuddyChat:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+          maxLength: 80
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - title
+      - created_at
+      additionalProperties: false
+    BuddyRun:
+      type: object
+      properties:
+        id:
+          type: string
+        chat_id:
+          type: string
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - done
+          - error
+        error:
+          type: string
+        events_url:
+          type: string
+      required:
+      - id
+      - chat_id
+      - status
+      - error
+      - events_url
+      description: One active run per chat. Errors require manual retry. An interrupted
+        response remains in history.
+      additionalProperties: false
+    BuddyTaskFields:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Must contain non-whitespace text. Length bounds count the submitted
+            Unicode characters.
+        description:
+          type:
+          - string
+          - 'null'
+          maxLength: 10000
+          description: Null or omission decodes to an empty string.
+        deadline:
+          type: string
+          format: date
+      required:
+      - title
+      - deadline
+      additionalProperties: false
+    BuddyTicketFields:
+      type: object
+      properties:
+        question:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Must contain non-whitespace text. Length bounds count the submitted
+            Unicode characters.
+        description:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: Must contain non-whitespace text. Length bounds count the submitted
+            Unicode characters.
+      required:
+      - question
+      - description
+      additionalProperties: false
+    BuddyFields:
+      oneOf:
+      - $ref: '#/components/schemas/BuddyTaskFields'
+      - $ref: '#/components/schemas/BuddyTicketFields'
+    BuddyAction:
+      type: object
+      properties:
+        id:
+          type: string
+        run_id:
+          type: string
+        kind:
+          type: string
+          enum:
+          - create_task
+          - create_ticket
+        status:
+          type: string
+          enum:
+          - draft
+          - executing
+          - done
+          - error
+          - cancelled
+        fields:
+          $ref: '#/components/schemas/BuddyFields'
+        result:
+          anyOf:
+          - $ref: '#/components/schemas/BuddyTaskResult'
+          - $ref: '#/components/schemas/BuddyTicketResult'
+          - type: 'null'
+        error:
+          type: string
+      required:
+      - id
+      - run_id
+      - kind
+      - status
+      - fields
+      - result
+      - error
+      description: 'Confirm freezes fields atomically and uses buddy-action:{id} downstream
+        forever. Executing/cancelled actions conflict. A done action is returned without
+        another write. Retry an error manually with the same fields (or omit them).
+        Cancel only a draft; repeated cancel succeeds. Result is null until a downstream
+        result is saved. An HTTP 200 action may have status error: inspect status
+        and error. Frozen fields retain the submitted JSON representation, including
+        a null task description; downstream decoding treats it as an empty string.'
+      additionalProperties: false
+    BuddyMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        run_id:
+          type: string
+        role:
+          type: string
+          enum:
+          - user
+          - assistant
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - run_id
+      - role
+      - content
+      - created_at
+      additionalProperties: false
+    BuddyCard:
+      type: object
+      properties:
+        run_id:
+          type: string
+        kind:
+          type: string
+          enum:
+          - source
+          - result
+        data:
+          type: object
+      required:
+      - run_id
+      - kind
+      - data
+      additionalProperties: false
+    BuddyHistory:
+      type: object
+      properties:
+        chat:
+          $ref: '#/components/schemas/BuddyChat'
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/BuddyMessage'
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/BuddyRun'
+        latest_run:
+          anyOf:
+          - $ref: '#/components/schemas/BuddyRun'
+          - type: 'null'
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/BuddyAction'
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/BuddyCard'
+      required:
+      - chat
+      - messages
+      - runs
+      - latest_run
+      - actions
+      - cards
+      description: All collections use [], never null. latest_run is null for an empty
+        chat.
+      additionalProperties: false
+    BuddyStageEvent:
+      type: string
+      description: waiting_for_model, choosing_tools, answering, or the tool name.
+      example: answering
+    BuddyTextEvent:
+      type: string
+      description: Incremental text, committed to the assistant message before transmission.
+      example: Hello
+    BuddySourceEvent:
+      type: object
+      properties:
+        document_id:
+          type: string
+        document_title:
+          type: string
+        section_title:
+          type: string
+        text:
+          type: string
+        url:
+          type: string
+      required:
+      - document_id
+      - document_title
+      - section_title
+      - text
+      - url
+    BuddyActionEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum:
+          - create_task
+          - create_ticket
+        status:
+          type: string
+          enum:
+          - draft
+        fields:
+          $ref: '#/components/schemas/BuddyFields'
+      required:
+      - id
+      - kind
+      - status
+      - fields
+    BuddyResultEvent:
+      $ref: '#/components/schemas/BuddyTaskResult'
+    BuddyUsageEvent:
+      type: object
+      properties:
+        prompt_eval_count:
+          type: integer
+        num_ctx:
+          type: integer
+          const: 4096
+      required:
+      - prompt_eval_count
+      - num_ctx
+    BuddyDoneEvent:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - done
+        error:
+          type: string
+          enum:
+          - ''
+      required:
+      - status
+      - error
+    BuddyErrorEvent:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - error
+        error:
+          type: string
+      required:
+      - status
+      - error
+    BuddyTaskResult:
+      type: object
+      properties:
+        id:
+          type: string
+        intern_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        deadline:
+          type: string
+          format: date
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        status:
+          type: string
+          enum:
+          - pending
+          - completed
+        overdue:
+          type: boolean
+      required:
+      - id
+      - intern_id
+      - title
+      - description
+      - deadline
+      - created_at
+      - completed_at
+      - status
+      - overdue
+      description: Overdue means incomplete with deadline earlier than the current
+        APP_TIMEZONE calendar date. Completed tasks always have overdue=false. Dates
+        are YYYY-MM-DD; timestamps include a timezone.
+      example:
+        id: task
+        intern_id: intern
+        title: Read guide
+        description: Setup
+        deadline: '2026-12-01'
+        created_at: '2026-11-14T12:00:00Z'
+        completed_at: '2026-11-14T12:05:00Z'
+        status: completed
+        overdue: false
+      additionalProperties: false
+    BuddyTicketResult:
+      type: object
+      properties:
+        id:
+          type: string
+        sender_id:
+          type: string
+        recipient_id:
+          type: string
+        question:
+          type: string
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - sender_id
+      - recipient_id
+      - question
+      - description
+      - created_at
+      additionalProperties: false
+    TrackerError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+      example:
+        error: invalid input
+      additionalProperties: false
+    TrackerTask:
+      type: object
+      properties:
+        id:
+          type: string
+        intern_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        deadline:
+          type: string
+          format: date
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        status:
+          type: string
+          enum:
+          - pending
+          - completed
+        overdue:
+          type: boolean
+      required:
+      - id
+      - intern_id
+      - title
+      - description
+      - deadline
+      - created_at
+      - completed_at
+      - status
+      - overdue
+      description: Overdue means incomplete with deadline earlier than the current
+        APP_TIMEZONE calendar date. Completed tasks always have overdue=false. Dates
+        are YYYY-MM-DD; timestamps include a timezone. Task lists are ordered by created_at
+        then ID. Next task is the first overdue task in list order, otherwise the
+        nearest deadline with list-order ties.
+      additionalProperties: false
+    TrackerCreateTask:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          description: Trimmed before validation and idempotency comparison.
+          x-trim: true
+        description:
+          type:
+          - string
+          - 'null'
+          description: Trimmed before validation and idempotency comparison. Null
+            or omission decodes to an empty string.
+          x-trim: true
+        deadline:
+          type: string
+          format: date
+          description: Trimmed before validation and idempotency comparison.
+          x-trim: true
+      required:
+      - title
+      - deadline
+      additionalProperties: false
+      example:
+        title: Read the guide
+        description: First task
+        deadline: '2026-12-01'
+    TrackerProgress:
+      type: object
+      properties:
+        intern:
+          $ref: '#/components/schemas/Profile'
+        mentor:
+          anyOf:
+          - $ref: '#/components/schemas/Profile'
+          - type: 'null'
+        start_date:
+          type:
+          - string
+          - 'null'
+          format: date
+        goals:
+          type: string
+        expectations:
+          type: string
+        tasks:
+          type:
+          - array
+          - 'null'
+          items:
+            $ref: '#/components/schemas/TrackerTask'
+        completed:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 0
+        percent:
+          type: integer
+          minimum: 0
+          maximum: 100
+        next_task:
+          anyOf:
+          - $ref: '#/components/schemas/TrackerTask'
+          - type: 'null'
+      required:
+      - intern
+      - mentor
+      - start_date
+      - goals
+      - expectations
+      - tasks
+      - completed
+      - total
+      - percent
+      - next_task
+      description: No mentor, start date or next task is represented by null. Task/profile
+        collection DTOs preserve null versus []; normal task service lists are [].
+        Mentor can only inspect assigned interns.
+      additionalProperties: false
+    TicketError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+      example:
+        error: invalid input
+      additionalProperties: false
+    TicketTicket:
+      type: object
+      properties:
+        id:
+          type: string
+        sender_id:
+          type: string
+        recipient_id:
+          type: string
+        question:
+          type: string
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - sender_id
+      - recipient_id
+      - question
+      - description
+      - created_at
+      additionalProperties: false
+    TicketCreateTicket:
+      type: object
+      properties:
+        question:
+          type: string
+          minLength: 1
+          description: Trimmed; must contain non-whitespace text. No additional character
+            limit beyond the body-size limit.
+          x-trim: true
+        description:
+          type: string
+          minLength: 1
+          description: Trimmed; must contain non-whitespace text. No additional character
+            limit beyond the body-size limit.
+          x-trim: true
+      required:
+      - question
+      - description
+      additionalProperties: false
+      example:
+        question: Help with setup?
+        description: Describe the problem and attempted steps.
+    TicketTickets:
+      type: object
+      properties:
+        tickets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketTicket'
+      required:
+      - tickets
+      description: Empty lists are [], never null.
+      additionalProperties: false
+    WikiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+      example:
+        error: invalid input
+      additionalProperties: false
+    WikiMetadata:
+      type: object
+      properties:
+        id:
+          type: string
+        path:
+          type: string
+        title:
+          type: string
+        url:
+          type: string
+      required:
+      - id
+      - path
+      - title
+      - url
+      example:
+        id: document
+        path: common/guide.md
+        title: Guide
+        url: /api/documents/document
+      additionalProperties: false
+    WikiDocument:
+      type: object
+      properties:
+        id:
+          type: string
+        path:
+          type: string
+        title:
+          type: string
+        url:
+          type: string
+        markdown:
+          type: string
+      required:
+      - id
+      - path
+      - title
+      - url
+      - markdown
+      additionalProperties: false
+    WikiSource:
+      type: object
+      properties:
+        document_id:
+          type: string
+        document_title:
+          type: string
+        section_title:
+          type: string
+        anchor:
+          type: string
+        text:
+          type: string
+        url:
+          type: string
+      required:
+      - document_id
+      - document_title
+      - section_title
+      - anchor
+      - text
+      - url
+      additionalProperties: false
+    WikiQuery:
+      type: object
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: Trimmed; whitespace-only is invalid.
+      required:
+      - query
+      additionalProperties: false
+      example:
+        query: How do I set up my workspace?
+    Profile:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - name
+      - username
+      - email
+      - role
+      - team
+      - start_date
+      - goals
+      - expectations
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum:
+          - intern
+          - mentor
+        team:
+          type: string
+        goals:
+          type: string
+        expectations:
+          type: string
+        start_date:
+          type:
+          - string
+          - 'null'
+          format: date
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: string
+  responses:
+    Buddy403:
+      description: Role forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BuddyError'
+    Buddy404:
+      description: Resource absent or outside owner/team scope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BuddyError'
+    Buddy405:
+      description: Unsupported method at a known domain path. Allow lists registered methods; GET also accepts HEAD.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BuddyError'
+      headers:
+        Allow:
+          schema:
+            type: string
+          description: Explicit registered methods, comma-space separated; GET also
+            accepts HEAD even when HEAD is absent here.
+    Buddy409:
+      description: Idempotency or state conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BuddyError'
+    Buddy500:
+      description: Storage unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BuddyError'
+    BuddyNoContent:
+      description: Success; no response body
+    BuddyRun:
+      description: Success
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BuddyRun'
+    BuddyAction:
+      description: Success
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BuddyAction'
+    Tracker403:
+      description: Role forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TrackerError'
+    Tracker404:
+      description: Resource absent or outside owner/team scope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TrackerError'
+    Tracker405:
+      description: Unsupported method at a known domain path. Allow lists registered methods; GET also accepts HEAD.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TrackerError'
+      headers:
+        Allow:
+          schema:
+            type: string
+          description: Explicit registered methods, comma-space separated; GET also
+            accepts HEAD even when HEAD is absent here.
+    Tracker409:
+      description: Idempotency or state conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TrackerError'
+    Tracker500:
+      description: Storage unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TrackerError'
+    TrackerTask:
+      description: Success
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TrackerTask'
+    TrackerTaskReplay:
+      description: Same key and same normalized fields returns the existing task;
+        changed fields cause 409.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TrackerTask'
+    TrackerProgress:
+      description: Success
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TrackerProgress'
+    Ticket403:
+      description: Role forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TicketError'
+    Ticket404:
+      description: Resource absent or outside owner/team scope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TicketError'
+    Ticket405:
+      description: Unsupported method at a known domain path. Allow lists registered methods; GET also accepts HEAD.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TicketError'
+      headers:
+        Allow:
+          schema:
+            type: string
+          description: Explicit registered methods, comma-space separated; GET also
+            accepts HEAD even when HEAD is absent here.
+    Ticket409:
+      description: Idempotency or state conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TicketError'
+    Ticket422:
+      description: Ментор не назначен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TicketError'
+    Ticket500:
+      description: Storage unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TicketError'
+    TicketTickets:
+      description: Success
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TicketTickets'
+    TicketTicket:
+      description: Success
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TicketTicket'
+    TicketTicketReplay:
+      description: Existing ticket for the same sender, key and trimmed fields. No
+        duplicate even if the first response was lost.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TicketTicket'
+    Wiki403:
+      description: Role forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WikiError'
+    Wiki404:
+      description: Resource absent or outside owner/team scope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WikiError'
+    Wiki405:
+      description: Unsupported method at a known domain path. Allow lists registered methods; GET also accepts HEAD.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WikiError'
+      headers:
+        Allow:
+          schema:
+            type: string
+          description: Explicit registered methods, comma-space separated; GET also
+            accepts HEAD even when HEAD is absent here.
+    Wiki500:
+      description: Storage unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WikiError'
+    WikiSearchResults:
+      description: Success
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/WikiSource'
+            maxItems: 3
+  parameters:
+    BuddyID:
+      name: id
+      in: path
+      required: true
+      description: id
+      schema:
+        type: string
+        minLength: 1
+    TrackerIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Non-whitespace key, at most 256 UTF-8 bytes. Preserved verbatim;
+        maxLength is only a character upper bound.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 256
+        x-maxBytes: 256
+    TrackerTaskID:
+      name: taskID
+      in: path
+      required: true
+      description: taskID
+      schema:
+        type: string
+        minLength: 1
+    TrackerID:
+      name: id
+      in: path
+      required: true
+      description: id
+      schema:
+        type: string
+        minLength: 1
+    TicketIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Non-whitespace key, at most 256 UTF-8 bytes. Preserved verbatim;
+        maxLength is only a character upper bound.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 256
+        x-maxBytes: 256
+    WikiID:
+      name: id
+      in: path
+      required: true
+      description: id
+      schema:
+        type: string
+        minLength: 1
+  requestBodies:
+    TrackerCreateTask:
+      required: true
+      description: JSON, at most 1 MiB. Unknown fields rejected.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TrackerCreateTask'
+    TicketCreateTicket:
+      required: true
+      description: JSON, at most 1 MiB. Unknown fields rejected.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TicketCreateTicket'
+    WikiQuery:
+      required: true
+      description: JSON, at most 1 MiB. Unknown fields rejected.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WikiQuery'
