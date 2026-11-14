@@ -1,0 +1,56 @@
+name: ai-buddy
+services:
+  app:
+    build: ..
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://buddy:${POSTGRES_PASSWORD:-buddy}@postgres:5432/buddy?sslmode=disable
+      HTTP_ADDR: :8080
+      OLLAMA_URL: http://ollama:11434
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Moscow}
+      KNOWLEDGE_BASE_DIR: /knowledge-base
+      WIKI_MIN_SIMILARITY: ${WIKI_MIN_SIMILARITY:-0.35}
+    volumes:
+      - ../../knowledge-base:/knowledge-base:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: buddy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-buddy}
+      POSTGRES_DB: buddy
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U buddy -d buddy"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama:/root/.ollama
+  models:
+    image: ollama/ollama:latest
+    profiles: [tools]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_started
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        until ollama list >/dev/null 2>&1; do sleep 1; done
+        ollama pull qwen3.5:4b
+        ollama pull embeddinggemma:300m
+volumes:
+  postgres:
+  ollama:
+    name: ${OLLAMA_VOLUME_NAME:-ai-buddy_ollama}
