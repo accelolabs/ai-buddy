@@ -4,11 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log/slog"
 	"time"
 
+	"ai-buddy/internal/platform/cleanup"
 	"ai-buddy/internal/platform/config"
-	"ai-buddy/internal/platform/database"
 )
 
 type Operation func(context.Context, *sql.DB) error
@@ -47,12 +46,6 @@ func Run(args []string, migration bool, prepare Prepare, open func(context.Conte
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			slog.Warn("resource cleanup failed", "error", err)
-		}
-	}()
+	defer cleanup.Close(db)
 	return op(ctx, db)
 }
-
-var Open = database.Open

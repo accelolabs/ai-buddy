@@ -7,11 +7,12 @@ import (
 	"os"
 
 	"ai-buddy/internal/platform/cli"
+	"ai-buddy/internal/platform/database"
 	ticket "ai-buddy/internal/ticket/seed"
 	tracker "ai-buddy/internal/tracker/seed"
 )
 
-var openDatabase = cli.Open
+var openDatabase = database.Open
 
 func prepare(service, command string) (cli.Operation, error) {
 	if service == "tracker" {
