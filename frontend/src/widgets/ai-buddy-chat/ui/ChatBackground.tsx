@@ -130,7 +130,6 @@ export function ChatBackground() {
         }
       `}</style>
 
-      {/* Left Circuit: Originates from sidebar, filling the space left of chat */}
       <div
         className="absolute left-0 top-0 bottom-0 hidden overflow-hidden min-[900px]:block"
         style={{ width: 'calc(50% - 370px)', maxWidth: '480px' }}
@@ -153,7 +152,6 @@ export function ChatBackground() {
             </filter>
           </defs>
 
-          {/* Base circuit traces */}
           <g
             stroke="#94A3B8"
             strokeWidth="1.6"
@@ -166,7 +164,6 @@ export function ChatBackground() {
             ))}
           </g>
 
-          {/* Sidebar contact pins */}
           <g fill="#94A3B8" opacity="0.45">
             {LEFT_CIRCUIT_CONFIG.map((item) => (
               <rect
@@ -180,7 +177,6 @@ export function ChatBackground() {
             ))}
           </g>
 
-          {/* Animated glowing pulses and terminal nodes */}
           {LEFT_CIRCUIT_CONFIG.map((item) => (
             <g
               key={`animated-${item.id}`}
@@ -201,7 +197,6 @@ export function ChatBackground() {
                 style={{ animationDelay: item.delay }}
               />
 
-              {/* Glowing halo */}
               <circle
                 cx={item.dot.cx}
                 cy={item.dot.cy}
@@ -210,16 +205,13 @@ export function ChatBackground() {
                 opacity="0.35"
                 filter="url(#neonGlowLeft)"
               />
-              {/* Outer dot */}
               <circle cx={item.dot.cx} cy={item.dot.cy} r="4" fill="currentColor" />
-              {/* Bright center core */}
               <circle cx={item.dot.cx} cy={item.dot.cy} r="1.5" fill="#FFFFFF" opacity="0.9" />
             </g>
           ))}
         </svg>
       </div>
 
-      {/* Right Circuit: Symmetrical subtle lines from right edge, leaving chat area clear */}
       <div
         className="absolute right-0 top-0 bottom-0 hidden overflow-hidden min-[900px]:block"
         style={{ width: 'calc(50% - 370px)', maxWidth: '360px' }}
@@ -242,7 +234,6 @@ export function ChatBackground() {
             </filter>
           </defs>
 
-          {/* Base circuit traces */}
           <g
             stroke="#94A3B8"
             strokeWidth="1.6"
@@ -255,7 +246,6 @@ export function ChatBackground() {
             ))}
           </g>
 
-          {/* Right edge contact pins */}
           <g fill="#94A3B8" opacity="0.45">
             {RIGHT_CIRCUIT_CONFIG.map((item) => (
               <rect
@@ -269,7 +259,6 @@ export function ChatBackground() {
             ))}
           </g>
 
-          {/* Animated glowing pulses and terminal nodes */}
           {RIGHT_CIRCUIT_CONFIG.map((item) => (
             <g
               key={`animated-${item.id}`}
@@ -290,7 +279,6 @@ export function ChatBackground() {
                 style={{ animationDelay: item.delay }}
               />
 
-              {/* Glowing halo */}
               <circle
                 cx={item.dot.cx}
                 cy={item.dot.cy}
@@ -299,9 +287,7 @@ export function ChatBackground() {
                 opacity="0.35"
                 filter="url(#neonGlowRight)"
               />
-              {/* Outer dot */}
               <circle cx={item.dot.cx} cy={item.dot.cy} r="4" fill="currentColor" />
-              {/* Bright center core */}
               <circle cx={item.dot.cx} cy={item.dot.cy} r="1.5" fill="#FFFFFF" opacity="0.9" />
             </g>
           ))}
