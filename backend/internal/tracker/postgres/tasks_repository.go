@@ -88,9 +88,9 @@ func (p *Repository) Create(ctx context.Context, id, key string, input tasks.Cre
 		INSERT INTO tasks(
 			id,intern_id,team,title,description,deadline,idempotency_key
 		)
-		SELECT $1,authentik_id,team,$3,$4,$5,$6
+		SELECT $1,id,team,$3,$4,$5,$6
 		FROM profiles
-		WHERE authentik_id=$2 AND role='intern'
+		WHERE id=$2 AND role='intern'
 		ON CONFLICT (intern_id,idempotency_key) DO NOTHING
 		RETURNING ` + taskColumns
 

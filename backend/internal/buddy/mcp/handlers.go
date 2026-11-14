@@ -7,14 +7,14 @@ import (
 	"strings"
 
 	"ai-buddy/internal/buddy"
-	"ai-buddy/internal/platform/auth"
+	"ai-buddy/internal/users"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type runTools struct {
 	tools   *Tools
-	user    auth.User
+	user    users.User
 	run     buddy.Run
 	request string
 }
@@ -41,7 +41,7 @@ func (h *runTools) search(ctx context.Context, _ *sdk.CallToolRequest, a searchA
 		if e != nil {
 			return nil, nil, e
 		}
-		return nil, map[string]any{"sources": sources, "message": "No answer found. Offer to contact the mentor.", "mentor_assigned": len(p.Mentor) > 0 && string(p.Mentor) != "null"}, nil
+		return nil, map[string]any{"sources": sources, "message": "No answer found. Offer to contact the mentor.", "mentor_assigned": p.Mentor != nil}, nil
 	}
 	return nil, sources, nil
 }

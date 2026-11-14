@@ -1,16 +1,5 @@
 package wikihttp
 
-import (
-	"context"
+import "ai-buddy/internal/wiki"
 
-	"ai-buddy/internal/wiki"
-)
-
-type Teams interface {
-	Team(context.Context, string) (string, error)
-}
-
-type Handler struct {
-	Service *wiki.Service
-	Teams   Teams
-}
+type Handler struct{ Service *wiki.Service }

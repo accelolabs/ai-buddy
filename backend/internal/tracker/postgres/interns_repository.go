@@ -11,7 +11,7 @@ import (
 )
 
 const profileColumns = `
-	authentik_id,
+	id,
 	name,
 	username,
 	email,
@@ -46,7 +46,7 @@ func (p *Repository) Intern(ctx context.Context, id string) (interns.Profile, er
 	const query = `
 		SELECT ` + profileColumns + `
 		FROM profiles
-		WHERE authentik_id=$1 AND role='intern'
+		WHERE id=$1 AND role='intern'
 	`
 
 	row := p.db.QueryRowContext(ctx, query, id)
@@ -57,7 +57,7 @@ func (p *Repository) Mentor(ctx context.Context, id string) (*interns.Profile, e
 	const query = `
 		SELECT ` + profileColumns + `
 		FROM profiles
-		WHERE authentik_id=(
+		WHERE id=(
 			SELECT mentor_id FROM assignments WHERE intern_id=$1
 		)
 	`
@@ -78,10 +78,10 @@ func (p *Repository) Interns(ctx context.Context, id string) ([]interns.Profile,
 	const query = `
 		SELECT ` + profileColumns + `
 		FROM profiles
-		WHERE authentik_id IN (
+		WHERE id IN (
 			SELECT intern_id FROM assignments WHERE mentor_id=$1
 		)
-		ORDER BY authentik_id
+		ORDER BY id
 	`
 
 	rows, err := p.db.QueryContext(ctx, query, id)

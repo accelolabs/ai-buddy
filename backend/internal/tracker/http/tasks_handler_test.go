@@ -11,6 +11,7 @@ import (
 
 	"ai-buddy/internal/tracker/apperror"
 	"ai-buddy/internal/tracker/tasks"
+	"ai-buddy/internal/users"
 )
 
 type tasksStub struct {
@@ -49,8 +50,8 @@ func (s *tasksStub) Complete(_ context.Context, id, taskID string) (tasks.Task, 
 }
 
 func request(handler http.HandlerFunc, body string) *httptest.ResponseRecorder {
-	r := httptest.NewRequest("POST", "/internal/interns/i/tasks", strings.NewReader(body))
-	r.SetPathValue("id", "i")
+	r := httptest.NewRequest("POST", "/api/tasks", strings.NewReader(body))
+	r = r.WithContext(users.WithUser(r.Context(), users.User{ID: "i", Role: "intern", Team: "backend"}))
 	r.SetPathValue("taskID", "task")
 	r.Header.Set("Idempotency-Key", "key")
 	w := httptest.NewRecorder()

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"ai-buddy/internal/platform/auth"
+	"ai-buddy/internal/users"
 )
 
 type boundaryRepository struct {
@@ -31,7 +31,7 @@ func TestSendByteAndRuneBoundaries(t *testing.T) {
 		{"key", strings.Repeat("я", 2001), false}, {"key", " \t", false},
 	} {
 		before := repo.calls
-		_, err := s.Send(context.Background(), auth.User{ID: "i"}, "chat", tc.key, tc.content)
+		_, err := s.Send(context.Background(), users.User{ID: "i"}, "chat", tc.key, tc.content)
 		if tc.valid {
 			if err != nil || repo.calls != before+1 {
 				t.Fatal(err, repo.calls)

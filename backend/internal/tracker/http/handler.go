@@ -15,9 +15,7 @@ type TaskService interface {
 }
 
 type ProfileReader interface {
-	Intern(context.Context, string) (interns.Profile, error)
 	Interns(context.Context, string) ([]interns.Profile, error)
-	Mentor(context.Context, string) (*interns.Profile, error)
 }
 
 type ProgressService interface {

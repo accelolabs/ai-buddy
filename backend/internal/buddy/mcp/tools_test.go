@@ -10,7 +10,7 @@ import (
 	"ai-buddy/internal/buddy"
 	"ai-buddy/internal/buddy/tracker"
 	"ai-buddy/internal/buddy/wiki"
-	"ai-buddy/internal/platform/auth"
+	"ai-buddy/internal/users"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -64,7 +64,12 @@ func (e *external) Search(_ context.Context, id, q string) ([]wiki.Source, error
 }
 func (e *external) Progress(_ context.Context, id string) (tracker.Progress, error) {
 	e.check(id)
-	return tracker.Progress{Tasks: []tracker.Task{{ID: "task1", Title: "Read docs"}}, Mentor: e.mentor}, e.err
+	var mentor *users.User
+	if len(e.mentor) > 0 && string(e.mentor) != "null" {
+		mentor = &users.User{}
+		_ = json.Unmarshal(e.mentor, mentor)
+	}
+	return tracker.Progress{Tasks: []tracker.Task{{ID: "task1", Title: "Read docs"}}, Mentor: mentor}, e.err
 }
 func (e *external) Complete(_ context.Context, id, task string) (json.RawMessage, error) {
 	e.check(id)
@@ -85,7 +90,7 @@ func TestEmbeddedMCPIdentityDraftsAndConfirmation(t *testing.T) {
 	r := &repo{}
 	e := &external{t: t, owner: "alice", mentor: json.RawMessage("null")}
 	tools := &Tools{r, e, e, e}
-	u := auth.User{ID: "alice", Role: "intern", Team: "backend"}
+	u := users.User{ID: "alice", Role: "intern", Team: "backend"}
 	session, err := tools.Open(ctx, u, buddy.Run{ID: "run"}, "Complete task task1")
 	if err != nil {
 		t.Fatal(err)

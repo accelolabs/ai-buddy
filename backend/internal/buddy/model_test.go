@@ -53,25 +53,4 @@ func TestFieldsAndModels(t *testing.T) {
 		}
 	}
 }
-func TestLoad(t *testing.T) {
-	for k, v := range map[string]string{"DATABASE_URL": "postgres://u:p@db/db", "OIDC_ISSUER": "https://auth.test/o/buddy/", "OIDC_CLIENT_ID": "buddy", "OIDC_CLIENT_SECRET": "secret", "OIDC_REDIRECT_URI": "https://buddy.test/api/auth/callback", "BUDDY_API_KEY": "key", "WIKI_PUBLIC_URL": "https://wiki.test"} {
-		t.Setenv(k, v)
-	}
-	if _, e := Load(); e != nil {
-		t.Fatal(e)
-	}
-	for k, v := range map[string]string{"OIDC_CLIENT_ID": "ticket", "BUDDY_API_KEY": " ", "WIKI_URL": "file:///x", "HTTP_ADDR": "bad"} {
-		old := map[string]string{"OIDC_CLIENT_ID": "buddy", "BUDDY_API_KEY": "key", "WIKI_URL": "http://wiki:8080", "HTTP_ADDR": ":8080"}[k]
-		t.Setenv(k, v)
-		if _, e := Load(); e == nil {
-			t.Fatal(k)
-		}
-		t.Setenv(k, old)
-	}
-	t.Setenv("SESSION_LIFETIME", "bad")
-	if _, e := Load(); e == nil {
-		t.Fatal("malformed")
-	}
-}
-
 func (r *repoStub) Cancel(context.Context, string, string) (Action, error) { return Action{}, r.err }

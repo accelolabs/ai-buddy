@@ -5,10 +5,10 @@ import (
 
 	"ai-buddy/internal/buddy"
 	"ai-buddy/internal/buddy/ollama"
-	"ai-buddy/internal/platform/auth"
+	"ai-buddy/internal/users"
 )
 
-func (a *Agent) context(ctx context.Context, u auth.User, run buddy.Run) ([]ollama.Message, string, error) {
+func (a *Agent) context(ctx context.Context, u users.User, run buddy.Run) ([]ollama.Message, string, error) {
 	h, e := a.Repo.History(ctx, u.ID, run.ChatID)
 	if e != nil {
 		return nil, "", e

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"ai-buddy/internal/platform/auth"
 	"ai-buddy/internal/platform/httpx"
+	"ai-buddy/internal/users"
 	"ai-buddy/internal/wiki"
 )
 
@@ -28,16 +28,8 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 		fail(w, wiki.ErrQuery)
 		return
 	}
-	u, _ := auth.CurrentUser(ctx)
+	u, _ := users.CurrentUser(ctx)
 	team := u.Team
-	if r.PathValue("id") != "" {
-		var err error
-		team, err = h.Teams.Team(ctx, r.PathValue("id"))
-		if err != nil {
-			fail(w, err)
-			return
-		}
-	}
 
 	found, err := h.Service.Search(ctx, team, body.Query)
 	if err != nil {

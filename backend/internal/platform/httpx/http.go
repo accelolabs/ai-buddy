@@ -1,8 +1,6 @@
 package httpx
 
 import (
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io"
@@ -10,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"ai-buddy/internal/platform/auth"
+	"ai-buddy/internal/users"
 )
 
 var ErrInvalid = errors.New("invalid input")
@@ -37,38 +35,8 @@ func Fallbacks(mux *http.ServeMux, methods map[string][]string) {
 	})
 }
 
-func KeyAuth(next http.Handler, buddyKey, ticketKey string, ticketAllowed bool) http.Handler {
-	buddy, ticket := sha256.Sum256([]byte(buddyKey)), sha256.Sum256([]byte(ticketKey))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		parts := strings.Fields(r.Header.Get("Authorization"))
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			JSON(w, 401, map[string]string{"error": "unauthorized"})
-			return
-		}
-
-		token := sha256.Sum256([]byte(parts[1]))
-		isBuddy := subtle.ConstantTimeCompare(token[:], buddy[:]) == 1 && buddyKey != ""
-		isTicket := subtle.ConstantTimeCompare(token[:], ticket[:]) == 1 && ticketKey != ""
-		if !isBuddy && !isTicket {
-			JSON(w, 401, map[string]string{"error": "unauthorized"})
-			return
-		}
-
-		if !isBuddy && !ticketAllowed {
-			JSON(w, 403, map[string]string{"error": "forbidden"})
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}
-
 func Owner(r *http.Request) string {
-	if strings.HasPrefix(r.URL.Path, "/internal/") {
-		return r.PathValue("id")
-	}
-
-	u, _ := auth.CurrentUser(r.Context())
+	u, _ := users.CurrentUser(r.Context())
 	return u.ID
 }
 

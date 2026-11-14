@@ -31,7 +31,7 @@ func (d *dependencies) Mentor(context.Context, string) (string, error) {
 }
 
 func TestReplayAndMentorPolicy(t *testing.T) {
-	d := &dependencies{saved: Ticket{ID: "existing", RecipientID: "old", Question: "Q", Description: "D"}, mentorErr: apperror.ErrTracker}
+	d := &dependencies{saved: Ticket{ID: "existing", RecipientID: "old", Question: "Q", Description: "D"}, mentorErr: errors.New("repository unavailable")}
 	s := New(d, d)
 	ctx := context.Background()
 	in := CreateInput{Question: " Q ", Description: " D "}
@@ -43,7 +43,7 @@ func TestReplayAndMentorPolicy(t *testing.T) {
 		t.Fatal(err, d)
 	}
 	d.findErr = apperror.ErrNotFound
-	for _, failure := range []error{apperror.ErrTracker, apperror.ErrNotFound} {
+	for _, failure := range []error{errors.New("repository unavailable"), apperror.ErrNotFound} {
 		d.mentorErr = failure
 		if _, _, err = s.Create(ctx, "i", "new", in); !errors.Is(err, failure) || d.writes != 0 {
 			t.Fatal(err, d)

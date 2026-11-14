@@ -7,8 +7,8 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"ai-buddy/internal/buddy"
-	"ai-buddy/internal/platform/auth"
 	"ai-buddy/internal/platform/cleanup"
+	"ai-buddy/internal/users"
 )
 
 type Session struct {
@@ -21,7 +21,7 @@ func (s *Session) Close() {
 	cleanup.Close(s.server)
 }
 
-func (t *Tools) Open(ctx context.Context, u auth.User, run buddy.Run, request string) (*Session, error) {
+func (t *Tools) Open(ctx context.Context, u users.User, run buddy.Run, request string) (*Session, error) {
 	server := t.register(u, run, request)
 	ct, st := sdk.NewInMemoryTransports()
 	ss, e := server.Connect(ctx, st, nil)

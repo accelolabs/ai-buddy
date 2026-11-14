@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"ai-buddy/internal/migrations"
 	platformmigrations "ai-buddy/internal/platform/migrations"
 	"ai-buddy/internal/testutil"
 	"ai-buddy/internal/tracker/apperror"
-	"ai-buddy/internal/tracker/migrations"
 	"ai-buddy/internal/tracker/progress"
 	"ai-buddy/internal/tracker/tasks"
 )
@@ -24,7 +24,7 @@ func TestTaskIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.Exec(`INSERT INTO profiles(authentik_id,name,username,email,role,team) VALUES ('i','Intern','i','i@test','intern','backend'),('j','Other','j','j@test','intern','backend'),('m','Mentor','m','m@test','mentor','backend'); INSERT INTO assignments(intern_id,mentor_id,team) VALUES ('i','m','backend')`); err != nil {
+	if _, err := db.Exec(`INSERT INTO profiles(id,name,username,email,role,team) VALUES ('i','Intern','i','i@test','intern','backend'),('j','Other','j','j@test','intern','backend'),('m','Mentor','m','m@test','mentor','backend'); INSERT INTO assignments(intern_id,mentor_id,team) VALUES ('i','m','backend')`); err != nil {
 		t.Fatal(err)
 	}
 	repo := New(db)

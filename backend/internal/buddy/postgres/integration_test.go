@@ -7,20 +7,28 @@ import (
 	"testing"
 
 	"ai-buddy/internal/buddy"
-	"ai-buddy/internal/buddy/migrations"
+	"ai-buddy/internal/migrations"
 	platformmigrations "ai-buddy/internal/platform/migrations"
 	"ai-buddy/internal/testutil"
 )
 
 func repository(t *testing.T) *Repository {
 	t.Helper()
-	return New(testutil.Database(t, migrations.Files))
+	p := New(testutil.Database(t, migrations.Files))
+	fixture(t, p)
+	return p
 }
 func must(t *testing.T, e error) {
 	t.Helper()
 	if e != nil {
 		t.Fatal(e)
 	}
+}
+
+func fixture(t *testing.T, p *Repository) {
+	t.Helper()
+	_, err := p.DB.Exec(`INSERT INTO profiles(id,name,username,email,role,team) VALUES ('alice','Alice','alice','a@test','intern','backend'),('bob','Bob','bob','b@test','intern','platform')`)
+	must(t, err)
 }
 
 var task = json.RawMessage(`{"title":"Read docs","description":"Intro","deadline":"2026-12-01"}`)
@@ -127,6 +135,7 @@ func TestLifecycleIsolationReplayAndRestart(t *testing.T) {
 	}
 	must(t, platformmigrations.Run(ctx, p.DB, migrations.Files, "down"))
 	must(t, platformmigrations.Run(ctx, p.DB, migrations.Files, "up"))
+	fixture(t, p)
 }
 
 func TestActionsFreezeCancelRetryAndRecovery(t *testing.T) {

@@ -15,7 +15,7 @@ import (
 var errBroken = errors.New("database failed")
 
 var pcols = []string{
-	"authentik_id",
+	"id",
 	"name",
 	"username",
 	"email",
@@ -61,7 +61,7 @@ func postgres(t *testing.T) (*Repository, sqlmock.Sqlmock) {
 func TestProfileRepository(t *testing.T) {
 	p, m := postgres(t)
 	ctx := context.Background()
-	m.ExpectQuery("SELECT .* FROM profiles WHERE authentik_id=\\$1").WithArgs("i").WillReturnRows(profileRows())
+	m.ExpectQuery("SELECT .* FROM profiles WHERE id=\\$1").WithArgs("i").WillReturnRows(profileRows())
 	v, e := p.Intern(ctx, "i")
 	if e != nil || v.ID != "i" || *v.StartDate != "2026-11-01" {
 		t.Fatal(v, e)

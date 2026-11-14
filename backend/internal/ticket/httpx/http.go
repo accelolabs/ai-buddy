@@ -13,8 +13,6 @@ func Failure(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, apperror.ErrNoMentor):
 		code, message = 422, apperror.ErrNoMentor.Error()
-	case errors.Is(err, apperror.ErrTracker):
-		code, message = 503, "tracker unavailable"
 	case errors.Is(err, apperror.ErrInvalid), errors.Is(err, httpx.ErrInvalid):
 		code, message = 400, "invalid input"
 	case errors.Is(err, apperror.ErrNotFound):

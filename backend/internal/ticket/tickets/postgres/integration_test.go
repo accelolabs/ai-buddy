@@ -7,10 +7,10 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"ai-buddy/internal/migrations"
 	platformmigrations "ai-buddy/internal/platform/migrations"
 	"ai-buddy/internal/testutil"
 	"ai-buddy/internal/ticket/apperror"
-	"ai-buddy/internal/ticket/migrations"
 	"ai-buddy/internal/ticket/tickets"
 )
 
@@ -19,6 +19,11 @@ func TestPostgresIntegration(t *testing.T) {
 	for _, command := range []string{"up", "status", "down", "up"} {
 		if err := platformmigrations.Run(context.Background(), db, migrations.Files, command); err != nil {
 			t.Fatal(command, err)
+		}
+	}
+	for _, id := range []string{"s", "m", "replacement", "other", "second"} {
+		if _, err := db.Exec(`INSERT INTO profiles(id,name,username,email,role,team) VALUES ($1,$1,$1,$1,'intern','backend')`, id); err != nil {
+			t.Fatal(err)
 		}
 	}
 	repo := New(db)

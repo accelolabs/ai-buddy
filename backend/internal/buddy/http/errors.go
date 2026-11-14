@@ -5,8 +5,8 @@ import (
 	"net/http"
 
 	"ai-buddy/internal/buddy"
-	"ai-buddy/internal/platform/auth"
 	"ai-buddy/internal/platform/httpx"
+	"ai-buddy/internal/users"
 )
 
 func fail(w http.ResponseWriter, e error) {
@@ -25,4 +25,4 @@ func fail(w http.ResponseWriter, e error) {
 	}
 	httpx.JSON(w, code, map[string]string{"error": msg})
 }
-func owner(r *http.Request) auth.User { u, _ := auth.CurrentUser(r.Context()); return u }
+func owner(r *http.Request) users.User { u, _ := users.CurrentUser(r.Context()); return u }

@@ -11,18 +11,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexedwards/scs/v2"
-
 	"ai-buddy/internal/buddy"
-	"ai-buddy/internal/buddy/migrations"
 	"ai-buddy/internal/buddy/postgres"
-	"ai-buddy/internal/platform/auth"
+	"ai-buddy/internal/migrations"
+	"ai-buddy/internal/platform/httpx"
 	"ai-buddy/internal/testutil"
+	"ai-buddy/internal/users"
 )
 
 type runner struct{ repo buddy.Repository }
 
-func (r runner) Generate(ctx context.Context, _ auth.User, run buddy.Run) error {
+func (r runner) Generate(ctx context.Context, _ users.User, run buddy.Run) error {
 	if e := r.repo.Event(ctx, run.ID, "stage", "answering"); e != nil {
 		return e
 	}
@@ -31,49 +30,34 @@ func (r runner) Generate(ctx context.Context, _ auth.User, run buddy.Run) error 
 
 type executor struct{}
 
-func (executor) Execute(_ context.Context, _ auth.User, a buddy.Action) (json.RawMessage, error) {
+func (executor) Execute(_ context.Context, _ users.User, a buddy.Action) (json.RawMessage, error) {
 	if a.Kind == "create_ticket" {
 		return json.RawMessage(`{"id":"created","sender_id":"alice","recipient_id":"mentor","question":"Help?","description":"context","created_at":"2026-11-14T12:00:00Z"}`), nil
 	}
 	return json.RawMessage(`{"id":"created","intern_id":"alice","title":"Read","description":"","deadline":"2026-12-01","created_at":"2026-11-14T12:00:00Z","completed_at":null,"status":"pending","overdue":false}`), nil
 }
-func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
+func TestHTTPWithDemoCookieAndPersistedSSE(t *testing.T) {
 	ctx := context.Background()
 	p := postgres.New(testutil.Database(t, migrations.Files))
 	s := &buddy.Service{Repo: p, Runner: runner{p}, Executor: executor{}, Context: ctx}
 	defer s.Wait()
-	sessions := scs.New()
-	login := auth.New(sessions, nil)
+	for _, v := range []struct{ id, role string }{{"alice", "intern"}, {"bob", "intern"}, {"mentor", "mentor"}} {
+		if _, err := p.DB.Exec(`INSERT INTO profiles(id,name,username,email,role,team) VALUES($1,$1,$1,$1,$2,'backend')`, v.id, v.role); err != nil {
+			t.Fatal(err)
+		}
+	}
+	login := &users.Selector{Profiles: &users.Repository{DB: p.DB}}
 	handler := New(s)
 	handler.Poll = time.Millisecond
 	handler.Heartbeat = time.Millisecond
 	mux := http.NewServeMux()
-	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
-		ctx, _ := sessions.Load(r.Context(), "")
-		u := auth.User{ID: r.URL.Query().Get("id"), Role: r.URL.Query().Get("role"), Team: "backend"}
-		b, _ := json.Marshal(u)
-		sessions.Put(ctx, auth.SessionKeyUser, string(b))
-		token, _, e := sessions.Commit(ctx)
-		if e != nil {
-			t.Error(e)
-		}
-		http.SetCookie(w, &http.Cookie{Name: "session", Value: token})
-	})
-	mux.Handle("/", handler.Routes(login))
+	handler.Register(mux, login)
+	httpx.Fallbacks(mux, map[string][]string{"/api/chats": {"GET", "POST"}})
+
 	server := httptest.NewServer(mux)
 	defer server.Close()
-	cookie := func(id, role string) *http.Cookie {
-		res, e := http.Get(server.URL + "/login?id=" + id + "&role=" + role)
-		if e != nil {
-			t.Fatal(e)
-		}
-		defer func() {
-			if err := res.Body.Close(); err != nil {
-				t.Error(err)
-			}
-		}()
-		return res.Cookies()[0]
-	}
+	cookie := func(id, role string) *http.Cookie { return &http.Cookie{Name: "demo_user", Value: id} }
+
 	alice, bob, mentor := cookie("alice", "intern"), cookie("bob", "intern"), cookie("mentor", "mentor")
 	call := func(method, path, body string, c *http.Cookie, key string, code int) []byte {
 		t.Helper()
@@ -102,7 +86,7 @@ func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
 		}
 		return b
 	}
-	call("GET", "/api/chats", "", nil, "", 401)
+	call("GET", "/api/chats", "", nil, "", 400)
 	call("GET", "/api/chats", "", mentor, "", 403)
 	var c buddy.Chat
 	if e := json.Unmarshal(call("POST", "/api/chats", "", alice, "", 201), &c); e != nil {
@@ -218,7 +202,7 @@ func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
 		t.Fatal(e)
 	}
 	call("POST", "/api/actions/"+a.ID+"/cancel", "", alice, "", 200)
-	if e = p.Event(ctx, live.ID, "source", map[string]string{"document_id": "doc", "document_title": "Guide", "section_title": "Intro", "text": "Excerpt", "url": "https://wiki.example.invalid/api/documents/doc"}); e != nil {
+	if e = p.Event(ctx, live.ID, "source", map[string]string{"document_id": "doc", "document_title": "Guide", "section_title": "Intro", "text": "Excerpt", "url": "/api/documents/doc"}); e != nil {
 		t.Fatal(e)
 	}
 	if e = p.Finish(ctx, live.ID, "failed"); e != nil {

@@ -13,7 +13,7 @@ import (
 	"ai-buddy/internal/buddy/mcp"
 	"ai-buddy/internal/buddy/ollama"
 	"ai-buddy/internal/buddy/tracker"
-	"ai-buddy/internal/platform/auth"
+	"ai-buddy/internal/users"
 )
 
 type repo struct {
@@ -120,7 +120,7 @@ func TestGenerationAndFailures(t *testing.T) {
 			p := progress{}
 			m := &model{t: t, name: v.name, args: v.args, many: v.many}
 			a := New(r, &mcp.Tools{Repo: r, Tracker: p}, m)
-			err := a.Generate(context.Background(), auth.User{ID: "alice"}, buddy.Run{ID: "r", ChatID: "c", MessageID: "user"})
+			err := a.Generate(context.Background(), users.User{ID: "alice"}, buddy.Run{ID: "r", ChatID: "c", MessageID: "user"})
 			if v.err != "" {
 				if err == nil || !strings.Contains(err.Error(), v.err) {
 					t.Fatalf("want %s got %v", v.err, err)
@@ -132,12 +132,12 @@ func TestGenerationAndFailures(t *testing.T) {
 	}
 	r := &repo{err: errors.New("DB history")}
 	a := New(r, &mcp.Tools{Repo: r}, &model{t: t})
-	if e := a.Generate(context.Background(), auth.User{}, buddy.Run{}); e == nil {
+	if e := a.Generate(context.Background(), users.User{}, buddy.Run{}); e == nil {
 		t.Fatal("history")
 	}
 	r.err = nil
 	a.Model = &model{t: t, err: errors.New("model unavailable")}
-	if e := a.Generate(context.Background(), auth.User{}, buddy.Run{MessageID: "user"}); e == nil {
+	if e := a.Generate(context.Background(), users.User{}, buddy.Run{MessageID: "user"}); e == nil {
 		t.Fatal("model")
 	}
 }
@@ -163,7 +163,7 @@ func TestSingleModelSlot(t *testing.T) {
 	entered := make(chan struct{}, 1)
 	a := New(r, &mcp.Tools{Repo: r}, &model{t: t, block: block, entered: entered})
 	done := make(chan error, 1)
-	go func() { done <- a.Generate(context.Background(), auth.User{}, buddy.Run{MessageID: "user"}) }()
+	go func() { done <- a.Generate(context.Background(), users.User{}, buddy.Run{MessageID: "user"}) }()
 	select {
 	case <-entered:
 	case <-time.After(time.Second):
@@ -171,7 +171,7 @@ func TestSingleModelSlot(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	if e := a.Generate(ctx, auth.User{}, buddy.Run{MessageID: "user"}); !errors.Is(e, context.DeadlineExceeded) {
+	if e := a.Generate(ctx, users.User{}, buddy.Run{MessageID: "user"}); !errors.Is(e, context.DeadlineExceeded) {
 		t.Fatal(e)
 	}
 	close(block)
@@ -195,7 +195,7 @@ func TestSixToolCallsStillProduceFinalAnswer(t *testing.T) {
 	r := &repo{}
 	model := &repeatingModel{}
 	a := New(r, &mcp.Tools{Repo: r, Tracker: progress{}}, model)
-	if e := a.Generate(context.Background(), auth.User{ID: "alice"}, buddy.Run{ID: "run", MessageID: "user"}); e != nil {
+	if e := a.Generate(context.Background(), users.User{ID: "alice"}, buddy.Run{ID: "run", MessageID: "user"}); e != nil {
 		t.Fatal(e)
 	}
 	if model.selections != 6 || r.text != "final" {

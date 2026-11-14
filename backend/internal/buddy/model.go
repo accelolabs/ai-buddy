@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"ai-buddy/internal/platform/auth"
+	"ai-buddy/internal/users"
 )
 
 var (
@@ -97,8 +97,8 @@ type Repository interface {
 	ActionResult(context.Context, string, json.RawMessage, error) (Action, error)
 }
 type Runner interface {
-	Generate(context.Context, auth.User, Run) error
+	Generate(context.Context, users.User, Run) error
 }
 type Executor interface {
-	Execute(context.Context, auth.User, Action) (json.RawMessage, error)
+	Execute(context.Context, users.User, Action) (json.RawMessage, error)
 }

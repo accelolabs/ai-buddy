@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"ai-buddy/internal/platform/auth"
+	"ai-buddy/internal/users"
 )
 
 type Service struct {
@@ -34,14 +34,14 @@ func (s *Service) begin() bool {
 	s.wg.Add(1)
 	return true
 }
-func (s *Service) Cancel(ctx context.Context, u auth.User, id string) (Action, error) {
+func (s *Service) Cancel(ctx context.Context, u users.User, id string) (Action, error) {
 	if !s.begin() {
 		return Action{}, ErrConflict
 	}
 	defer s.wg.Done()
 	return s.Repo.Cancel(ctx, u.ID, id)
 }
-func (s *Service) Send(ctx context.Context, u auth.User, chat, key, text string) (Run, error) {
+func (s *Service) Send(ctx context.Context, u users.User, chat, key, text string) (Run, error) {
 	if !s.begin() {
 		return Run{}, ErrConflict
 	}
@@ -55,7 +55,7 @@ func (s *Service) Send(ctx context.Context, u auth.User, chat, key, text string)
 	}
 	return r, err
 }
-func (s *Service) Retry(ctx context.Context, u auth.User, id string) (Run, error) {
+func (s *Service) Retry(ctx context.Context, u users.User, id string) (Run, error) {
 	if !s.begin() {
 		return Run{}, ErrConflict
 	}
@@ -66,7 +66,7 @@ func (s *Service) Retry(ctx context.Context, u auth.User, id string) (Run, error
 	}
 	return r, err
 }
-func (s *Service) launch(u auth.User, r Run) {
+func (s *Service) launch(u users.User, r Run) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -84,7 +84,7 @@ func (s *Service) launch(u auth.User, r Run) {
 		}
 	}()
 }
-func (s *Service) Confirm(ctx context.Context, u auth.User, id string, fields json.RawMessage) (Action, error) {
+func (s *Service) Confirm(ctx context.Context, u users.User, id string, fields json.RawMessage) (Action, error) {
 	if !s.begin() {
 		return Action{}, ErrConflict
 	}

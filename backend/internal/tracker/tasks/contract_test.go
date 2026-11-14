@@ -15,7 +15,7 @@ func TestWireContract(t *testing.T) {
 		want  string
 	}{
 		{tasks.Task{}, `{"id":"","intern_id":"","title":"","description":"","deadline":"","created_at":"0001-01-01T00:00:00Z","completed_at":null,"status":"","overdue":false}`},
-		{interns.Profile{}, `{"authentik_id":"","name":"","username":"","email":"","role":"","team":"","start_date":null,"goals":"","expectations":""}`},
+		{interns.Profile{}, `{"id":"","name":"","username":"","email":"","role":"","team":"","start_date":null,"goals":"","expectations":""}`},
 		{[]tasks.Task(nil), `null`}, {[]tasks.Task{}, `[]`},
 		{[]interns.Profile(nil), `null`}, {[]interns.Profile{}, `[]`},
 	} {

@@ -5,15 +5,15 @@ import (
 	"net/http"
 	"time"
 
-	"ai-buddy/internal/platform/auth"
 	"ai-buddy/internal/platform/httpx"
+	"ai-buddy/internal/users"
 )
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	u, _ := auth.CurrentUser(ctx)
+	u, _ := users.CurrentUser(ctx)
 	docs, err := h.Service.Store.List(ctx, u.Team)
 	if err != nil {
 		fail(w, err)
@@ -31,7 +31,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	u, _ := auth.CurrentUser(ctx)
+	u, _ := users.CurrentUser(ctx)
 	d, err := h.Service.Store.Get(ctx, u.Team, r.PathValue("id"))
 	if err != nil {
 		fail(w, err)

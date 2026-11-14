@@ -7,7 +7,7 @@ import (
 	"ai-buddy/internal/buddy"
 	"ai-buddy/internal/buddy/mcp"
 	"ai-buddy/internal/buddy/ollama"
-	"ai-buddy/internal/platform/auth"
+	"ai-buddy/internal/users"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -28,7 +28,7 @@ func New(repo buddy.Repository, tools *mcp.Tools, model Model) *Agent {
 	return &Agent{repo, tools, model, make(chan struct{}, 1)}
 }
 
-func (a *Agent) Generate(ctx context.Context, u auth.User, run buddy.Run) error {
+func (a *Agent) Generate(ctx context.Context, u users.User, run buddy.Run) error {
 	if e := a.Repo.Event(ctx, run.ID, buddy.EventStage, "waiting_for_model"); e != nil {
 		return e
 	}

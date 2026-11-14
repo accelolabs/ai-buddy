@@ -10,7 +10,7 @@ import (
 	"ai-buddy/internal/buddy"
 	"ai-buddy/internal/buddy/tracker"
 	"ai-buddy/internal/buddy/wiki"
-	"ai-buddy/internal/platform/auth"
+	"ai-buddy/internal/users"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -41,7 +41,7 @@ type completeArgs struct {
 }
 type emptyArgs struct{}
 
-func (t *Tools) register(u auth.User, run buddy.Run, request string) *sdk.Server {
+func (t *Tools) register(u users.User, run buddy.Run, request string) *sdk.Server {
 	server := sdk.NewServer(&sdk.Implementation{Name: "buddy", Version: "1"}, nil)
 	// Bind trusted identity once; MCP transport contexts carry no identity.
 	handlers := &runTools{t, u, run, request}
@@ -82,7 +82,7 @@ func CanComplete(request, id string, tasks []tracker.Task) bool {
 
 // Execute is only called after the repository atomically freezes a human-confirmed action.
 // It is deliberately absent from tools/list.
-func (t *Tools) Execute(ctx context.Context, u auth.User, a buddy.Action) (json.RawMessage, error) {
+func (t *Tools) Execute(ctx context.Context, u users.User, a buddy.Action) (json.RawMessage, error) {
 	if a.Owner != u.ID || a.Status != buddy.ActionExecuting {
 		return nil, buddy.ErrConflict
 	}

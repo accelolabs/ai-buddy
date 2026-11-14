@@ -5,8 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
+
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,42 +15,26 @@ import (
 	"ai-buddy/internal/buddy"
 	"ai-buddy/internal/buddy/agent"
 	"ai-buddy/internal/buddy/mcp"
-	bmigrations "ai-buddy/internal/buddy/migrations"
 	"ai-buddy/internal/buddy/ollama"
 	bpostgres "ai-buddy/internal/buddy/postgres"
-	"ai-buddy/internal/buddy/remote"
-	bticket "ai-buddy/internal/buddy/ticket"
-	btracker "ai-buddy/internal/buddy/tracker"
-	bwiki "ai-buddy/internal/buddy/wiki"
-	"ai-buddy/internal/platform/auth"
-	"ai-buddy/internal/platform/httpx"
-	platformmigrations "ai-buddy/internal/platform/migrations"
+	"ai-buddy/internal/local"
+
+	"ai-buddy/internal/users"
+
 	"ai-buddy/internal/testutil"
-	ticketmigrations "ai-buddy/internal/ticket/migrations"
 	"ai-buddy/internal/ticket/tickets"
-	ticketshttp "ai-buddy/internal/ticket/tickets/http"
+
 	ticketpostgres "ai-buddy/internal/ticket/tickets/postgres"
-	tickettracker "ai-buddy/internal/ticket/tracker"
-	trackerhttp "ai-buddy/internal/tracker/http"
-	trackermigrations "ai-buddy/internal/tracker/migrations"
+
+	trackermigrations "ai-buddy/internal/migrations"
 	internspostgres "ai-buddy/internal/tracker/postgres"
 	"ai-buddy/internal/tracker/progress"
 	"ai-buddy/internal/tracker/tasks"
 	"ai-buddy/internal/wiki"
-	wikihttp "ai-buddy/internal/wiki/http"
+
 	"ai-buddy/internal/wiki/indexer"
-	wikimigrations "ai-buddy/internal/wiki/migrations"
 	wikipostgres "ai-buddy/internal/wiki/postgres"
 )
-
-type teams struct{}
-
-func (teams) Team(_ context.Context, id string) (string, error) {
-	if id == "bob" {
-		return "platform", nil
-	}
-	return "backend", nil
-}
 
 type embedder struct{}
 
@@ -61,6 +44,11 @@ func (embedder) Embed(context.Context, string) ([]float64, error) {
 	v[0] = 1
 	return v, nil
 }
+
+// A wrong vector dimension fails inside publication, exercising transaction rollback.
+type invalidEmbedder struct{ embedder }
+
+func (invalidEmbedder) Embed(context.Context, string) ([]float64, error) { return []float64{1}, nil }
 
 type scripted struct {
 	tool, args string
@@ -78,54 +66,36 @@ func (m *scripted) Chat(_ context.Context, _ []ollama.Message, _ []ollama.Tool, 
 	return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{{Function: ollama.Function{Name: m.tool, Arguments: json.RawMessage(m.args)}}}}}, nil
 }
 
-type loseResponse struct{ lost bool }
+// Simulate a tool result lost after a successful local commit.
+type loseResponse struct {
+	local.Tracker
+	lost bool
+}
 
-func (l *loseResponse) RoundTrip(r *http.Request) (*http.Response, error) {
-	res, e := http.DefaultTransport.RoundTrip(r)
-	if e == nil && r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/tasks") && !l.lost {
+func (l *loseResponse) Create(ctx context.Context, id, key string, fields json.RawMessage) (json.RawMessage, error) {
+	result, err := l.Tracker.Create(ctx, id, key, fields)
+	if err == nil && !l.lost {
 		l.lost = true
-		if err := res.Body.Close(); err != nil {
-			return nil, err
-		}
-		return nil, errors.New("simulated lost response after commit")
+		return nil, errors.New("simulated lost result after commit")
 	}
-	return res, e
+	return result, err
 }
 func TestServiceFlow(t *testing.T) { testFlow(t) }
 func testFlow(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
 	db := testutil.Database(t, trackermigrations.Files)
-	_, e := db.Exec(`INSERT INTO profiles(authentik_id,name,username,email,role,team) VALUES ('alice','Alice','alice','a@test','intern','backend'),('mentor','Mentor','mentor','m@test','mentor','backend'); INSERT INTO assignments(intern_id,mentor_id,team) VALUES('alice','mentor','backend')`)
+	testutil.Indexing(t, db)
+	_, e := db.Exec(`INSERT INTO profiles(id,name,username,email,role,team) VALUES ('alice','Alice','alice','a@test','intern','backend'),('bob','Bob','bob','b@test','intern','platform'),('mentor','Mentor','mentor','m@test','mentor','backend'); INSERT INTO assignments(intern_id,mentor_id,team) VALUES('alice','mentor','backend')`)
 	if e != nil {
 		t.Fatal(e)
 	}
 	ir := internspostgres.New(db)
 	tr := ir
 	ts := tasks.New(tr, ir, time.UTC, time.Now)
-	trackerHandler := trackerhttp.New(ts, ir, progress.New(ir, tr, time.UTC, time.Now))
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /internal/interns/{id}/progress", trackerHandler.Progress)
-	mux.HandleFunc("GET /internal/interns/{id}/mentor", trackerHandler.Mentor)
-	mux.HandleFunc("POST /internal/interns/{id}/tasks", trackerHandler.Create)
-	mux.HandleFunc("POST /internal/interns/{id}/tasks/{taskID}/complete", trackerHandler.Complete)
-	trackerServer := httptest.NewServer(httpx.KeyAuth(mux, "buddy", "", false))
-	defer trackerServer.Close()
-	ticketDB := testutil.Database(t, ticketmigrations.Files)
-	ticketService := tickets.New(ticketpostgres.New(ticketDB), tickettracker.New(trackerServer.URL, "buddy", 10*time.Second))
-	ticketHandler := ticketshttp.New(ticketService)
-	ticketMux := http.NewServeMux()
-	ticketMux.HandleFunc("GET /internal/interns/{id}/tickets", ticketHandler.Sent)
-	ticketMux.HandleFunc("POST /internal/interns/{id}/tickets", ticketHandler.Create)
-	ticketServer := httptest.NewServer(httpx.KeyAuth(ticketMux, "buddy", "", false))
-	defer ticketServer.Close()
-	wikiDB := testutil.Database(t, wikimigrations.Files)
-	for _, command := range []string{"status", "down", "up"} {
-		if err := platformmigrations.Run(ctx, wikiDB, wikimigrations.Files, command); err != nil {
-			t.Fatal(err)
-		}
-	}
-	wr := wikipostgres.New(wikiDB)
+	ticketService := tickets.New(ticketpostgres.New(db), local.Mentors{Repository: ir})
+	wr := wikipostgres.New(db)
+
 	root := t.TempDir()
 	if e = os.MkdirAll(filepath.Join(root, "common"), 0755); e != nil {
 		t.Fatal(e)
@@ -143,14 +113,36 @@ func testFlow(t *testing.T) {
 	if _, e = indexer.Run(ctx, wr, root, embeddings, false); e != nil {
 		t.Fatal(e)
 	}
-	wikiHandler := &wikihttp.Handler{Service: &wiki.Service{Store: wr, Embedder: embeddings, Minimum: 0.1}, Teams: teams{}}
-	wikiMux := http.NewServeMux()
-	wikiMux.HandleFunc("POST /internal/users/{id}/search", wikiHandler.Search)
-	wikiServer := httptest.NewServer(httpx.KeyAuth(wikiMux, "buddy", "", false))
-	defer wikiServer.Close()
-	repo := bpostgres.New(testutil.Database(t, bmigrations.Files))
-	trackerClient := remote.New(trackerServer.URL, "buddy", 10*time.Second)
-	tools := &mcp.Tools{Repo: repo, Wiki: &bwiki.Client{Client: remote.New(wikiServer.URL, "buddy", 90*time.Second), PublicURL: "https://wiki.test"}, Tracker: &btracker.Client{Client: trackerClient}, Ticket: &bticket.Client{Client: remote.New(ticketServer.URL, "buddy", 10*time.Second)}}
+	before, err := wr.List(ctx, "backend")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = indexer.Run(ctx, wr, root, invalidEmbedder{}, true); err == nil {
+		t.Fatal("expected failed publication")
+	}
+	after, err := wr.List(ctx, "backend")
+	if err != nil || len(before) != len(after) {
+		t.Fatal("index changed after rollback", after, err)
+	}
+	lock, err := wr.Acquire(ctx)
+	if err != nil {
+		t.Fatal("failed indexing retained lock", err)
+	}
+	if concurrent, err := wr.Acquire(ctx); err == nil {
+		concurrent.Close()
+		t.Fatal("concurrent index lock acquired")
+	}
+	lock.Close()
+	released, err := wr.Acquire(ctx)
+	if err != nil {
+		t.Fatal("lock not released", err)
+	}
+	released.Close()
+
+	repo := bpostgres.New(db)
+	trackerClient := &loseResponse{Tracker: local.Tracker{Tasks: ts, ProgressService: progress.New(ir, tr, time.UTC, time.Now)}}
+	tools := &mcp.Tools{Repo: repo, Wiki: local.Wiki{Service: &wiki.Service{Store: wr, Embedder: embeddings, Minimum: 0.1}, Profiles: &users.Repository{DB: db}}, Tracker: trackerClient, Ticket: local.Ticket{Service: ticketService}}
+
 	for _, id := range []string{"alice", "bob"} {
 		sources, e := tools.Wiki.Search(ctx, id, "access process")
 		if e != nil || len(sources) == 0 {
@@ -162,7 +154,7 @@ func testFlow(t *testing.T) {
 			}
 		}
 	}
-	u := auth.User{ID: "alice", Role: "intern", Team: "backend"}
+	u := users.User{ID: "alice", Role: "intern", Team: "backend"}
 	var model agent.Model
 	run := func(request, tool, args string) buddy.History {
 		t.Helper()
@@ -215,8 +207,6 @@ func testFlow(t *testing.T) {
 	if len(h.Actions) != 1 {
 		t.Fatalf("expected draft: %+v", h)
 	}
-	loss := &loseResponse{}
-	trackerClient.HTTP.Transport = loss
 	s := &buddy.Service{Repo: repo, Executor: tools}
 	a, e := s.Confirm(ctx, u, h.Actions[0].ID, nil)
 	if e != nil || a.Status != "error" {
@@ -255,5 +245,17 @@ func testFlow(t *testing.T) {
 	if e != nil || len(sent) != 1 || sent[0].RecipientID != "mentor" {
 		t.Fatal(sent, e)
 	}
+	if _, err := db.Exec(`DELETE FROM assignments WHERE intern_id='alice'`); err != nil {
+		t.Fatal(err)
+	}
+	replay, err := tools.Ticket.Create(ctx, u.ID, "buddy-action:"+a.ID, a.Fields)
+	if err != nil {
+		t.Fatal("ticket replay requires current mentor", err)
+	}
+	var replayed tickets.Ticket
+	if err = json.Unmarshal(replay, &replayed); err != nil || replayed.RecipientID != "mentor" {
+		t.Fatal(replayed, err)
+	}
+
 	run("List my sent tickets.", "list_tickets", `{}`)
 }
