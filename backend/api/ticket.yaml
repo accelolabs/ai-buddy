@@ -2,11 +2,26 @@ openapi: 3.1.1
 info:
   title: Ticket API
   version: 1.0.0
-  description: Browser POST requests reject cross-origin requests using Sec-Fetch-Site and Origin (HTTP
-    403). Sessions use a Secure, HttpOnly, SameSite=Lax __Host-session cookie scoped to this service.
-    JSON request bodies reject unknown fields and trailing JSON; maximum body size is 1 MiB. Internal
-    routes accept only the documented Bearer service keys. Ownership and team identity come from the session
-    or trusted internal path, never JSON.
+  description: >-
+    Browser POST requests reject cross-origin requests using Sec-Fetch-Site and Origin (HTTP 403).
+    Sessions use a Secure, HttpOnly, SameSite=Lax __Host-session cookie scoped to this service.
+    JSON request bodies reject unknown fields and trailing JSON; maximum body size is 1 MiB.
+    Internal routes accept only the documented Bearer service keys. Ownership and team identity
+    come from the session or trusted internal path, never JSON. Known JSON field names are matched
+    case-insensitively; duplicate fields use the last value. Content-Type is not enforced. Internal
+    callers are trusted to select path user IDs; owner predicates limit data to that selected
+    identity. GET also accepts HEAD. Unsupported auth methods return text/plain 405. Unsupported
+    health methods fall through to the domain handler (rather than ServeMux 405): Tracker returns
+    text/plain 404, Ticket and Wiki return JSON 404, and Buddy applies session/role checks before
+    JSON 404. Domain fallbacks return JSON 404/405 after their outer middleware.
+servers:
+  - url: https://{host}
+    description: Public HTTPS
+    variables:
+      host: {default: ticket.example.com}
+  - {url: 'http://localhost:8084', description: Local Compose}
+security:
+  - {Session: []}
 paths:
   /health/live:
     get:
@@ -15,8 +30,7 @@ paths:
       description: Public endpoint.
       security: []
       responses:
-        '204':
-          description: Success; no response body
+        '204': {$ref: '#/components/responses/NoContent'}
   /health/ready:
     get:
       operationId: ticket_get_health_ready
@@ -24,506 +38,370 @@ paths:
       description: Public endpoint.
       security: []
       responses:
-        '204':
-          description: Success; no response body
+        '204': {$ref: '#/components/responses/NoContent'}
         '503':
           description: Database unavailable
           content:
             text/plain:
-              schema:
-                type: string
-              example: 'database unavailable
-
-                '
+              schema: {type: string}
+              example: "database unavailable\n"
   /api/auth/login:
     get:
       operationId: ticket_get_api_auth_login
       summary: OIDC login
-      description: OIDC authorization code flow with state, nonce and PKCE. Login state expires in five
-        minutes. Callback is single-use; successful callback renews the session and redirects to /. Login
-        redirects to the configured provider. Session cookie never appears in response JSON.
+      description: >-
+        OIDC authorization code flow with state, nonce and PKCE. Login state expires in five
+        minutes. Callback is single-use; successful callback renews the session and redirects to /.
+        Login redirects to the configured provider. Session cookie never appears in response JSON.
       security: []
       responses:
-        '302':
-          description: Success; no response body
-          headers:
-            Location:
-              description: Configured OIDC authorization URL or /
-              schema:
-                type: string
-        '500':
-          description: Session unavailable
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: 'session unavailable
-
-                '
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+        '302': {$ref: '#/components/responses/AuthRedirect'}
+        '500': {$ref: '#/components/responses/SessionUnavailable'}
+        '405': {$ref: '#/components/responses/AuthMethodNotAllowed'}
   /api/auth/callback:
     get:
       operationId: ticket_get_api_auth_callback
       summary: OIDC callback
-      description: OIDC authorization code flow with state, nonce and PKCE. Login state expires in five
-        minutes. Callback is single-use; successful callback renews the session and redirects to /. Login
-        redirects to the configured provider. Session cookie never appears in response JSON.
+      description: >-
+        OIDC authorization code flow with state, nonce and PKCE. Login state expires in five
+        minutes. Callback is single-use; successful callback renews the session and redirects to /.
+        Login redirects to the configured provider. Session cookie never appears in response JSON.
       security: []
       responses:
-        '302':
-          description: Success; no response body
-          headers:
-            Location:
-              description: Configured OIDC authorization URL or /
-              schema:
-                type: string
-        '500':
-          description: Session unavailable
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: 'session unavailable
-
-                '
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+        '302': {$ref: '#/components/responses/AuthRedirect'}
+        '500': {$ref: '#/components/responses/SessionUnavailable'}
         '400':
           description: Invalid/expired callback or failed authentication
           content:
             text/plain:
-              schema:
-                type: string
-              example: 'invalid login
-
-                '
+              schema: {type: string}
+              example: "invalid login\n"
+        '405': {$ref: '#/components/responses/AuthMethodNotAllowed'}
       parameters:
-      - name: code
-        in: query
-        required: false
-        description: code
-        schema:
-          type: string
-      - name: state
-        in: query
-        required: false
-        description: state
-        schema:
-          type: string
-      - name: error
-        in: query
-        required: false
-        description: error
-        schema:
-          type: string
+        - name: code
+          in: query
+          required: false
+          description: code
+          schema: {type: string}
+        - name: state
+          in: query
+          required: false
+          description: state
+          schema: {type: string}
+        - name: error
+          in: query
+          required: false
+          description: error
+          schema: {type: string}
   /api/auth/me:
     get:
       operationId: ticket_get_api_auth_me
       summary: Current user
-      description: Authenticated intern or mentor session. Access to another owner or team is rejected;
-        no data are disclosed.
-      security:
-      - Session: []
+      description: >-
+        Authenticated intern or mentor session. Access to another owner or team is rejected; no
+        data are disclosed.
       responses:
         '200':
           description: Success
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-        '401':
-          $ref: '#/components/responses/401'
-        '500':
-          $ref: '#/components/responses/500'
+              schema: {$ref: '#/components/schemas/User'}
+        '401': {$ref: '#/components/responses/401'}
+        '500': {$ref: '#/components/responses/500'}
+        '405': {$ref: '#/components/responses/AuthMethodNotAllowed'}
   /api/auth/logout:
     post:
       operationId: ticket_post_api_auth_logout
       summary: Destroy this service session
-      description: Same-origin browser POST; also succeeds when already logged out. Destroy only this
-        service session.
+      description: >-
+        Same-origin browser POST; also succeeds when already logged out. Destroy only this service
+        session.
       security: []
       responses:
-        '204':
-          description: Success; no response body
-        '403':
-          $ref: '#/components/responses/403'
-        '500':
-          description: Session unavailable
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: 'session unavailable
-
-                '
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+        '204': {$ref: '#/components/responses/NoContent'}
+        '403': {$ref: '#/components/responses/403'}
+        '500': {$ref: '#/components/responses/SessionUnavailable'}
+        '405': {$ref: '#/components/responses/AuthMethodNotAllowed'}
   /api/tickets:
     get:
       operationId: ticket_get_api_tickets
       summary: List own sent questions
-      description: Authenticated intern session. Access to another owner or team is rejected; no data
-        are disclosed.
-      security:
-      - Session: []
+      description: >-
+        Authenticated intern session. Access to another owner or team is rejected; no data are
+        disclosed.
       responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Tickets'
-        '400':
-          $ref: '#/components/responses/400'
-        '401':
-          $ref: '#/components/responses/401'
-        '403':
-          $ref: '#/components/responses/403'
-        '404':
-          $ref: '#/components/responses/404'
-        '409':
-          $ref: '#/components/responses/409'
-        '422':
-          $ref: '#/components/responses/422'
-        '500':
-          $ref: '#/components/responses/500'
-        '503':
-          $ref: '#/components/responses/503'
+        '200': {$ref: '#/components/responses/Tickets'}
+        '401': {$ref: '#/components/responses/401'}
+        '403': {$ref: '#/components/responses/403'}
+        '500': {$ref: '#/components/responses/500'}
+        '405': {$ref: '#/components/responses/405'}
     post:
       operationId: ticket_post_api_tickets
       summary: Send question to assigned mentor
-      description: Authenticated intern session. Access to another owner or team is rejected; no data
-        are disclosed. Question and description are trimmed and must contain non-whitespace. Recipient
-        is resolved by Tracker, never accepted from the caller. Retry checks an existing ticket before
-        looking up the mentor; changed fields cause 409.
-      security:
-      - Session: []
+      description: >-
+        Authenticated intern session. Access to another owner or team is rejected; no data are
+        disclosed. Question and description are trimmed and must contain non-whitespace. Recipient
+        is resolved by Tracker, never accepted from the caller. Retry checks an existing ticket
+        before looking up the mentor; changed fields cause 409.
       responses:
-        '201':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Ticket'
-        '400':
-          $ref: '#/components/responses/400'
-        '401':
-          $ref: '#/components/responses/401'
-        '403':
-          $ref: '#/components/responses/403'
-        '404':
-          $ref: '#/components/responses/404'
-        '409':
-          $ref: '#/components/responses/409'
-        '422':
-          $ref: '#/components/responses/422'
-        '500':
-          $ref: '#/components/responses/500'
-        '503':
-          $ref: '#/components/responses/503'
-        '200':
-          description: Existing ticket for the same sender, key and trimmed fields. No duplicate even
-            if the first response was lost.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Ticket'
-      requestBody:
-        required: true
-        description: JSON, at most 1 MiB. Unknown fields rejected.
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateTicket'
+        '201': {$ref: '#/components/responses/Ticket'}
+        '400': {$ref: '#/components/responses/400'}
+        '401': {$ref: '#/components/responses/401'}
+        '403': {$ref: '#/components/responses/403'}
+        '404': {$ref: '#/components/responses/404'}
+        '409': {$ref: '#/components/responses/409'}
+        '422': {$ref: '#/components/responses/422'}
+        '500': {$ref: '#/components/responses/500'}
+        '503': {$ref: '#/components/responses/503'}
+        '200': {$ref: '#/components/responses/TicketReplay'}
+        '405': {$ref: '#/components/responses/405'}
+      requestBody: {$ref: '#/components/requestBodies/CreateTicket'}
       parameters:
-      - name: Idempotency-Key
-        in: header
-        required: true
-        description: Idempotency-Key
-        schema:
-          type: string
-          minLength: 1
-          maxLength: 256
+        - {$ref: '#/components/parameters/IdempotencyKey'}
   /api/tickets/incoming:
     get:
       operationId: ticket_get_api_tickets_incoming
       summary: List incoming questions
-      description: Authenticated mentor session. Access to another owner or team is rejected; no data
-        are disclosed.
-      security:
-      - Session: []
+      description: >-
+        Authenticated mentor session. Access to another owner or team is rejected; no data are
+        disclosed.
       responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Tickets'
-        '400':
-          $ref: '#/components/responses/400'
-        '401':
-          $ref: '#/components/responses/401'
-        '403':
-          $ref: '#/components/responses/403'
-        '404':
-          $ref: '#/components/responses/404'
-        '409':
-          $ref: '#/components/responses/409'
-        '422':
-          $ref: '#/components/responses/422'
-        '500':
-          $ref: '#/components/responses/500'
-        '503':
-          $ref: '#/components/responses/503'
+        '200': {$ref: '#/components/responses/Tickets'}
+        '401': {$ref: '#/components/responses/401'}
+        '403': {$ref: '#/components/responses/403'}
+        '500': {$ref: '#/components/responses/500'}
+        '405': {$ref: '#/components/responses/405'}
   /internal/interns/{id}/tickets:
     get:
       operationId: ticket_get_internal_interns_id_tickets
       summary: List own sent questions
-      description: 'Internal: Bearer Buddy key; path identifies the user. Access to another owner or team
-        is rejected; no data are disclosed.'
+      description: >-
+        Internal: Bearer Buddy key; path identifies the user. The trusted service caller selects
+        the path user ID; data are filtered to that owner. No independent end-user/team comparison
+        is performed.
       security:
-      - ServiceKey: []
+        - {ServiceKey: []}
       responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Tickets'
-        '400':
-          $ref: '#/components/responses/400'
-        '401':
-          $ref: '#/components/responses/401'
-        '403':
-          $ref: '#/components/responses/403'
-        '404':
-          $ref: '#/components/responses/404'
-        '409':
-          $ref: '#/components/responses/409'
-        '422':
-          $ref: '#/components/responses/422'
-        '500':
-          $ref: '#/components/responses/500'
-        '503':
-          $ref: '#/components/responses/503'
+        '200': {$ref: '#/components/responses/Tickets'}
+        '401': {$ref: '#/components/responses/401'}
+        '500': {$ref: '#/components/responses/500'}
+        '405': {$ref: '#/components/responses/405'}
       parameters:
-      - name: id
-        in: path
-        required: true
-        description: id
-        schema:
-          type: string
-          minLength: 1
+        - {$ref: '#/components/parameters/ID'}
     post:
       operationId: ticket_post_internal_interns_id_tickets
       summary: Send question to assigned mentor
-      description: 'Internal: Bearer Buddy key; path identifies the user. Access to another owner or team
-        is rejected; no data are disclosed. Question and description are trimmed and must contain non-whitespace.
-        Recipient is resolved by Tracker, never accepted from the caller. Retry checks an existing ticket
-        before looking up the mentor; changed fields cause 409.'
+      description: >-
+        Internal: Bearer Buddy key; path identifies the user. The trusted service caller selects
+        the path user ID; data are filtered to that owner. No independent end-user/team comparison
+        is performed. Question and description are trimmed and must contain non-whitespace.
+        Recipient is resolved by Tracker, never accepted from the caller. Retry checks an existing
+        ticket before looking up the mentor; changed fields cause 409.
       security:
-      - ServiceKey: []
+        - {ServiceKey: []}
       responses:
-        '201':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Ticket'
-        '400':
-          $ref: '#/components/responses/400'
-        '401':
-          $ref: '#/components/responses/401'
-        '403':
-          $ref: '#/components/responses/403'
-        '404':
-          $ref: '#/components/responses/404'
-        '409':
-          $ref: '#/components/responses/409'
-        '422':
-          $ref: '#/components/responses/422'
-        '500':
-          $ref: '#/components/responses/500'
-        '503':
-          $ref: '#/components/responses/503'
-        '200':
-          description: Existing ticket for the same sender, key and trimmed fields. No duplicate even
-            if the first response was lost.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Ticket'
+        '201': {$ref: '#/components/responses/Ticket'}
+        '400': {$ref: '#/components/responses/400'}
+        '401': {$ref: '#/components/responses/401'}
+        '404': {$ref: '#/components/responses/404'}
+        '409': {$ref: '#/components/responses/409'}
+        '422': {$ref: '#/components/responses/422'}
+        '500': {$ref: '#/components/responses/500'}
+        '503': {$ref: '#/components/responses/503'}
+        '200': {$ref: '#/components/responses/TicketReplay'}
+        '405': {$ref: '#/components/responses/405'}
       parameters:
-      - name: id
-        in: path
-        required: true
-        description: id
-        schema:
-          type: string
-          minLength: 1
-      - name: Idempotency-Key
-        in: header
-        required: true
-        description: Idempotency-Key
-        schema:
-          type: string
-          minLength: 1
-          maxLength: 256
-      requestBody:
-        required: true
-        description: JSON, at most 1 MiB. Unknown fields rejected.
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateTicket'
+        - {$ref: '#/components/parameters/ID'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {$ref: '#/components/requestBodies/CreateTicket'}
 components:
   securitySchemes:
-    Session:
-      type: apiKey
-      in: cookie
-      name: __Host-session
+    Session: {type: apiKey, in: cookie, name: __Host-session}
     ServiceKey:
       type: http
       scheme: bearer
-      description: Buddy service API key. Tracker mentor lookup also permits the Ticket key; other Tracker
-        routes reject it with 403.
+      description: Buddy service API key; trusted caller selects the path user ID.
   schemas:
     Error:
       type: object
       properties:
-        error:
-          type: string
-      required:
-      - error
-      example:
-        error: invalid input
+        error: {type: string}
+      required: [error]
+      example: {error: invalid input}
+      additionalProperties: false
     User:
       type: object
       properties:
-        authentik_id:
-          type: string
-        role:
-          type: string
-        team:
-          type: string
-        name:
-          type: string
-        email:
-          type: string
-        preferred_username:
-          type: string
-      required:
-      - authentik_id
-      - role
-      - team
-      - name
-      - email
-      - preferred_username
+        authentik_id: {type: string}
+        role: {type: string}
+        team: {type: string}
+        name: {type: string}
+        email: {type: string}
+        preferred_username: {type: string}
+      required: [authentik_id, role, team, name, email, preferred_username]
+      additionalProperties: false
     Ticket:
       type: object
       properties:
-        id:
-          type: string
-        sender_id:
-          type: string
-        recipient_id:
-          type: string
-        question:
-          type: string
-        description:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-      required:
-      - id
-      - sender_id
-      - recipient_id
-      - question
-      - description
-      - created_at
+        id: {type: string}
+        sender_id: {type: string}
+        recipient_id: {type: string}
+        question: {type: string}
+        description: {type: string}
+        created_at: {type: string, format: date-time}
+      required: [id, sender_id, recipient_id, question, description, created_at]
+      additionalProperties: false
     CreateTicket:
       type: object
       properties:
         question:
           type: string
           minLength: 1
+          description: >-
+            Trimmed; must contain non-whitespace text. No additional character limit beyond the
+            body-size limit.
+          x-trim: true
         description:
           type: string
           minLength: 1
-      required:
-      - question
-      - description
+          description: >-
+            Trimmed; must contain non-whitespace text. No additional character limit beyond the
+            body-size limit.
+          x-trim: true
+      required: [question, description]
       additionalProperties: false
-      example:
-        question: Help with setup?
-        description: Describe the problem and attempted steps.
+      example: {question: 'Help with setup?', description: Describe the problem and attempted steps.}
     Tickets:
       type: object
       properties:
         tickets:
           type: array
-          items:
-            $ref: '#/components/schemas/Ticket'
-      required:
-      - tickets
+          items: {$ref: '#/components/schemas/Ticket'}
+      required: [tickets]
       description: Empty lists are [], never null.
+      additionalProperties: false
   responses:
     '400':
       description: Invalid input
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
+          schema: {$ref: '#/components/schemas/Error'}
     '401':
-      description: Missing or invalid session / API key
+      description: >-
+        Missing session or missing, malformed or invalid service key. A corrupt stored session
+        identity returns 500.
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
+          schema: {$ref: '#/components/schemas/Error'}
     '403':
       description: Role, service key or cross-origin request forbidden
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
+          schema: {$ref: '#/components/schemas/Error'}
     '404':
       description: Resource absent or outside owner/team scope
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
+          schema: {$ref: '#/components/schemas/Error'}
     '405':
-      description: Method not allowed
+      description: >-
+        Unsupported method at a known domain path; outer authentication/session policy still
+        applies. Allow lists explicit registered methods, without implicit HEAD.
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
+          schema: {$ref: '#/components/schemas/Error'}
+      headers:
+        Allow:
+          schema: {type: string}
+          description: >-
+            Explicit registered methods, comma-space separated; GET also accepts HEAD even when
+            HEAD is absent here.
     '409':
       description: Idempotency or state conflict
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
+          schema: {$ref: '#/components/schemas/Error'}
     '422':
       description: Ментор не назначен
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
+          schema: {$ref: '#/components/schemas/Error'}
     '500':
       description: Storage or session unavailable
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
+          schema: {$ref: '#/components/schemas/Error'}
     '503':
       description: Dependency unavailable
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
+          schema: {$ref: '#/components/schemas/Error'}
+    NoContent: {description: Success; no response body}
+    AuthRedirect:
+      description: Redirect to the OIDC provider or /. May include an HTML redirect body.
+      headers:
+        Location:
+          description: Configured OIDC authorization URL or /
+          schema: {type: string}
+      content:
+        text/html:
+          schema: {type: string}
+    SessionUnavailable:
+      description: Session unavailable
+      content:
+        text/plain:
+          schema: {type: string}
+          example: "session unavailable\n"
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    AuthMethodNotAllowed:
+      description: Unsupported method (ServeMux); GET also accepts HEAD.
+      headers:
+        Allow:
+          schema: {type: string}
+      content:
+        text/plain:
+          schema: {type: string}
+    Tickets:
+      description: Success
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Tickets'}
+    Ticket:
+      description: Success
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Ticket'}
+    TicketReplay:
+      description: >-
+        Existing ticket for the same sender, key and trimmed fields. No duplicate even if the first
+        response was lost.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Ticket'}
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: >-
+        Non-whitespace key, at most 256 UTF-8 bytes. Preserved verbatim; maxLength is only a
+        character upper bound.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 256
+        x-maxBytes: 256
+    ID:
+      name: id
+      in: path
+      required: true
+      description: id
+      schema: {type: string, minLength: 1}
+  requestBodies:
+    CreateTicket:
+      required: true
+      description: JSON, at most 1 MiB. Unknown fields rejected.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/CreateTicket'}
