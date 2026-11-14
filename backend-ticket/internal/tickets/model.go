@@ -3,12 +3,12 @@ package tickets
 import "time"
 
 type Ticket struct {
-	ID          string    `json:"id"`
-	SenderID    string    `json:"sender_id"`
-	RecipientID string    `json:"recipient_id"`
-	Question    string    `json:"question"`
-	Description string    `json:"description"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID          string
+	SenderID    string
+	RecipientID string
+	Question    string
+	Description string
+	CreatedAt   time.Time
 }
 
 type CreateInput struct {

@@ -35,5 +35,5 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	if created {
 		code = http.StatusCreated
 	}
-	httpx.JSON(w, code, ticket)
+	httpx.JSON(w, code, fromTicket(ticket))
 }
