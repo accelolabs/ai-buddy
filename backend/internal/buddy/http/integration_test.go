@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alexedwards/scs/v2"
+
 	"ai-buddy/internal/buddy"
 	"ai-buddy/internal/buddy/migrations"
 	"ai-buddy/internal/buddy/postgres"
 	"ai-buddy/internal/platform/auth"
 	"ai-buddy/internal/testutil"
-
-	"github.com/alexedwards/scs/v2"
 )
 
 type runner struct{ repo buddy.Repository }
@@ -104,11 +104,12 @@ func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
 	}
 	call("GET", "/api/chats", "", nil, "", 401)
 	call("GET", "/api/chats", "", mentor, "", 403)
-	var c chatDTO
+	var c buddy.Chat
 	if e := json.Unmarshal(call("POST", "/api/chats", "", alice, "", 201), &c); e != nil {
 		t.Fatal(e)
 	}
 	call("GET", "/api/chats", "", alice, "", 200)
+	call("GET", "/api/chats/"+c.ID, "", alice, "", 200)
 	call("GET", "/api/chats/"+c.ID, "", bob, "", 404)
 	call("POST", "/api/chats/"+c.ID+"/messages", `{"content":"hi","owner":"bob"}`, alice, "k", 400)
 	call("POST", "/api/chats/"+c.ID+"/messages", `{"content":"hi"}`, alice, "", 400)
@@ -157,6 +158,27 @@ func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
 	if res.StatusCode != 400 {
 		t.Fatal(res.StatusCode)
 	}
+	for _, cursor := range []string{"+1", "-0", "-00", "9223372036854775808", "-1"} {
+		req.Header.Set("Last-Event-ID", cursor)
+		res, e = http.DefaultClient.Do(req)
+		if e != nil {
+			t.Fatal(e)
+		}
+		_, err := io.Copy(io.Discard, res.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = res.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+		want := 200
+		if cursor == "9223372036854775808" || cursor == "-1" {
+			want = 400
+		}
+		if res.StatusCode != want {
+			t.Fatal(cursor, res.StatusCode)
+		}
+	}
 	c2, e := p.CreateChat(ctx, "alice")
 	if e != nil {
 		t.Fatal(e)
@@ -187,8 +209,8 @@ func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
 		t.Fatal(e)
 	}
 	call("POST", "/api/actions/"+a.ID+"/confirm", `{}`, bob, "", 404)
-	call("POST", "/api/actions/"+a.ID+"/confirm", `{"fields":{"title":"Edited","deadline":"2026-12-02"}}`, alice, "", 200)
-	call("POST", "/api/actions/"+a.ID+"/confirm", `{}`, alice, "", 200)
+	call("POST", "/api/actions/"+a.ID+"/confirm", `{"fields":{"title":"Edited","description":null,"deadline":"2026-12-02"}}`, alice, "", 200)
+	call("POST", "/api/actions/"+a.ID+"/confirm", `null`, alice, "", 200)
 	call("POST", "/api/actions/"+a.ID+"/cancel", "", alice, "", 409)
 	call("POST", "/api/actions/"+a.ID+"/confirm", `{"user":"bob"}`, alice, "", 400)
 	a, e = p.Draft(ctx, buddy.Action{RunID: live.ID, Owner: "alice", Kind: "create_ticket", Fields: json.RawMessage(`{"question":"Help?","description":"context"}`)})

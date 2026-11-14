@@ -3,6 +3,7 @@ package buddyhttp
 import (
 	"net/http"
 
+	"ai-buddy/internal/buddy"
 	"ai-buddy/internal/platform/httpx"
 )
 
@@ -12,7 +13,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		fail(w, e)
 		return
 	}
-	httpx.JSON(w, 201, chat(c))
+	httpx.JSON(w, 201, c)
 }
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	all, e := h.Service.Repo.Chats(r.Context(), owner(r).ID)
@@ -20,11 +21,10 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		fail(w, e)
 		return
 	}
-	out := []chatDTO{}
-	for _, c := range all {
-		out = append(out, chat(c))
+	if all == nil {
+		all = []buddy.Chat{}
 	}
-	httpx.JSON(w, 200, map[string]any{"chats": out})
+	httpx.JSON(w, 200, map[string]any{"chats": all})
 }
 func (h *Handler) history(w http.ResponseWriter, r *http.Request) {
 	v, e := h.Service.Repo.History(r.Context(), owner(r).ID, r.PathValue("id"))
@@ -32,25 +32,22 @@ func (h *Handler) history(w http.ResponseWriter, r *http.Request) {
 		fail(w, e)
 		return
 	}
-	messages := []messageDTO{}
-	for _, m := range v.Messages {
-		messages = append(messages, messageDTO{m.ID, m.RunID, m.Role, m.Content, m.CreatedAt})
+	if v.Messages == nil {
+		v.Messages = []buddy.Message{}
 	}
 	runs := []runDTO{}
 	for _, v := range v.Runs {
 		runs = append(runs, run(v))
 	}
-	actions := []actionDTO{}
-	for _, v := range v.Actions {
-		actions = append(actions, action(v))
+	if v.Actions == nil {
+		v.Actions = []buddy.Action{}
 	}
-	cards := []cardDTO{}
-	for _, c := range v.Cards {
-		cards = append(cards, cardDTO{c.RunID, c.Kind, c.Data})
+	if v.Cards == nil {
+		v.Cards = []buddy.Card{}
 	}
 	var latest *runDTO
 	if len(runs) > 0 {
 		latest = &runs[len(runs)-1]
 	}
-	httpx.JSON(w, 200, map[string]any{"chat": chat(v.Chat), "messages": messages, "runs": runs, "latest_run": latest, "actions": actions, "cards": cards})
+	httpx.JSON(w, 200, map[string]any{"chat": v.Chat, "messages": v.Messages, "runs": runs, "latest_run": latest, "actions": v.Actions, "cards": v.Cards})
 }

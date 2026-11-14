@@ -19,7 +19,7 @@ func (h *Handler) confirm(w http.ResponseWriter, r *http.Request) {
 		fail(w, e)
 		return
 	}
-	httpx.JSON(w, 200, action(a))
+	httpx.JSON(w, 200, a)
 }
 func (h *Handler) cancel(w http.ResponseWriter, r *http.Request) {
 	a, e := h.Service.Cancel(r.Context(), owner(r), r.PathValue("id"))
@@ -27,5 +27,5 @@ func (h *Handler) cancel(w http.ResponseWriter, r *http.Request) {
 		fail(w, e)
 		return
 	}
-	httpx.JSON(w, 200, action(a))
+	httpx.JSON(w, 200, a)
 }

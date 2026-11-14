@@ -20,9 +20,7 @@ var (
 
 func ID() string {
 	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		panic(err)
-	}
+	_, _ = rand.Read(b[:]) // crypto/rand.Read always fills the buffer or terminates.
 	return hex.EncodeToString(b[:])
 }
 func Title(text string) string {
@@ -34,12 +32,18 @@ func Title(text string) string {
 }
 
 type Chat struct {
-	ID, Owner, Title string
-	CreatedAt        time.Time
+	ID        string    `json:"id"`
+	Owner     string    `json:"-"`
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"created_at"`
 }
 type Message struct {
-	ID, ChatID, RunID, Role, Content string
-	CreatedAt                        time.Time
+	ID        string    `json:"id"`
+	ChatID    string    `json:"-"`
+	RunID     string    `json:"run_id"`
+	Role      string    `json:"role"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
 }
 type Run struct {
 	ID, ChatID, Owner, MessageID, Status, Error string
@@ -54,13 +58,19 @@ type Event struct {
 	Data json.RawMessage
 }
 type Action struct {
-	ID, RunID, Owner, Kind, Status string
-	Fields, Result                 json.RawMessage
-	Error                          string
+	ID     string          `json:"id"`
+	RunID  string          `json:"run_id"`
+	Owner  string          `json:"-"`
+	Kind   string          `json:"kind"`
+	Status string          `json:"status"`
+	Fields json.RawMessage `json:"fields"`
+	Result json.RawMessage `json:"result"`
+	Error  string          `json:"error"`
 }
 type Card struct {
-	RunID, Kind string
-	Data        json.RawMessage
+	RunID string          `json:"run_id"`
+	Kind  string          `json:"kind"`
+	Data  json.RawMessage `json:"data"`
 }
 
 type History struct {

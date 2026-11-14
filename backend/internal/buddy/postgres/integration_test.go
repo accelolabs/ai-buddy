@@ -8,6 +8,7 @@ import (
 
 	"ai-buddy/internal/buddy"
 	"ai-buddy/internal/buddy/migrations"
+	platformmigrations "ai-buddy/internal/platform/migrations"
 	"ai-buddy/internal/testutil"
 )
 
@@ -124,8 +125,8 @@ func TestLifecycleIsolationReplayAndRestart(t *testing.T) {
 	if e = p.Event(ctx, "absent", "stage", "x"); !errors.Is(e, buddy.ErrNotFound) {
 		t.Fatal(e)
 	}
-	must(t, migrations.Run(ctx, p.DB, "down"))
-	must(t, migrations.Run(ctx, p.DB, "up"))
+	must(t, platformmigrations.Run(ctx, p.DB, migrations.Files, "down"))
+	must(t, platformmigrations.Run(ctx, p.DB, migrations.Files, "up"))
 }
 
 func TestActionsFreezeCancelRetryAndRecovery(t *testing.T) {

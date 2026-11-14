@@ -7,20 +7,25 @@ import (
 	"fmt"
 	"strings"
 
+	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"ai-buddy/internal/buddy"
 	"ai-buddy/internal/buddy/mcp"
 	"ai-buddy/internal/buddy/ollama"
-
-	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func (a *Agent) executeTools(ctx context.Context, run buddy.Run, session *mcp.Session, known map[string]bool, messages []ollama.Message, calls []ollama.Call) ([]ollama.Message, error) {
 	for _, call := range calls {
-		if !known[call.Function.Name] || !json.Valid(call.Function.Arguments) {
+		if !known[call.Function.Name] {
 			return nil, errors.New("invalid tool call")
 		}
 		var args map[string]any
-		if json.Unmarshal(call.Function.Arguments, &args) != nil || args == nil {
+		err := json.Unmarshal(call.Function.Arguments, &args)
+		var syntax *json.SyntaxError
+		if errors.As(err, &syntax) {
+			return nil, errors.New("invalid tool call")
+		}
+		if err != nil || args == nil {
 			return nil, errors.New("invalid tool arguments")
 		}
 		if e := a.Repo.Event(ctx, run.ID, buddy.EventStage, call.Function.Name); e != nil {
