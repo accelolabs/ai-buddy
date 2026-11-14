@@ -1,26 +1,21 @@
 # AI Buddy
 
-Архитектура и требования: [docs/SDD.md](docs/SDD.md).
+AI Buddy — сервисы Buddy, Tracker, Ticket и Wiki с авторизацией через Authentik.
 
-Первый этап — [Authentik: Compose, OIDC и демо-пользователи](deploy/authentik/README.md).
+- [Архитектура и требования](docs/SDD.md).
+- [Бэкенд: структура, запуск, сборка и проверки](backend/README.md).
+- [Authentik: OIDC и демо-пользователи](backend/deploy/authentik/README.md).
+- [Tracker: задачи, прогресс и наставники](backend/deploy/tracker/README.md).
+- [Ticket: вопросы наставникам](backend/deploy/ticket/README.md).
 
-Шаблон Go-сервиса: [backend-template/README.md](backend-template/README.md).
+Весь код бэкенда, Go-модуль, Dockerfile, скрипты и файлы развёртывания находятся в `backend/`.
+Go-команды выполняются из этого каталога:
 
-Backend Tracker: [backend-tracker/README.md](backend-tracker/README.md) — задачи, прогресс, наставники, внутренний API и seed.
+```sh
+cd backend
+./scripts/check.sh
+```
 
-Backend Ticket: [backend-ticket/README.md](backend-ticket/README.md) — вопросы наставникам, входящие, идемпотентность и seed.
-
-Каталоги, Go-модули и сервисы развёртывания создавать с именами `backend-[service]`
-(например, `backend-buddy`). Существующие OIDC-клиенты Authentik сохраняют имена
-`buddy`, `wiki`, `tracker`, `ticket` и зарегистрированные callback URL.
-
-## План
-
-1. Создать `backend-buddy`, `backend-wiki`, `backend-tracker` и `backend-ticket`: модули, БД, Compose, OIDC.
-2. `backend-tracker`: задачи, дедлайны, прогресс, наставники и API.
-3. `backend-ticket`: вопросы наставнику, списки тикетов, идемпотентность.
-4. `backend-wiki`: документы, права доступа, гибридный поиск с pgvector.
-5. `backend-buddy`: диалоги, модель, MCP-инструменты и подтверждение действий.
-6. SSE: поток ответов, восстановление без дублей, ошибки и повтор.
-7. React: интерфейсы четырёх сервисов.
-8. Настроить межсервисные API-ключи, права и повторяемые демо-данные.
+Tracker и Ticket запускаются отдельными процессами со своими PostgreSQL и сессиями.
+Будущий frontend — один React-проект с общими компонентами и четырьмя самостоятельными
+сборками для Buddy, Tracker, Ticket и Wiki на своих доменах.
