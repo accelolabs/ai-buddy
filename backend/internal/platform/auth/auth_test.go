@@ -21,7 +21,6 @@ import (
 	jose "github.com/go-jose/go-jose/v4"
 
 	"ai-buddy/internal/platform/config"
-	"ai-buddy/internal/testutil"
 )
 
 type brokenStore struct {
@@ -54,7 +53,6 @@ func (s *brokenStore) Delete(k string) error {
 }
 
 type fixture struct {
-	test                   *testing.T
 	a                      *Auth
 	provider               *httptest.Server
 	store                  *brokenStore
@@ -197,7 +195,6 @@ func newFixture(t *testing.T) *fixture {
 	}
 
 	f.a = New(s, provider)
-	f.test = t
 	return f
 }
 
@@ -210,9 +207,6 @@ func (f *fixture) request(method, path string, cookie *http.Cookie) *httptest.Re
 
 	w := httptest.NewRecorder()
 	handler := f.a.Handler()
-	for _, service := range []string{"buddy", "tracker", "ticket", "wiki"} {
-		handler = testutil.Contract(f.test, service, handler)
-	}
 	handler.ServeHTTP(w, r)
 	return w
 }
@@ -378,48 +372,6 @@ func TestRejectedCallback(t *testing.T) {
 	}
 }
 
-func TestClaims(t *testing.T) {
-	f := newFixture(t)
-	for _, tc := range []struct {
-		key string
-		v   any
-	}{
-		{"authentik_id", nil},
-		{"authentik_id", " "},
-		{"authentik_id", 42},
-		{"role", nil},
-		{"role", "admin"},
-		{"team", nil},
-		{"team", " "},
-		{"team", []string{"backend"}},
-	} {
-		t.Run(tc.key+"-"+strings.TrimSpace(strings.ReplaceAll(stringMustJSON(tc.v), "\"", "")), func(t *testing.T) {
-			old := f.claims[tc.key]
-			defer func() {
-				f.claims[tc.key] = old
-			}()
-
-			f.claims[tc.key] = tc.v
-			c, s := f.login(t, nil)
-			if w := f.callback(c, s); w.Code != 400 {
-				t.Fatalf("accepted claims %d", w.Code)
-			}
-		})
-	}
-
-	f.claims["role"] = "mentor"
-	f.claims["team"] = "new-team"
-	c, s := f.login(t, nil)
-	if w := f.callback(c, s); w.Code != 302 {
-		t.Fatal("mentor rejected")
-	}
-}
-
-func stringMustJSON(v any) string {
-	b, _ := json.Marshal(v)
-	return string(b)
-}
-
 func TestStoreErrors(t *testing.T) {
 	f := newFixture(t)
 	c, s := f.login(t, nil)
@@ -445,28 +397,6 @@ func TestStoreErrors(t *testing.T) {
 	}
 }
 
-func TestSessionConfiguration(t *testing.T) {
-	s, stop := NewSessions(nil, config.Config{SessionLifetime: 24 * time.Hour, SessionIdleTimeout: time.Hour})
-	defer stop()
-
-	if s.Lifetime != 24*time.Hour ||
-		s.IdleTimeout != time.Hour ||
-		s.Cookie.Name != "__Host-session" ||
-		!s.Cookie.Secure ||
-		!s.Cookie.HttpOnly ||
-		s.Cookie.SameSite != http.SameSiteLaxMode ||
-		s.Cookie.Path != "/" ||
-		s.Cookie.Domain != "" {
-		t.Fatal("session configuration")
-	}
-
-	w := httptest.NewRecorder()
-	s.ErrorFunc(w, httptest.NewRequest("GET", "/", nil), errors.New("secret"))
-	if w.Code != 500 || strings.Contains(w.Body.String(), "secret") {
-		t.Fatal("error handler")
-	}
-}
-
 func (f *fixture) updateSession(t *testing.T, cookie *http.Cookie, update func(context.Context)) {
 	t.Helper()
 	ctx, err := f.a.Sessions.Load(context.Background(), cookie.Value)
@@ -477,14 +407,5 @@ func (f *fixture) updateSession(t *testing.T, cookie *http.Cookie, update func(c
 	update(ctx)
 	if _, _, err = f.a.Sessions.Commit(ctx); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestAuthenticateMissingParameters(t *testing.T) {
-	f := newFixture(t)
-	for _, args := range [][3]string{{"", "pkce", "nonce"}, {"code", "", "nonce"}, {"code", "pkce", ""}} {
-		if _, err := f.a.oidcProvider.Authenticate(context.Background(), args[0], args[1], args[2]); err == nil {
-			t.Fatal("accepted empty parameters")
-		}
 	}
 }

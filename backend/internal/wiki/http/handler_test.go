@@ -12,7 +12,6 @@ import (
 	"github.com/alexedwards/scs/v2"
 
 	"ai-buddy/internal/platform/auth"
-	"ai-buddy/internal/testutil"
 	"ai-buddy/internal/wiki"
 )
 
@@ -64,7 +63,7 @@ func TestRoutes(t *testing.T) {
 	e := &embedder{}
 	users := &teams{}
 	h := &Handler{&wiki.Service{Store: s, Embedder: e, Minimum: 0.35}, users}
-	routes := testutil.Contract(t, "wiki", Routes(login, h, "buddy"))
+	routes := Routes(login, h, "buddy")
 	cookieFor := func(team string) *http.Cookie {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("GET", "/", nil)

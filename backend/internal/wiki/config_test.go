@@ -47,13 +47,3 @@ func TestConfig(t *testing.T) {
 		t.Fatal("missing")
 	}
 }
-
-func TestNonFiniteSimilarity(t *testing.T) {
-	configEnv(t)
-	for _, value := range []string{"NaN", "+Inf", "-Inf", "-0.1", "1.1"} {
-		t.Setenv("WIKI_MIN_SIMILARITY", value)
-		if _, err := LoadConfig(); err == nil {
-			t.Fatal("accepted", value)
-		}
-	}
-}

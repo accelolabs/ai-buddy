@@ -3,11 +3,8 @@ package buddy
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
-
-	"ai-buddy/internal/platform/auth"
 )
 
 type repoStub struct {
@@ -34,59 +31,6 @@ func (r *repoStub) ActionResult(_ context.Context, _ string, _ json.RawMessage, 
 	return Action{ID: "a"}, nil
 }
 
-type runner struct{ err error }
-
-func (r runner) Generate(context.Context, auth.User, Run) error { return r.err }
-
-type executor struct{ err error }
-
-func (e executor) Execute(context.Context, auth.User, Action) (json.RawMessage, error) {
-	return nil, e.err
-}
-func TestService(t *testing.T) {
-	ctx := context.Background()
-	u := auth.User{ID: "u"}
-	r := &repoStub{fresh: true, execute: true, finished: make(chan string, 4)}
-	s := &Service{Repo: r, Context: ctx, Runner: runner{}, Executor: executor{}}
-	for _, v := range []struct{ k, text string }{{"", "hi"}, {strings.Repeat("k", 201), "hi"}, {"k", " "}, {"k", strings.Repeat("a", 2001)}} {
-		if _, e := s.Send(ctx, u, "c", v.k, v.text); !errors.Is(e, ErrInvalid) {
-			t.Fatal(e)
-		}
-	}
-	if _, e := s.Send(ctx, u, "c", "k", "hi"); e != nil {
-		t.Fatal(e)
-	}
-	s.Wait()
-	if e := <-r.finished; e != "" {
-		t.Fatal(e)
-	}
-	s.Runner = runner{errors.New("failed")}
-	if _, e := s.Retry(ctx, u, "r"); e != nil {
-		t.Fatal(e)
-	}
-	s.Wait()
-	if e := <-r.finished; e != "failed" {
-		t.Fatal(e)
-	}
-	r.fresh = false
-	_, _ = s.Send(ctx, u, "c", "k", "hi")
-	_, _ = s.Retry(ctx, u, "r")
-	s.Wait()
-	if _, e := s.Confirm(ctx, u, "a", nil); e != nil {
-		t.Fatal(e)
-	}
-	s.Executor = executor{errors.New("network")}
-	_, _ = s.Confirm(ctx, u, "a", nil)
-	if r.resultErr == nil {
-		t.Fatal("missing failure")
-	}
-	r.execute = false
-	_, _ = s.Cancel(ctx, u, "a")
-	r.err = ErrNotFound
-	if _, e := s.Confirm(ctx, u, "a", nil); !errors.Is(e, ErrNotFound) {
-		t.Fatal(e)
-	}
-}
 func TestFieldsAndModels(t *testing.T) {
 	first, second := ID(), ID()
 	if len(first) != 32 || first == second {

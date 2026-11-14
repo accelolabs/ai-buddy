@@ -139,3 +139,6 @@ network deadlines and atomic publication remain enforced.
 
 Контракт API: [OpenAPI 3.1.1](../../api/wiki.yaml).
 Общие быстрые и полные проверки, установка линтера и CI: [README бэкенда](../../README.md#api-и-проверки).
+
+После очистки тестов покрытие Wiki: **89,46% (518/579 операторов)**.
+Итоговые пять групп и выполненные проверки: [README бэкенда](../../README.md#api-и-проверки).

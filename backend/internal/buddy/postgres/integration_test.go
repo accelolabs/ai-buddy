@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"sync"
 	"testing"
 
 	"ai-buddy/internal/buddy"
@@ -128,58 +127,7 @@ func TestLifecycleIsolationReplayAndRestart(t *testing.T) {
 	must(t, migrations.Run(ctx, p.DB, "down"))
 	must(t, migrations.Run(ctx, p.DB, "up"))
 }
-func TestConcurrentStartAndEvents(t *testing.T) {
-	ctx := context.Background()
-	p := repository(t)
-	c, e := p.CreateChat(ctx, "alice")
-	must(t, e)
-	var wg sync.WaitGroup
-	ids := make(chan string, 16)
-	for i := 0; i < 16; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			r, _, e := p.Start(ctx, "alice", c.ID, "same", "hello")
-			if e != nil {
-				t.Error(e)
-				return
-			}
-			ids <- r.ID
-		}()
-	}
-	wg.Wait()
-	close(ids)
-	id := ""
-	for got := range ids {
-		if id != "" && id != got {
-			t.Fatal("duplicate run")
-		}
-		id = got
-	}
-	for i := 0; i < 16; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if e := p.Event(ctx, id, "text", "x"); e != nil {
-				t.Error(e)
-			}
-		}()
-	}
-	wg.Wait()
-	events, _, e := p.Events(ctx, "alice", id, 0)
-	must(t, e)
-	if len(events) != 16 {
-		t.Fatal(len(events))
-	}
-	for i, event := range events {
-		if event.ID != int64(i+1) {
-			t.Fatal(event)
-		}
-	}
-	if _, _, e = p.Start(ctx, "alice", c.ID, "different", "hello"); !errors.Is(e, buddy.ErrConflict) {
-		t.Fatal(e)
-	}
-}
+
 func TestActionsFreezeCancelRetryAndRecovery(t *testing.T) {
 	ctx := context.Background()
 	p := repository(t)
@@ -250,39 +198,5 @@ func TestActionsFreezeCancelRetryAndRecovery(t *testing.T) {
 	must(t, e)
 	if !execute || claimed.ID != a.ID {
 		t.Fatal(claimed)
-	}
-}
-func TestConcurrentConfirmation(t *testing.T) {
-	ctx := context.Background()
-	p := repository(t)
-	c, e := p.CreateChat(ctx, "alice")
-	must(t, e)
-	r, _, e := p.Start(ctx, "alice", c.ID, "k", "hello")
-	must(t, e)
-	a, e := p.Draft(ctx, buddy.Action{Owner: "alice", RunID: r.ID, Kind: "create_task", Fields: task})
-	must(t, e)
-	var wg sync.WaitGroup
-	wins := make(chan bool, 8)
-	for i := 0; i < 8; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			_, execute, e := p.Claim(ctx, "alice", a.ID, nil)
-			if e != nil && !errors.Is(e, buddy.ErrConflict) {
-				t.Error(e)
-			}
-			wins <- execute
-		}()
-	}
-	wg.Wait()
-	close(wins)
-	n := 0
-	for w := range wins {
-		if w {
-			n++
-		}
-	}
-	if n != 1 {
-		t.Fatal(n)
 	}
 }

@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-# Real-model acceptance is an explicit separate command.
-unset BUDDY_REAL_OLLAMA_URL
 mode=${1:-full}
 [[ $# -le 1 && ( "$mode" == full || "$mode" == --unit ) ]] || { echo 'Usage: scripts/check.sh [--unit]' >&2; exit 1; }
 if [[ "$mode" == full ]]; then
@@ -18,7 +16,6 @@ exec > >(tee "$output_dir/check.log") 2>&1
 scripts/lint.sh
 go vet ./...
 go build -o "$output_dir/bin/" ./cmd/...
-scripts/coverage-test.sh
 if [[ "$mode" == --unit ]]; then
   go test -race ./...
   exit

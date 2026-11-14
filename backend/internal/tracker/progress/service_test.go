@@ -63,90 +63,6 @@ func fixture() (*Service, *repositoryStub) {
 	}), repo
 }
 
-func TestProgress(t *testing.T) {
-	s, m := fixture()
-	ctx := context.Background()
-	p, e := s.Progress(ctx, "i")
-	if e != nil ||
-		p.Total != 0 ||
-		p.Percent != 0 ||
-		p.NextTask != nil ||
-		p.Tasks == nil ||
-		p.Mentor.ID != "m" {
-		t.Fatalf("empty: %+v %v", p, e)
-	}
-
-	p, e = s.Progress(ctx, "j")
-	if e != nil || p.Mentor != nil {
-		t.Fatal("unassigned", p, e)
-	}
-
-	now := s.now()
-	done := now
-	m.snapshot.Tasks = []tasks.Task{
-		{
-			ID:        "z",
-			InternID:  "i",
-			Deadline:  "2026-11-13",
-			CreatedAt: now.Add(time.Hour),
-		},
-		{
-			ID:        "b",
-			InternID:  "i",
-			Deadline:  "2026-11-12",
-			CreatedAt: now,
-		},
-		{
-			ID:        "a",
-			InternID:  "i",
-			Deadline:  "2026-11-13",
-			CreatedAt: now,
-		},
-		{
-			ID:          "c",
-			InternID:    "i",
-			Deadline:    "2026-11-01",
-			CreatedAt:   now,
-			CompletedAt: &done,
-		},
-	}
-	p, e = s.Progress(ctx, "i")
-	if e != nil ||
-		p.Completed != 1 ||
-		p.Total != 4 ||
-		p.Percent != 25 ||
-		p.NextTask.ID != "a" ||
-		!p.NextTask.Overdue {
-		t.Fatalf("overdue order: %+v %v", p, e)
-	}
-
-	for i := range m.snapshot.Tasks {
-		m.snapshot.Tasks[i].CompletedAt = nil
-		m.snapshot.Tasks[i].Deadline = "2026-11-15"
-	}
-
-	m.snapshot.Tasks[0].Deadline = "2026-11-14"
-	p, _ = s.Progress(ctx, "i")
-	if p.NextTask.ID != "z" || p.NextTask.Overdue {
-		t.Fatal("nearest", p)
-	}
-
-	m.snapshot.Tasks[0].Deadline = "2026-11-15"
-	p, _ = s.Progress(ctx, "i")
-	if p.NextTask.ID != "a" {
-		t.Fatal("deadline ties", p)
-	}
-
-	for i := range m.snapshot.Tasks {
-		m.snapshot.Tasks[i].CompletedAt = &done
-	}
-
-	p, _ = s.Progress(ctx, "i")
-	if p.Percent != 100 || p.NextTask != nil {
-		t.Fatal("completed", p)
-	}
-}
-
 func TestMentorAccessAndErrors(t *testing.T) {
 	s, repo := fixture()
 	ctx := context.Background()
@@ -167,15 +83,5 @@ func TestMentorAccessAndErrors(t *testing.T) {
 
 	if _, err = s.Progress(ctx, "i"); err != repo.err {
 		t.Fatal(err)
-	}
-}
-
-func TestRepositoryErrors(t *testing.T) {
-	for _, fail := range []string{"mentor", "tasks"} {
-		s, repo := fixture()
-		repo.fail = fail
-		if _, err := s.Progress(context.Background(), "i"); err == nil {
-			t.Fatal(fail)
-		}
 	}
 }

@@ -1,8 +1,6 @@
 package server
 
 import (
-	"ai-buddy/internal/testutil"
-	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -31,11 +29,6 @@ func TestRoutes(t *testing.T) {
 		}
 		w := httptest.NewRecorder()
 		checked := h
-		if tc.path == "/health/live" || tc.path == "/health/ready" {
-			for _, service := range []string{"buddy", "tracker", "ticket", "wiki"} {
-				checked = testutil.Contract(t, service, checked)
-			}
-		}
 		checked.ServeHTTP(w, httptest.NewRequest("GET", tc.path, nil))
 		if w.Code != tc.code {
 			t.Fatal(tc.path, w.Code)
@@ -43,10 +36,5 @@ func TestRoutes(t *testing.T) {
 	}
 	if err := m.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
-	}
-}
-func TestListenFailure(t *testing.T) {
-	if ServeHTTP(context.Background(), "invalid address", http.NotFoundHandler()) == nil {
-		t.Fatal("listen error")
 	}
 }

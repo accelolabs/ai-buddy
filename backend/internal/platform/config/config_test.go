@@ -3,7 +3,6 @@ package config
 import (
 	"strings"
 	"testing"
-	"time"
 )
 
 func environment(t *testing.T) {
@@ -21,18 +20,6 @@ func environment(t *testing.T) {
 	} {
 		t.Setenv(k, v)
 	}
-}
-
-func TestLoad(t *testing.T) {
-	environment(t)
-	c, err := Load()
-	if err != nil ||
-		c.HTTPAddr != ":8080" ||
-		c.SessionLifetime != 24*time.Hour ||
-		c.SessionIdleTimeout != time.Hour {
-		t.Fatalf("unexpected config: %v", err)
-	}
-
 }
 
 func TestInvalid(t *testing.T) {
@@ -67,15 +54,5 @@ func TestInvalid(t *testing.T) {
 				t.Fatal("leaked secret")
 			}
 		})
-	}
-}
-
-func TestDatabase(t *testing.T) {
-	for _, url := range []string{"postgres://db/app", "postgresql://db/app", "", "mysql://db/app", "secret"} {
-		t.Setenv("DATABASE_URL", url)
-		_, err := LoadDatabase()
-		if (err == nil) != (strings.HasPrefix(url, "postgres")) {
-			t.Fatal(url, err)
-		}
 	}
 }

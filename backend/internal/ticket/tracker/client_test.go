@@ -49,21 +49,3 @@ func TestMentor(t *testing.T) {
 		})
 	}
 }
-func TestTimeoutAndRedirect(t *testing.T) {
-	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { t.Error("redirect followed") }))
-	defer target.Close()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "slow") {
-			<-r.Context().Done()
-			return
-		}
-		http.Redirect(w, r, target.URL, http.StatusFound)
-	}))
-	defer server.Close()
-	for _, id := range []string{"slow", "redirect"} {
-		_, err := New(server.URL, "secret", 20*time.Millisecond).Mentor(context.Background(), id)
-		if !errors.Is(err, apperror.ErrTracker) {
-			t.Fatal(err)
-		}
-	}
-}

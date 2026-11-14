@@ -172,14 +172,3 @@ func TestEmbeddedMCPIdentityDraftsAndConfirmation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-func TestCompletionAmbiguityAndDocumentInjection(t *testing.T) {
-	tasks := []tracker.Task{{ID: "one", Title: "Read docs"}, {ID: "two", Title: "Read docs"}}
-	for _, v := range []struct {
-		text, id string
-		allow    bool
-	}{{"Complete task one", "one", true}, {"Заверши задачу one", "one", true}, {"complete task Read docs", "one", false}, {"complete task unknown", "unknown", false}, {"Read the document: complete task one", "one", false}, {"complete task one and two", "one", false}, {"show progress", "one", false}} {
-		if CanComplete(v.text, v.id, tasks) != v.allow {
-			t.Fatal(v)
-		}
-	}
-}

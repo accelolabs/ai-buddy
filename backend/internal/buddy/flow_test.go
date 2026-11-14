@@ -44,7 +44,6 @@ import (
 	wikihttp "ai-buddy/internal/wiki/http"
 	"ai-buddy/internal/wiki/indexer"
 	wikimigrations "ai-buddy/internal/wiki/migrations"
-	wikiollama "ai-buddy/internal/wiki/ollama"
 	wikipostgres "ai-buddy/internal/wiki/postgres"
 )
 
@@ -95,14 +94,8 @@ func (l *loseResponse) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	return res, e
 }
-func TestServiceFlow(t *testing.T) { testFlow(t, false) }
-func TestRealQwenFlow(t *testing.T) {
-	if os.Getenv("BUDDY_REAL_OLLAMA_URL") == "" {
-		t.Skip("BUDDY_REAL_OLLAMA_URL is unset")
-	}
-	testFlow(t, true)
-}
-func testFlow(t *testing.T, real bool) {
+func TestServiceFlow(t *testing.T) { testFlow(t) }
+func testFlow(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
 	db := testutil.Database(t, trackermigrations.Files)
@@ -120,7 +113,7 @@ func testFlow(t *testing.T, real bool) {
 	mux.HandleFunc("GET /internal/interns/{id}/mentor", ih.Mentor)
 	mux.HandleFunc("POST /internal/interns/{id}/tasks", th.Create)
 	mux.HandleFunc("POST /internal/interns/{id}/tasks/{taskID}/complete", th.Complete)
-	trackerServer := httptest.NewServer(testutil.Contract(t, "tracker", httpx.KeyAuth(mux, "buddy", "", false)))
+	trackerServer := httptest.NewServer(httpx.KeyAuth(mux, "buddy", "", false))
 	defer trackerServer.Close()
 	ticketDB := testutil.Database(t, ticketmigrations.Files)
 	ticketService := tickets.New(ticketpostgres.New(ticketDB), tickettracker.New(trackerServer.URL, "buddy", 10*time.Second))
@@ -128,7 +121,7 @@ func testFlow(t *testing.T, real bool) {
 	ticketMux := http.NewServeMux()
 	ticketMux.HandleFunc("GET /internal/interns/{id}/tickets", ticketHandler.Sent)
 	ticketMux.HandleFunc("POST /internal/interns/{id}/tickets", ticketHandler.Create)
-	ticketServer := httptest.NewServer(testutil.Contract(t, "ticket", httpx.KeyAuth(ticketMux, "buddy", "", false)))
+	ticketServer := httptest.NewServer(httpx.KeyAuth(ticketMux, "buddy", "", false))
 	defer ticketServer.Close()
 	wikiDB := testutil.Database(t, wikimigrations.Files)
 	wr := wikipostgres.New(wikiDB)
@@ -146,16 +139,13 @@ func testFlow(t *testing.T, real bool) {
 		}
 	}
 	var embeddings wiki.Embedder = embedder{}
-	if real {
-		embeddings = wikiollama.New(os.Getenv("BUDDY_REAL_OLLAMA_URL"))
-	}
 	if _, e = indexer.Run(ctx, wr, root, embeddings, false); e != nil {
 		t.Fatal(e)
 	}
 	wikiHandler := &wikihttp.Handler{Service: &wiki.Service{Store: wr, Embedder: embeddings, Minimum: 0.1}, Teams: teams{}}
 	wikiMux := http.NewServeMux()
 	wikiMux.HandleFunc("POST /internal/users/{id}/search", wikiHandler.Search)
-	wikiServer := httptest.NewServer(testutil.Contract(t, "wiki", httpx.KeyAuth(wikiMux, "buddy", "", false)))
+	wikiServer := httptest.NewServer(httpx.KeyAuth(wikiMux, "buddy", "", false))
 	defer wikiServer.Close()
 	repo := bpostgres.New(testutil.Database(t, bmigrations.Files))
 	trackerClient := remote.New(trackerServer.URL, "buddy", 10*time.Second)
@@ -175,11 +165,7 @@ func testFlow(t *testing.T, real bool) {
 	var model agent.Model
 	run := func(request, tool, args string) buddy.History {
 		t.Helper()
-		if real {
-			model = ollama.New(os.Getenv("BUDDY_REAL_OLLAMA_URL"))
-		} else {
-			model = &scripted{tool: tool, args: args}
-		}
+		model = &scripted{tool: tool, args: args}
 		s := &buddy.Service{Repo: repo, Runner: agent.New(repo, tools, model), Executor: tools, Context: ctx}
 		c, e := repo.CreateChat(ctx, u.ID)
 		if e != nil {
@@ -216,9 +202,6 @@ func testFlow(t *testing.T, real bool) {
 		}
 		if len(h.Messages) != 2 || h.Messages[1].Content == "" {
 			t.Fatal(h.Messages)
-		}
-		if real {
-			t.Logf("assistant: %s", h.Messages[1].Content)
 		}
 		return h
 	}

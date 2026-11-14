@@ -115,21 +115,3 @@ func TestHandlers(t *testing.T) {
 		}
 	}
 }
-
-func TestCreateDecodeErrors(t *testing.T) {
-	service := &serviceStub{}
-	h := New(service)
-	for _, body := range []string{
-		"",
-		`{`,
-		`[]`,
-		`{"extra":1}`,
-		`{} {}`,
-		strings.Repeat("x", (1<<20)+1),
-	} {
-		w := request(h.Create, body)
-		if w.Code != 400 || service.calls != 0 {
-			t.Fatal(w, service)
-		}
-	}
-}

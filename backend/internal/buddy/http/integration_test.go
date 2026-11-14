@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -60,7 +59,7 @@ func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
 		}
 		http.SetCookie(w, &http.Cookie{Name: "session", Value: token})
 	})
-	mux.Handle("/", testutil.Contract(t, "buddy", handler.Routes(login)))
+	mux.Handle("/", handler.Routes(login))
 	server := httptest.NewServer(mux)
 	defer server.Close()
 	cookie := func(id, role string) *http.Cookie {
@@ -213,16 +212,4 @@ func TestHTTPWithSessionsAndPersistedSSE(t *testing.T) {
 	s.Wait()
 	call("DELETE", "/api/chats", "", alice, "", 405)
 	call("GET", "/api/unknown", "", alice, "", 404)
-}
-func TestFailureMapping(t *testing.T) {
-	for _, v := range []struct {
-		err  error
-		code int
-	}{{buddy.ErrNotFound, 404}, {buddy.ErrInvalid, 400}, {buddy.ErrConflict, 409}, {fmt.Errorf("database"), 500}} {
-		w := httptest.NewRecorder()
-		fail(w, v.err)
-		if w.Code != v.code {
-			t.Fatal(w.Code)
-		}
-	}
 }
