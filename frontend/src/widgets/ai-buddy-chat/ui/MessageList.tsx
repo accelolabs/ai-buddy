@@ -1,14 +1,22 @@
 import { useEffect, useRef } from 'react';
-import type { ChatMessage, MentorPayload } from '@/entities/chat';
+import type { ChatMessage, MentorPayload, TicketDraftPayload } from '@/entities/chat';
 import { ChatMessageItem } from './ChatMessageItem';
 
 export interface MessageListProps {
   messages: ChatMessage[];
   onRetry?: (messageId: string) => void;
   onContactMentor?: (mentor: MentorPayload) => void;
+  onApproveDraft?: (draft: TicketDraftPayload) => void;
+  onUpdateDraft?: (updated: Partial<TicketDraftPayload>) => void;
 }
 
-export function MessageList({ messages, onRetry, onContactMentor }: MessageListProps) {
+export function MessageList({
+  messages,
+  onRetry,
+  onContactMentor,
+  onApproveDraft,
+  onUpdateDraft,
+}: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(messages.length);
@@ -54,6 +62,8 @@ export function MessageList({ messages, onRetry, onContactMentor }: MessageListP
             message={message}
             onRetry={onRetry}
             onContactMentor={onContactMentor}
+            onApproveDraft={onApproveDraft}
+            onUpdateDraft={onUpdateDraft}
           />
         ))}
         <div ref={bottomRef} className="h-4" />

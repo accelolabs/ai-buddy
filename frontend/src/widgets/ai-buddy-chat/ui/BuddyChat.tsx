@@ -37,6 +37,8 @@ export function BuddyChat() {
   const applyPrompt = useChatStore((state: ChatStore) => state.applyPrompt);
   const messages = useChatStore((state: ChatStore) => state.messages);
   const retryMessage = useChatStore((state: ChatStore) => state.retryMessage);
+  const approveTicketDraft = useChatStore((state: ChatStore) => state.approveTicketDraft);
+  const updateTicketDraft = useChatStore((state: ChatStore) => state.updateTicketDraft);
 
   const hasMessages = messages.length > 0;
 
@@ -44,9 +46,16 @@ export function BuddyChat() {
     <>
       {hasMessages ? (
         <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
-          <MessageList messages={messages} onRetry={retryMessage} />
-          <div className="mx-auto flex w-full max-w-[760px] justify-center px-4 pb-6 pt-2">
-            <ChatInput />
+          <MessageList
+            messages={messages}
+            onRetry={retryMessage}
+            onApproveDraft={approveTicketDraft}
+            onUpdateDraft={updateTicketDraft}
+          />
+          <div className="w-full shrink-0 px-4 pb-6 pt-2 sm:px-6">
+            <div className="mx-auto w-full max-w-[760px]">
+              <ChatInput />
+            </div>
           </div>
         </div>
       ) : (

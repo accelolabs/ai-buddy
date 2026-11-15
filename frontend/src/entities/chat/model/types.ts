@@ -23,9 +23,32 @@ export interface MentorPayload {
   isOnline?: boolean;
 }
 
+export interface TicketDraftPayload {
+  id?: string;
+  subject: string;
+  message: string;
+  mentor: MentorPayload;
+  status: 'draft' | 'submitting' | 'submitted' | 'cancelled';
+  ticketId?: string;
+  ticketUrl?: string;
+}
+
+export interface CreatedTicketPayload {
+  id: string;
+  subject: string;
+  message: string;
+  mentorId: string;
+  url: string;
+  createdAt: string;
+}
+
+export type TicketFlowStep = 'idle' | 'awaiting_problem' | 'draft_ready' | 'submitted';
+
 export type MessageCard =
   | { type: 'wiki_source'; payload: WikiSourcePayload }
   | { type: 'mentor_fallback'; payload: MentorPayload }
+  | { type: 'ticket_draft'; payload: TicketDraftPayload }
+  | { type: 'ticket_success'; payload: CreatedTicketPayload }
   | { type: 'custom'; payload: unknown };
 
 export type MessageStatus = 'in_progress' | 'completed' | 'error';
@@ -48,8 +71,9 @@ export type SSEEvent =
   | {
       type: 'card';
       seq: number;
-      cardType: 'wiki_source' | 'mentor_fallback';
-      payload: WikiSourcePayload | MentorPayload;
+      cardType: 'wiki_source' | 'mentor_fallback' | 'ticket_draft' | 'ticket_success';
+      payload: WikiSourcePayload | MentorPayload | TicketDraftPayload | CreatedTicketPayload;
     }
+  | { type: 'flow_step'; seq: number; step: TicketFlowStep; draft?: TicketDraftPayload }
   | { type: 'done'; seq: number; finalText?: string }
   | { type: 'error'; seq: number; error: string; canRetry?: boolean };

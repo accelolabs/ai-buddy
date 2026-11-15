@@ -116,7 +116,6 @@ export function MentorContactForm({
       noValidate
       data-testid="mentor-contact-form"
     >
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3.5">
           <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#70B9FA] text-base font-bold text-[#0F172A]">
@@ -153,7 +152,6 @@ export function MentorContactForm({
         )}
       </div>
 
-      {/* Schedule notice banner */}
       <div className="flex items-start gap-3 rounded-[14px] border border-[#E0F2FE] bg-[#F4FAFF] p-3.5 text-[13px] leading-relaxed text-[#334155]">
         <div className="mt-0.5">{CLOCK_ICON}</div>
         <div className="flex flex-col">
@@ -165,7 +163,6 @@ export function MentorContactForm({
         </div>
       </div>
 
-      {/* Field: Subject */}
       <div className="flex flex-col gap-1.5">
         <label htmlFor="mentor-subject" className="text-sm font-bold text-[#0F172A]">
           Тема вопроса
@@ -186,7 +183,6 @@ export function MentorContactForm({
         {errors.subject && <span className="text-xs text-red-500">{errors.subject}</span>}
       </div>
 
-      {/* Field: Message */}
       <div className="flex flex-col gap-1.5">
         <label htmlFor="mentor-message" className="text-sm font-bold text-[#0F172A]">
           Ваше сообщение
@@ -210,7 +206,6 @@ export function MentorContactForm({
         {errors.message && <span className="text-xs text-red-500">{errors.message}</span>}
       </div>
 
-      {/* Footer actions */}
       <div className="mt-2 flex items-center justify-end gap-3">
         {onCancel && (
           <button

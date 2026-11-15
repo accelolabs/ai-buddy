@@ -11,3 +11,9 @@ export async function getUser() {
   const data = JSON.parse(await readFile(filePath, { encoding: 'utf-8' }));
   return data.user || data;
 }
+
+export async function getTickets() {
+  const filePath = new URL('./tickets.json', import.meta.url);
+  const data = JSON.parse(await readFile(filePath, { encoding: 'utf-8' }));
+  return data.tickets || data;
+}

@@ -37,7 +37,7 @@ export function ChatInput({ onSubmit, className = '' }: ChatInputProps) {
     <div
       onBlur={handleBlur}
       onClick={handleExpand}
-      className={`relative flex w-full max-w-[680px] flex-col justify-between bg-white transition-all duration-300 ease-in-out ${
+      className={`relative flex w-full flex-col justify-between bg-white transition-all duration-300 ease-in-out ${
         isExpanded
           ? 'h-[131px] rounded-[20px] border-2 border-[#89C6FC] p-4 shadow-[0_0_15px_rgba(137,198,252,0.35)]'
           : 'h-[54px] cursor-pointer rounded-[20px] border border-slate-200 px-5 py-2 shadow-sm hover:border-slate-300'

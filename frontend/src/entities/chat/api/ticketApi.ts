@@ -44,8 +44,8 @@ export async function createTicket(payload: CreateTicketPayload): Promise<Create
         createdAt: data.createdAt || new Date().toISOString(),
       };
     }
-  } catch {
-    // no operation
+  } catch (error) {
+    void error;
   }
 
   await new Promise((resolve) => setTimeout(resolve, 600));
