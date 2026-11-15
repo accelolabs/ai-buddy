@@ -9,14 +9,44 @@ export interface MessageListProps {
 }
 
 export function MessageList({ messages, onRetry, onContactMentor }: MessageListProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const prevLengthRef = useRef(messages.length);
+  const isAutoScrollEnabledRef = useRef(true);
+
+  const handleScroll = () => {
+    const container = containerRef.current;
+    if (!container) return;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    isAutoScrollEnabledRef.current = isNearBottom;
+  };
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = containerRef.current;
+    if (!container) return;
+
+    const prevLength = prevLengthRef.current;
+    const currentLength = messages.length;
+    prevLengthRef.current = currentLength;
+
+    if (currentLength > prevLength) {
+      isAutoScrollEnabledRef.current = true;
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+
+    if (isAutoScrollEnabledRef.current) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [messages]);
 
   return (
-    <div className="flex w-full flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-6">
+    <div
+      ref={containerRef}
+      onScroll={handleScroll}
+      className="flex w-full flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-6"
+    >
       <div className="mx-auto flex w-full max-w-[760px] flex-col gap-2">
         {messages.map((message) => (
           <ChatMessageItem

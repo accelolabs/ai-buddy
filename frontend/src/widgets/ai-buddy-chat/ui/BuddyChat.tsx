@@ -52,7 +52,7 @@ export function BuddyChat() {
           <MessageList
             messages={messages}
             onRetry={retryMessage}
-            onContactMentor={(mentor) => setSelectedMentor(mentor)}
+            onContactMentor={setSelectedMentor}
           />
           <div className="mx-auto flex w-full max-w-[760px] justify-center px-4 pb-6 pt-2">
             <ChatInput />
