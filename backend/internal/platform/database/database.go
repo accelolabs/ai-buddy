@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
-
 	"ai-buddy/internal/platform/cleanup"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func Open(ctx context.Context, dsn string) (*sql.DB, error) {

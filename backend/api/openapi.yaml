@@ -5,9 +5,11 @@ info:
   description: >-
     Select a database profile with demo_user=<id>; Path=/; SameSite=Lax on the same origin; this is not authentication.
     Missing, empty or unknown IDs return JSON 400; profile database failures return 503. Selection is pinned per Buddy run.
-    Role and team come from the database; other users' resources are hidden. Unknown paths return JSON 404; unsupported methods 405.
-    JSON bodies reject unknown fields and trailing JSON; limit 1 MiB. Direct task/ticket writes trim strings; Buddy draft limits
-    apply before trimming. Collections use []; absent mentor, dates, next task and action result use null.
+    Role and team come from the database; other users' resources are hidden. Unknown paths and unsupported health methods return JSON 404; unsupported API methods return 405. GET also accepts HEAD.
+    JSON bodies use encoding/json: field names match case-insensitively, repeated fields use the last value, and Content-Type is not checked.
+    Unknown fields and trailing JSON are rejected; limit 1 MiB. Schemas show canonical names and cannot express duplicate-key decoding.
+    Required text must contain non-whitespace. Direct task/ticket writes trim strings; Buddy draft limits apply before trimming.
+    Text limits count Unicode code points; idempotency key limits count UTF-8 bytes. x-trim and x-maxBytes document server checks. Collections use []; absent mentor, dates, next task and action result use null.
     Document links are relative /api/documents/{id}.
 servers:
 - url: https://{host}
@@ -301,7 +303,7 @@ paths:
                 type: object
                 properties:
                   interns:
-                    type: [array, 'null']
+                    type: array
                     items: {$ref: '#/components/schemas/Profile'}
                 required: [interns]
           description: Success.
@@ -531,6 +533,13 @@ components:
         data: {type: object}
       required: [run_id, kind, data]
       additionalProperties: false
+      oneOf:
+      - properties:
+          kind: {const: source}
+          data: {$ref: '#/components/schemas/Source'}
+      - properties:
+          kind: {const: result}
+          data: {$ref: '#/components/schemas/Task'}
     History:
       type: object
       properties:
@@ -638,7 +647,7 @@ components:
           type: [string, 'null']
           x-trim: true
           description: Omitted or null becomes empty string.
-        deadline: {type: string, format: date, x-trim: true}
+        deadline: {type: string, x-trim: true, description: 'Valid calendar YYYY-MM-DD after trimming surrounding whitespace.'}
       required: [title, deadline]
       additionalProperties: false
     Progress:
@@ -655,7 +664,7 @@ components:
         goals: {type: string}
         expectations: {type: string}
         tasks:
-          type: [array, 'null']
+          type: array
           items: {$ref: '#/components/schemas/Task'}
         completed: {type: integer, minimum: 0}
         total: {type: integer, minimum: 0}
@@ -744,7 +753,7 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
     Error500:
-      description: Storage unavailable.
+      description: Internal service or storage failure.
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}

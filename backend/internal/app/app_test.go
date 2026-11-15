@@ -1,13 +1,6 @@
 package app
 
 import (
-	"ai-buddy/internal/buddy"
-	buddypostgres "ai-buddy/internal/buddy/postgres"
-	"ai-buddy/internal/config"
-	"ai-buddy/internal/migrations"
-	"ai-buddy/internal/seed"
-	"ai-buddy/internal/testutil"
-	"ai-buddy/internal/users"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,10 +8,16 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"ai-buddy/internal/buddy"
+	"ai-buddy/internal/config"
+	"ai-buddy/internal/seed"
+	"ai-buddy/internal/testutil"
+	"ai-buddy/internal/users"
 )
 
 func TestUnifiedAPI(t *testing.T) {
-	db := testutil.Database(t, migrations.Files)
+	db := testutil.Database(t)
 	ctx := context.Background()
 	if err := seed.Run(ctx, db); err != nil {
 		t.Fatal(err)
@@ -137,7 +136,7 @@ func TestUnifiedAPI(t *testing.T) {
 	if strings.Contains(w.Body.String(), "platform") {
 		t.Fatal("cross-team tickets", w)
 	}
-	repo := buddypostgres.New(db)
+	repo := &buddy.Store{DB: db}
 	chat, err := repo.CreateChat(ctx, "intern.backend.1")
 	if err != nil {
 		t.Fatal(err)

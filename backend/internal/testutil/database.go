@@ -5,19 +5,18 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"io/fs"
 	"os"
 	"testing"
 	"time"
 
+	"ai-buddy/internal/migrations"
+	"ai-buddy/internal/platform/database"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
-
-	"ai-buddy/internal/platform/database"
-	"ai-buddy/internal/platform/migrations"
 )
 
-func Database(t *testing.T, files fs.FS) *sql.DB {
+func Database(t *testing.T) *sql.DB {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -55,7 +54,7 @@ func Database(t *testing.T, files fs.FS) *sql.DB {
 			t.Error(err)
 		}
 	})
-	if err = migrations.Run(ctx, db, files, "up"); err != nil {
+	if err = migrations.Run(ctx, db, "up"); err != nil {
 		t.Fatal(err)
 	}
 	db.SetMaxOpenConns(12)

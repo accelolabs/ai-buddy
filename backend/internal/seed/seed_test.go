@@ -1,14 +1,14 @@
 package seed
 
 import (
-	"ai-buddy/internal/migrations"
-	"ai-buddy/internal/testutil"
 	"context"
 	"testing"
+
+	"ai-buddy/internal/testutil"
 )
 
 func TestTransactionalSeedAndPreservation(t *testing.T) {
-	db := testutil.Database(t, migrations.Files)
+	db := testutil.Database(t)
 	ctx := context.Background()
 	if _, err := db.Exec(`ALTER TABLE tasks ADD CONSTRAINT reject_seed CHECK(title <> 'Познакомиться с командой')`); err != nil {
 		t.Fatal(err)

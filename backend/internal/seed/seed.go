@@ -124,12 +124,7 @@ func Run(ctx context.Context, db *sql.DB) error {
 				return err
 			}
 		}
-	}
 
-	for _, u := range demos {
-		if u.Role != "intern" {
-			continue
-		}
 		_, err = tx.ExecContext(ctx, `INSERT INTO tickets(id,sender_id,recipient_id,question,description,idempotency_key)
    SELECT $1,a.intern_id,a.mentor_id,$2,$3,$1 FROM assignments a WHERE a.intern_id=$4 ON CONFLICT DO NOTHING`,
 			"demo:ticket:"+u.Username, "Как лучше выполнить первую задачу?", "Нужна помощь с архитектурой проекта", u.Username)

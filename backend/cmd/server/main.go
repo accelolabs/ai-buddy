@@ -1,16 +1,6 @@
 package main
 
 import (
-	"ai-buddy/internal/app"
-	"ai-buddy/internal/config"
-	"ai-buddy/internal/migrations"
-	"ai-buddy/internal/platform/cleanup"
-	"ai-buddy/internal/platform/database"
-	migrate "ai-buddy/internal/platform/migrations"
-	"ai-buddy/internal/seed"
-	"ai-buddy/internal/wiki/indexer"
-	"ai-buddy/internal/wiki/ollama"
-	"ai-buddy/internal/wiki/postgres"
 	"context"
 	"errors"
 	"flag"
@@ -21,6 +11,15 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"ai-buddy/internal/app"
+	"ai-buddy/internal/config"
+	"ai-buddy/internal/migrations"
+	"ai-buddy/internal/ollama"
+	"ai-buddy/internal/platform/cleanup"
+	"ai-buddy/internal/platform/database"
+	"ai-buddy/internal/seed"
+	"ai-buddy/internal/wiki"
 )
 
 func run(ctx context.Context, args []string) error {
@@ -63,16 +62,16 @@ func run(ctx context.Context, args []string) error {
 	}
 	defer cleanup.Close(db)
 	if command == "migrate" {
-		return migrate.Run(ctx, db, migrations.Files, args[0])
+		return migrations.Run(ctx, db, args[0])
 	}
 	if command == "index" {
-		stats, err := indexer.Run(ctx, postgres.New(db), c.Wiki.KnowledgeBaseDir, ollama.New(c.Ollama.URL), full)
+		stats, err := wiki.Run(ctx, &wiki.Store{DB: db}, c.Wiki.KnowledgeBaseDir, ollama.New(c.Ollama.URL), full)
 		if err == nil {
 			fmt.Printf("added=%d changed=%d deleted=%d skipped=%d\n", stats.Added, stats.Changed, stats.Deleted, stats.Skipped)
 		}
 		return err
 	}
-	if err = migrate.Run(ctx, db, migrations.Files, "up"); err != nil {
+	if err = migrations.Run(ctx, db, "up"); err != nil {
 		return err
 	}
 	if err = seed.Run(ctx, db); err != nil {

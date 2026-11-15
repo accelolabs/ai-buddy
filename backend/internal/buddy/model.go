@@ -90,7 +90,6 @@ type Repository interface {
 	Event(context.Context, string, string, any) error
 	Events(context.Context, string, string, int64) ([]Event, Run, error)
 	Finish(context.Context, string, string) error
-	Recover(context.Context) error
 	Draft(context.Context, Action) (Action, error)
 	Claim(context.Context, string, string, json.RawMessage) (Action, bool, error)
 	Cancel(context.Context, string, string) (Action, error)

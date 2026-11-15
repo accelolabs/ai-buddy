@@ -1,31 +1,19 @@
 package app
 
 import (
-	"ai-buddy/internal/buddy"
-	"ai-buddy/internal/buddy/agent"
-	buddyhttp "ai-buddy/internal/buddy/http"
-	"ai-buddy/internal/buddy/mcp"
-	buddyollama "ai-buddy/internal/buddy/ollama"
-	buddypostgres "ai-buddy/internal/buddy/postgres"
-	"ai-buddy/internal/config"
-	"ai-buddy/internal/local"
-	"ai-buddy/internal/platform/httpx"
-	"ai-buddy/internal/ticket/tickets"
-	tickethttp "ai-buddy/internal/ticket/tickets/http"
-	ticketpostgres "ai-buddy/internal/ticket/tickets/postgres"
-	trackerhttp "ai-buddy/internal/tracker/http"
-	trackerpostgres "ai-buddy/internal/tracker/postgres"
-	"ai-buddy/internal/tracker/progress"
-	"ai-buddy/internal/tracker/tasks"
-	"ai-buddy/internal/users"
-	"ai-buddy/internal/wiki"
-	wikihttp "ai-buddy/internal/wiki/http"
-	wikiollama "ai-buddy/internal/wiki/ollama"
-	wikipostgres "ai-buddy/internal/wiki/postgres"
 	"context"
 	"database/sql"
 	"net/http"
 	"time"
+
+	"ai-buddy/internal/buddy"
+	"ai-buddy/internal/config"
+	"ai-buddy/internal/ollama"
+	"ai-buddy/internal/platform/httpx"
+	"ai-buddy/internal/ticket"
+	"ai-buddy/internal/tracker"
+	"ai-buddy/internal/users"
+	"ai-buddy/internal/wiki"
 )
 
 type App struct {
@@ -39,26 +27,27 @@ func New(ctx context.Context, db *sql.DB, c config.Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	profiles := &users.Repository{DB: db}
+	model := ollama.New(c.Ollama.URL)
+	profiles := &users.Store{DB: db}
 	selector := &users.Selector{Profiles: profiles}
-	trackerRepo := trackerpostgres.New(db)
-	taskService := tasks.New(trackerRepo, trackerRepo, loc, time.Now)
-	progressService := progress.New(trackerRepo, trackerRepo, loc, time.Now)
-	ticketService := tickets.New(ticketpostgres.New(db), local.Mentors{Repository: trackerRepo})
-	wikiService := &wiki.Service{Store: wikipostgres.New(db), Embedder: wikiollama.New(c.Ollama.URL), Minimum: c.Wiki.MinSimilarity}
-	repo := buddypostgres.New(db)
+	trackerRepo := &tracker.Store{DB: db}
+	taskService := &tracker.Service{Store: trackerRepo, Profiles: profiles, Location: loc, Now: time.Now}
+
+	ticketService := ticket.New(&ticket.Store{DB: db}, profiles)
+	wikiService := &wiki.Service{Store: &wiki.Store{DB: db}, Embedder: model, Minimum: c.Wiki.MinSimilarity, Profiles: profiles}
+	repo := &buddy.Store{DB: db}
 	if err := repo.Recover(ctx); err != nil {
 		return nil, err
 	}
-	tools := &mcp.Tools{Repo: repo, Tracker: local.Tracker{Tasks: taskService, ProgressService: progressService}, Ticket: local.Ticket{Service: ticketService}, Wiki: local.Wiki{Service: wikiService, Profiles: profiles}}
+	tools := &buddy.Tools{Repo: repo, Tracker: taskService, Ticket: ticketService, Wiki: wikiService}
 	worker, stop := context.WithCancel(ctx)
-	service := &buddy.Service{Repo: repo, Runner: agent.New(repo, tools, buddyollama.New(c.Ollama.URL)), Executor: tools, Context: worker}
+	service := &buddy.Service{Repo: repo, Runner: buddy.NewAgent(repo, tools, model), Executor: tools, Context: worker}
 	mux := http.NewServeMux()
 	selector.Register(mux)
-	trackerhttp.Register(mux, selector, trackerhttp.New(taskService, trackerRepo, progressService))
-	tickethttp.Register(mux, selector, tickethttp.New(ticketService))
-	wikihttp.Register(mux, selector, &wikihttp.Handler{Service: wikiService})
-	buddyhttp.New(service).Register(mux, selector)
+	tracker.Register(mux, selector, taskService)
+	ticket.Register(mux, selector, ticketService)
+	wiki.Register(mux, selector, wikiService)
+	buddy.NewHandler(service).Register(mux, selector)
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) })
 	mux.HandleFunc("GET /health/ready", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)

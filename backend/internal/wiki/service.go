@@ -1,21 +1,30 @@
 package wiki
 
-import "context"
+import (
+	"context"
 
-type Store interface {
+	"ai-buddy/internal/users"
+)
+
+type Repository interface {
 	List(context.Context, string) ([]Document, error)
 	Get(context.Context, string, string) (Document, error)
-	Search(context.Context, string, string, []float64, float64, string) ([]Result, error)
+	Search(context.Context, string, string, []float64, float64, string) ([]Source, error)
 }
 
 type Service struct {
-	Store    Store
+	Store    Repository
 	Embedder Embedder
 	Minimum  float64
+	Profiles users.Reader
 }
 
-func (s *Service) Search(ctx context.Context, team, query string) ([]Result, error) {
-	fingerprint, err := s.Embedder.Fingerprint(ctx)
+func (s *Service) Search(ctx context.Context, id, query string) ([]Source, error) {
+	u, err := s.Profiles.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	fingerprint, err := indexFingerprint(ctx, s.Embedder)
 	if err != nil {
 		return nil, ErrUnavailable
 	}
@@ -25,7 +34,7 @@ func (s *Service) Search(ctx context.Context, team, query string) ([]Result, err
 		return nil, ErrUnavailable
 	}
 
-	results, err := s.Store.Search(ctx, team, query, embedding, s.Minimum, fingerprint)
+	results, err := s.Store.Search(ctx, u.Team, query, embedding, s.Minimum, fingerprint)
 	if err != nil {
 		return nil, ErrUnavailable
 	}

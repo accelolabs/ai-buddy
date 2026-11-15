@@ -7,8 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-
-	"ai-buddy/internal/users"
 )
 
 var ErrInvalid = errors.New("invalid input")
@@ -35,14 +33,13 @@ func Fallbacks(mux *http.ServeMux, methods map[string][]string) {
 	})
 }
 
-func Owner(r *http.Request) string {
-	u, _ := users.CurrentUser(r.Context())
-	return u.ID
-}
-
 func Decode(w http.ResponseWriter, r *http.Request, target any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	decoder := json.NewDecoder(r.Body)
+	return ReadJSON(r.Body, target)
+}
+
+func ReadJSON(reader io.Reader, target any) error {
+	decoder := json.NewDecoder(reader)
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(target) != nil || decoder.Decode(new(any)) != io.EOF {
 		return ErrInvalid

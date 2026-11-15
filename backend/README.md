@@ -1,8 +1,7 @@
 # Backend AI Buddy
 
 Один бинарник `cmd/server`, один HTTP mux и один пул PostgreSQL с pgvector.
-Buddy, Tracker, Ticket и Wiki — внутренние пакеты. MCP SDK вызывает Go-сервисы
-через `internal/local`; роль, команда и назначения читаются из общей БД.
+Buddy, Tracker, Ticket и Wiki — внутренние пакеты. MCP SDK вызывает типизированные методы Go-сервисов напрямую; роль, команда и назначения читаются из общей БД.
 
 ## Запуск
 

@@ -3,47 +3,38 @@ package buddy
 import (
 	"bytes"
 	"encoding/json"
-	"io"
 	"strings"
 	"time"
+
+	"ai-buddy/internal/platform/httpx"
+	"ai-buddy/internal/ticket"
+	"ai-buddy/internal/tracker"
 )
 
-type TaskFields struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Deadline    string `json:"deadline"`
-}
-type TicketFields struct {
-	Question    string `json:"question"`
-	Description string `json:"description"`
-}
-
 func DecodeFields(raw json.RawMessage, v any) error {
-	d := json.NewDecoder(bytes.NewReader(raw))
-	d.DisallowUnknownFields()
-	if d.Decode(v) != nil || d.Decode(new(any)) != io.EOF {
+	if httpx.ReadJSON(bytes.NewReader(raw), v) != nil {
 		return ErrInvalid
 	}
 	return nil
 }
-func ValidateFields(kind string, raw json.RawMessage) error {
+func parseFields(kind string, raw json.RawMessage) (any, error) {
 	valid := func(s string, max int) bool { return strings.TrimSpace(s) != "" && len([]rune(s)) <= max }
 	switch kind {
 	case "create_task":
-		var f TaskFields
+		var f tracker.CreateInput
 		if DecodeFields(raw, &f) != nil || !valid(f.Title, 200) || len([]rune(f.Description)) > 10000 {
-			return ErrInvalid
+			return nil, ErrInvalid
 		}
-		if _, err := time.Parse("2006-01-02", f.Deadline); err != nil {
-			return ErrInvalid
+		if _, err := time.Parse(time.DateOnly, f.Deadline); err != nil {
+			return nil, ErrInvalid
 		}
+		return f, nil
 	case "create_ticket":
-		var f TicketFields
+		var f ticket.CreateInput
 		if DecodeFields(raw, &f) != nil || !valid(f.Question, 200) || !valid(f.Description, 10000) {
-			return ErrInvalid
+			return nil, ErrInvalid
 		}
-	default:
-		return ErrInvalid
+		return f, nil
 	}
-	return nil
+	return nil, ErrInvalid
 }

@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ai-buddy/internal/migrations"
 	"ai-buddy/internal/testutil"
 )
 
@@ -22,7 +21,7 @@ func TestInvalidArguments(t *testing.T) {
 	}
 }
 func TestCommands(t *testing.T) {
-	db := testutil.Database(t, migrations.Files)
+	db := testutil.Database(t)
 	testutil.Indexing(t, db)
 	var schema string
 	if err := db.QueryRow(`SELECT current_schema()`).Scan(&schema); err != nil {

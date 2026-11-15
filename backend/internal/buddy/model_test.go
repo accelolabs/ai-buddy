@@ -48,7 +48,7 @@ func TestFieldsAndModels(t *testing.T) {
 		kind, raw string
 		valid     bool
 	}{{"create_task", `{"title":"a","deadline":"2026-12-01"}`, true}, {"create_ticket", `{"question":"q","description":"d"}`, true}, {"other", `{}`, false}, {"create_task", `{"title":"","deadline":"2026-12-01"}`, false}, {"create_task", `{"title":"a","deadline":"tomorrow"}`, false}, {"create_task", `{"title":"a","deadline":"2026-12-01","user_id":"bob"}`, false}, {"create_ticket", `{"question":"q"}`, false}, {"create_ticket", `{} {}`, false}, {"create_task", `null`, false}} {
-		if e := ValidateFields(v.kind, json.RawMessage(v.raw)); (e == nil) != v.valid {
+		if _, e := parseFields(v.kind, json.RawMessage(v.raw)); (e == nil) != v.valid {
 			t.Fatalf("%s: %v", v.raw, e)
 		}
 	}

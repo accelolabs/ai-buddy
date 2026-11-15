@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,27 +12,12 @@ import (
 	"time"
 
 	"ai-buddy/internal/buddy"
-	"ai-buddy/internal/buddy/agent"
-	"ai-buddy/internal/buddy/mcp"
-	"ai-buddy/internal/buddy/ollama"
-	bpostgres "ai-buddy/internal/buddy/postgres"
-	"ai-buddy/internal/local"
-
-	"ai-buddy/internal/users"
-
+	"ai-buddy/internal/ollama"
 	"ai-buddy/internal/testutil"
-	"ai-buddy/internal/ticket/tickets"
-
-	ticketpostgres "ai-buddy/internal/ticket/tickets/postgres"
-
-	trackermigrations "ai-buddy/internal/migrations"
-	internspostgres "ai-buddy/internal/tracker/postgres"
-	"ai-buddy/internal/tracker/progress"
-	"ai-buddy/internal/tracker/tasks"
+	"ai-buddy/internal/ticket"
+	"ai-buddy/internal/tracker"
+	"ai-buddy/internal/users"
 	"ai-buddy/internal/wiki"
-
-	"ai-buddy/internal/wiki/indexer"
-	wikipostgres "ai-buddy/internal/wiki/postgres"
 )
 
 type embedder struct{}
@@ -55,7 +39,8 @@ type scripted struct {
 	called     bool
 }
 
-func (m *scripted) Chat(_ context.Context, _ []ollama.Message, _ []ollama.Tool, stream bool, emit func(string) error) (ollama.Response, error) {
+func (m *scripted) Chat(_ context.Context, _ []ollama.Message, _ []ollama.Tool, emit func(string) error) (ollama.Response, error) {
+	stream := emit != nil
 	if stream {
 		return ollama.Response{Done: true, PromptTokens: 400}, emit("Verified response from tools.")
 	}
@@ -68,33 +53,33 @@ func (m *scripted) Chat(_ context.Context, _ []ollama.Message, _ []ollama.Tool, 
 
 // Simulate a tool result lost after a successful local commit.
 type loseResponse struct {
-	local.Tracker
+	*tracker.Service
 	lost bool
 }
 
-func (l *loseResponse) Create(ctx context.Context, id, key string, fields json.RawMessage) (json.RawMessage, error) {
-	result, err := l.Tracker.Create(ctx, id, key, fields)
+func (l *loseResponse) CreateTask(ctx context.Context, id, key string, in tracker.CreateInput) (tracker.Task, bool, error) {
+	result, fresh, err := l.Service.CreateTask(ctx, id, key, in)
 	if err == nil && !l.lost {
 		l.lost = true
-		return nil, errors.New("simulated lost result after commit")
+		return tracker.Task{}, false, errors.New("simulated lost result after commit")
 	}
-	return result, err
+	return result, fresh, err
 }
 func TestServiceFlow(t *testing.T) { testFlow(t) }
 func testFlow(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
-	db := testutil.Database(t, trackermigrations.Files)
+	db := testutil.Database(t)
 	testutil.Indexing(t, db)
 	_, e := db.Exec(`INSERT INTO profiles(id,name,username,email,role,team) VALUES ('alice','Alice','alice','a@test','intern','backend'),('bob','Bob','bob','b@test','intern','platform'),('mentor','Mentor','mentor','m@test','mentor','backend'); INSERT INTO assignments(intern_id,mentor_id,team) VALUES('alice','mentor','backend')`)
 	if e != nil {
 		t.Fatal(e)
 	}
-	ir := internspostgres.New(db)
+	ir := &tracker.Store{DB: db}
 	tr := ir
-	ts := tasks.New(tr, ir, time.UTC, time.Now)
-	ticketService := tickets.New(ticketpostgres.New(db), local.Mentors{Repository: ir})
-	wr := wikipostgres.New(db)
+	ts := &tracker.Service{Store: tr, Profiles: &users.Store{DB: db}, Location: time.UTC, Now: time.Now}
+	ticketService := ticket.New(&ticket.Store{DB: db}, &users.Store{DB: db})
+	wr := &wiki.Store{DB: db}
 
 	root := t.TempDir()
 	if e = os.MkdirAll(filepath.Join(root, "common"), 0755); e != nil {
@@ -110,14 +95,14 @@ func testFlow(t *testing.T) {
 		}
 	}
 	var embeddings wiki.Embedder = embedder{}
-	if _, e = indexer.Run(ctx, wr, root, embeddings, false); e != nil {
+	if _, e = wiki.Run(ctx, wr, root, embeddings, false); e != nil {
 		t.Fatal(e)
 	}
 	before, err := wr.List(ctx, "backend")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = indexer.Run(ctx, wr, root, invalidEmbedder{}, true); err == nil {
+	if _, err = wiki.Run(ctx, wr, root, invalidEmbedder{}, true); err == nil {
 		t.Fatal("expected failed publication")
 	}
 	after, err := wr.List(ctx, "backend")
@@ -139,9 +124,9 @@ func testFlow(t *testing.T) {
 	}
 	released.Close()
 
-	repo := bpostgres.New(db)
-	trackerClient := &loseResponse{Tracker: local.Tracker{Tasks: ts, ProgressService: progress.New(ir, tr, time.UTC, time.Now)}}
-	tools := &mcp.Tools{Repo: repo, Wiki: local.Wiki{Service: &wiki.Service{Store: wr, Embedder: embeddings, Minimum: 0.1}, Profiles: &users.Repository{DB: db}}, Tracker: trackerClient, Ticket: local.Ticket{Service: ticketService}}
+	repo := &buddy.Store{DB: db}
+	trackerClient := &loseResponse{Service: ts}
+	tools := &buddy.Tools{Repo: repo, Wiki: &wiki.Service{Store: wr, Embedder: embeddings, Minimum: 0.1, Profiles: &users.Store{DB: db}}, Tracker: trackerClient, Ticket: ticketService}
 
 	for _, id := range []string{"alice", "bob"} {
 		sources, e := tools.Wiki.Search(ctx, id, "access process")
@@ -155,11 +140,11 @@ func testFlow(t *testing.T) {
 		}
 	}
 	u := users.User{ID: "alice", Role: "intern", Team: "backend"}
-	var model agent.Model
+	var model buddy.Model
 	run := func(request, tool, args string) buddy.History {
 		t.Helper()
 		model = &scripted{tool: tool, args: args}
-		s := &buddy.Service{Repo: repo, Runner: agent.New(repo, tools, model), Executor: tools, Context: ctx}
+		s := &buddy.Service{Repo: repo, Runner: buddy.NewAgent(repo, tools, model), Executor: tools, Context: ctx}
 		c, e := repo.CreateChat(ctx, u.ID)
 		if e != nil {
 			t.Fatal(e)
@@ -220,12 +205,14 @@ func testFlow(t *testing.T) {
 	if e != nil || string(again.Result) != string(a.Result) {
 		t.Fatal(again, e)
 	}
-	own, e := ts.Tasks(ctx, u.ID)
+	snapshot, e := ts.Progress(ctx, u.ID)
+	own := snapshot.Tasks
 	if e != nil || len(own) != 1 {
 		t.Fatal(own, e)
 	}
 	run("Complete task "+own[0].ID, "complete_task", fmt.Sprintf(`{"task_id":%q}`, own[0].ID))
-	own, e = ts.Tasks(ctx, u.ID)
+	snapshot, e = ts.Progress(ctx, u.ID)
+	own = snapshot.Tasks
 	if e != nil || own[0].CompletedAt == nil {
 		t.Fatal(own, e)
 	}
@@ -248,12 +235,15 @@ func testFlow(t *testing.T) {
 	if _, err := db.Exec(`DELETE FROM assignments WHERE intern_id='alice'`); err != nil {
 		t.Fatal(err)
 	}
-	replay, err := tools.Ticket.Create(ctx, u.ID, "buddy-action:"+a.ID, a.Fields)
+	var input ticket.CreateInput
+	if err := json.Unmarshal(a.Fields, &input); err != nil {
+		t.Fatal(err)
+	}
+	replayed, _, err := tools.Ticket.Create(ctx, u.ID, "buddy-action:"+a.ID, input)
 	if err != nil {
 		t.Fatal("ticket replay requires current mentor", err)
 	}
-	var replayed tickets.Ticket
-	if err = json.Unmarshal(replay, &replayed); err != nil || replayed.RecipientID != "mentor" {
+	if replayed.RecipientID != "mentor" {
 		t.Fatal(replayed, err)
 	}
 

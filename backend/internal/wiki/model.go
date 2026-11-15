@@ -3,14 +3,15 @@ package wiki
 import (
 	"context"
 	"errors"
+
+	"ai-buddy/internal/ollama"
 )
 
-var ErrUnavailable = errors.New("search dependency unavailable")
+var ErrUnavailable = ollama.ErrUnavailable
 var ErrNotFound = errors.New("document not found")
-var ErrContext = errors.New("embedding context exceeded")
+var ErrContext = ollama.ErrContext
 
 const SplitVersion = "goldmark-sections-runes-1200-150-v1"
-const Model = "embeddinggemma:300m"
 
 type Document struct {
 	ID       string
@@ -35,12 +36,13 @@ type Chunk struct {
 	Embedding []float64
 }
 
-type Result struct {
-	DocumentID    string
-	DocumentTitle string
-	SectionTitle  string
-	Anchor        string
-	Text          string
+type Source struct {
+	DocumentID string `json:"document_id"`
+	Title      string `json:"document_title"`
+	Section    string `json:"section_title"`
+	Text       string `json:"text"`
+	URL        string `json:"url"`
+	Anchor     string `json:"-"`
 }
 
 type Stats struct {
