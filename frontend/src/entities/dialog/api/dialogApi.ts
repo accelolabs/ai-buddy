@@ -142,21 +142,6 @@ export async function createDialogApi(payload: CreateDialogPayload): Promise<Dia
   }
 }
 
-export async function deleteDialogApi(id: string): Promise<void> {
-  try {
-    await request<void>(`/api/dialogs/${id}`, {
-      method: 'DELETE',
-    });
-  } catch (error) {
-    if (import.meta.env.DEV) {
-      inMemoryDialogs = inMemoryDialogs.filter((dialog) => dialog.id !== id);
-      delete inMemoryMessages[id];
-      return;
-    }
-    throw error;
-  }
-}
-
 export async function fetchDialogMessages(dialogId: string): Promise<ChatMessage[]> {
   try {
     const data = await request<DialogMessagesResponse | ChatMessage[]>(

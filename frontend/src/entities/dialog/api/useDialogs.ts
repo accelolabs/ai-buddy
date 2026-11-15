@@ -1,10 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  fetchDialogs,
-  createDialogApi,
-  deleteDialogApi,
-  fetchDialogMessages,
-} from './dialogApi';
+import { fetchDialogs, createDialogApi, fetchDialogMessages } from './dialogApi';
 import { dialogKeys } from './dialogKeys';
 import type { Dialog, CreateDialogPayload } from '../model/types';
 import type { ChatMessage } from '@/entities/chat/model/types';
@@ -26,21 +21,6 @@ export function useCreateDialog() {
       queryClient.setQueryData<Dialog[]>(dialogKeys.list(), (old) => {
         return old ? [newDialog, ...old] : [newDialog];
       });
-      queryClient.invalidateQueries({ queryKey: dialogKeys.lists() });
-    },
-  });
-}
-
-export function useDeleteDialog() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (dialogId: string) => deleteDialogApi(dialogId),
-    onSuccess: (_, deletedId) => {
-      queryClient.setQueryData<Dialog[]>(dialogKeys.list(), (old) => {
-        return old ? old.filter((item) => item.id !== deletedId) : [];
-      });
-      queryClient.removeQueries({ queryKey: dialogKeys.detail(deletedId) });
       queryClient.invalidateQueries({ queryKey: dialogKeys.lists() });
     },
   });

@@ -1,12 +1,11 @@
-import { MessageSquare, FileText, Code2, Trash2 } from 'lucide-react';
-import { SidebarMenuItem, SidebarMenuButton, SidebarMenuAction } from '@/shared/ui';
+import { MessageSquare, FileText, Code2 } from 'lucide-react';
+import { SidebarMenuItem, SidebarMenuButton } from '@/shared/ui';
 import type { Dialog } from '../model/types';
 
 export interface DialogMenuItemProps {
   dialog: Dialog;
   isActive?: boolean;
   onSelect?: (dialog: Dialog) => void;
-  onDelete?: (dialog: Dialog) => void;
 }
 
 function getTopicIcon(topic?: string) {
@@ -21,38 +20,18 @@ function getTopicIcon(topic?: string) {
   }
 }
 
-export function DialogMenuItem({
-  dialog,
-  isActive = false,
-  onSelect,
-  onDelete,
-}: DialogMenuItemProps) {
+export function DialogMenuItem({ dialog, isActive = false, onSelect }: DialogMenuItemProps) {
   return (
-    <SidebarMenuItem className="group/dialog-item relative">
+    <SidebarMenuItem>
       <SidebarMenuButton
         isActive={isActive}
         tooltip={dialog.title}
         onClick={() => onSelect?.(dialog)}
-        className="cursor-pointer pr-7"
+        className="cursor-pointer"
       >
         {getTopicIcon(dialog.topic)}
         <span className="truncate">{dialog.title}</span>
       </SidebarMenuButton>
-      {onDelete && (
-        <SidebarMenuAction
-          showOnHover
-          title="Удалить диалог"
-          aria-label={`Удалить диалог ${dialog.title}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(dialog);
-          }}
-          className="cursor-pointer text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-          <span className="sr-only">Удалить</span>
-        </SidebarMenuAction>
-      )}
     </SidebarMenuItem>
   );
 }
