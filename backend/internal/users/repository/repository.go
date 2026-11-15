@@ -1,6 +1,7 @@
 package users
 
 import (
+	"backend/internal/users"
 	"context"
 	"database/sql"
 	"fmt"
@@ -14,7 +15,7 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
-func (r *Repository) Add(ctx context.Context, user User) error {
+func (r *Repository) Add(ctx context.Context, user users.User) error {
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO users (id, name, role, team) VALUES ($1, $2, $3, $4)`,
 		user.ID, user.Name, user.Role, user.Team)
@@ -26,19 +27,19 @@ func (r *Repository) Add(ctx context.Context, user User) error {
 }
 
 // Get returns an error wrapping sql.ErrNoRows if the user does not exist.
-func (r *Repository) Get(ctx context.Context, id string) (User, error) {
-	var user User
+func (r *Repository) Get(ctx context.Context, id string) (users.User, error) {
+	var user users.User
 	err := r.db.QueryRowContext(ctx,
 		`SELECT id, name, role, team FROM users WHERE id = $1`, id,
 	).Scan(&user.ID, &user.Name, &user.Role, &user.Team)
 	if err != nil {
-		return User{}, fmt.Errorf("get user %q: %w", id, err)
+		return users.User{}, fmt.Errorf("get user %q: %w", id, err)
 	}
 
 	return user, nil
 }
 
-func (r *Repository) List(ctx context.Context) ([]User, error) {
+func (r *Repository) List(ctx context.Context) ([]users.User, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT id, name, role, team FROM users ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
@@ -48,17 +49,17 @@ func (r *Repository) List(ctx context.Context) ([]User, error) {
 		_ = rows.Close()
 	}()
 
-	users := make([]User, 0)
+	list := make([]users.User, 0)
 	for rows.Next() {
-		var user User
+		var user users.User
 		if err := rows.Scan(&user.ID, &user.Name, &user.Role, &user.Team); err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
-		users = append(users, user)
+		list = append(list, user)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate users: %w", err)
 	}
 
-	return users, nil
+	return list, nil
 }

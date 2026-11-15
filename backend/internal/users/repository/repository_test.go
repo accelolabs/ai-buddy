@@ -1,6 +1,7 @@
 package users
 
 import (
+	"backend/internal/users"
 	"context"
 	"database/sql"
 	"errors"
@@ -57,7 +58,7 @@ func testRepository(t *testing.T) (*Repository, context.Context) {
 	if err := goose.SetDialect("postgres"); err != nil {
 		t.Fatal(err)
 	}
-	if err := goose.UpContext(ctx, db, "../../migrations"); err != nil {
+	if err := goose.UpContext(ctx, db, "../../../migrations"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -74,9 +75,9 @@ func TestRepository(t *testing.T) {
 		t.Fatalf("Get(missing) error = %v, want sql.ErrNoRows", err)
 	}
 
-	first := User{ID: "a", Name: "Стажёр", Role: RoleIntern, Team: "backend"}
-	second := User{ID: "b", Name: "Ментор", Role: RoleMentor, Team: "platform"}
-	for _, user := range []User{second, first} {
+	first := users.User{ID: "a", Name: "Стажёр", Role: users.RoleIntern, Team: "backend"}
+	second := users.User{ID: "b", Name: "Ментор", Role: users.RoleMentor, Team: "platform"}
+	for _, user := range []users.User{second, first} {
 		if err := repo.Add(ctx, user); err != nil {
 			t.Fatal(err)
 		}
@@ -89,21 +90,21 @@ func TestRepository(t *testing.T) {
 		t.Fatal("duplicate ID was accepted")
 	}
 	list, err = repo.List(ctx)
-	if err != nil || !reflect.DeepEqual(list, []User{first, second}) {
+	if err != nil || !reflect.DeepEqual(list, []users.User{first, second}) {
 		t.Fatalf("List() = %+v, %v; want both users ordered by ID", list, err)
 	}
 
-	if err := repo.Add(ctx, User{ID: "bad-role", Name: "User", Role: "admin", Team: "backend"}); err == nil {
+	if err := repo.Add(ctx, users.User{ID: "bad-role", Name: "User", Role: "admin", Team: "backend"}); err == nil {
 		t.Fatal("invalid role was accepted")
 	}
 
-	if err := goose.DownToContext(ctx, repo.db, "../../migrations", 0); err != nil {
+	if err := goose.DownToContext(ctx, repo.db, "../../../migrations", 0); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := repo.List(ctx); err == nil {
 		t.Fatal("users table still exists after migration rollback")
 	}
-	if err := goose.UpContext(ctx, repo.db, "../../migrations"); err != nil {
+	if err := goose.UpContext(ctx, repo.db, "../../../migrations"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -116,7 +117,7 @@ func TestSeed(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.Seed(ctx); err == nil {
+	if err := users.Seed(ctx, repo.db); err == nil {
 		t.Fatal("Seed() succeeded despite rejected platform users")
 	}
 	list, err := repo.List(ctx)
@@ -127,7 +128,7 @@ func TestSeed(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		if err := repo.Seed(ctx); err != nil {
+		if err := users.Seed(ctx, repo.db); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -152,11 +153,11 @@ func TestSeed(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	extra := User{ID: "extra", Name: "Другой пользователь", Role: RoleIntern, Team: "backend"}
+	extra := users.User{ID: "extra", Name: "Другой пользователь", Role: users.RoleIntern, Team: "backend"}
 	if err := repo.Add(ctx, extra); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.Seed(ctx); err != nil {
+	if err := users.Seed(ctx, repo.db); err != nil {
 		t.Fatal(err)
 	}
 	user, err := repo.Get(ctx, "intern.backend.1")

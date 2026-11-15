@@ -1,6 +1,7 @@
-package wiki
+package indexer
 
 import (
+	"backend/internal/wiki"
 	"context"
 	"crypto/sha256"
 	"fmt"
@@ -11,21 +12,21 @@ import (
 )
 
 type documentSyncer interface {
-	Sync(context.Context, []Document) error
+	Sync(context.Context, []wiki.Document) error
 }
 
-type Service struct {
+type Indexer struct {
 	repository documentSyncer
 	root       string
 }
 
-func NewService(repository documentSyncer, root string) *Service {
-	return &Service{repository: repository, root: root}
+func NewIndexer(repository documentSyncer, root string) *Indexer {
+	return &Indexer{repository: repository, root: root}
 }
 
-func (s *Service) Index(ctx context.Context) error {
+func (s *Indexer) Index(ctx context.Context) error {
 	files := os.DirFS(s.root)
-	documents := make([]Document, 0)
+	documents := make([]wiki.Document, 0)
 	err := fs.WalkDir(files, ".", func(name string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -51,8 +52,8 @@ func (s *Service) Index(ctx context.Context) error {
 	return nil
 }
 
-func parseDocument(name, content string) Document {
-	document := Document{
+func parseDocument(name, content string) wiki.Document {
+	document := wiki.Document{
 		ID:    fmt.Sprintf("%x", sha256.Sum256([]byte(name))),
 		Path:  name,
 		Title: strings.TrimSuffix(path.Base(name), ".md"),

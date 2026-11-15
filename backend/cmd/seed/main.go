@@ -27,7 +27,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	if err := users.NewRepository(db).Seed(ctx); err != nil {
+	if err := users.Seed(ctx, db); err != nil {
 		log.Fatal(err)
 	}
 	log.Print("demo users seeded")

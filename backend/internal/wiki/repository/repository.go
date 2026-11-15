@@ -1,6 +1,7 @@
 package wiki
 
 import (
+	"backend/internal/wiki"
 	"context"
 	"database/sql"
 	"fmt"
@@ -14,7 +15,7 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
-func (r *Repository) Sync(ctx context.Context, documents []Document) error {
+func (r *Repository) Sync(ctx context.Context, documents []wiki.Document) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin wiki sync: %w", err)

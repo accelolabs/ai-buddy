@@ -1,6 +1,7 @@
-package wiki
+package indexer
 
 import (
+	"backend/internal/wiki"
 	"context"
 	"errors"
 	"os"
@@ -8,13 +9,13 @@ import (
 	"testing"
 )
 
-type syncFunc func(context.Context, []Document) error
+type syncFunc func(context.Context, []wiki.Document) error
 
-func (f syncFunc) Sync(ctx context.Context, documents []Document) error {
+func (f syncFunc) Sync(ctx context.Context, documents []wiki.Document) error {
 	return f(ctx, documents)
 }
 
-func TestServiceReadFailure(t *testing.T) {
+func TestIndexerReadFailure(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "a.md"), []byte("# Readable"), 0o644); err != nil {
 		t.Fatal(err)
@@ -22,29 +23,29 @@ func TestServiceReadFailure(t *testing.T) {
 	if err := os.Symlink(filepath.Join(root, "missing"), filepath.Join(root, "z.md")); err != nil {
 		t.Fatal(err)
 	}
-	repository := syncFunc(func(context.Context, []Document) error {
+	repository := syncFunc(func(context.Context, []wiki.Document) error {
 		t.Fatal("repository called after incomplete scan")
 		return nil
 	})
 	for _, directory := range []string{root, filepath.Join(root, "missing")} {
-		if err := NewService(repository, directory).Index(context.Background()); err == nil {
+		if err := NewIndexer(repository, directory).Index(context.Background()); err == nil {
 			t.Fatalf("Index(%q) succeeded despite read error", directory)
 		}
 	}
 }
 
-func TestServiceSyncError(t *testing.T) {
+func TestIndexerSyncError(t *testing.T) {
 	ctx := context.Background()
 	wantErr := errors.New("sync failed")
 	called := false
-	repository := syncFunc(func(gotCtx context.Context, documents []Document) error {
+	repository := syncFunc(func(gotCtx context.Context, documents []wiki.Document) error {
 		called = true
 		if gotCtx != ctx || len(documents) != 0 {
 			t.Fatalf("Sync received context %v and documents %+v", gotCtx, documents)
 		}
 		return wantErr
 	})
-	err := NewService(repository, t.TempDir()).Index(ctx)
+	err := NewIndexer(repository, t.TempDir()).Index(ctx)
 	if !called || !errors.Is(err, wantErr) {
 		t.Fatalf("Index error = %v, called = %v; want wrapped sync error", err, called)
 	}

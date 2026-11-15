@@ -2,12 +2,13 @@ package users
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 )
 
 // Seed adds demo users without changing users that already have the same IDs.
-func (r *Repository) Seed(ctx context.Context) error {
-	users := []User{
+func Seed(ctx context.Context, db *sql.DB) error {
+	demoUsers := []User{
 		{ID: "intern.backend.1", Name: "Фёдор Добронравов", Role: RoleIntern, Team: "backend"},
 		{ID: "intern.backend.2", Name: "Эдуард Радзюкевич", Role: RoleIntern, Team: "backend"},
 		{ID: "mentor.backend", Name: "Сергей Дорогов", Role: RoleMentor, Team: "backend"},
@@ -16,7 +17,7 @@ func (r *Repository) Seed(ctx context.Context) error {
 		{ID: "mentor.platform", Name: "Андрей Кайков", Role: RoleMentor, Team: "platform"},
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin user seed: %w", err)
 	}
@@ -25,7 +26,7 @@ func (r *Repository) Seed(ctx context.Context) error {
 		_ = tx.Rollback()
 	}()
 
-	for _, user := range users {
+	for _, user := range demoUsers {
 		_, err := tx.ExecContext(ctx,
 			`INSERT INTO users (id, name, role, team) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING`,
 			user.ID, user.Name, user.Role, user.Team)

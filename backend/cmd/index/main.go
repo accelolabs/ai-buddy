@@ -2,7 +2,8 @@ package main
 
 import (
 	"backend/internal/config"
-	"backend/internal/wiki"
+	"backend/internal/wiki/indexer"
+	wikirepository "backend/internal/wiki/repository"
 	"context"
 	"database/sql"
 	"log"
@@ -25,8 +26,8 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	service := wiki.NewService(wiki.NewRepository(db), cfg.KnowledgeBaseDir)
-	if err := service.Index(ctx); err != nil {
+	wikiIndexer := indexer.NewIndexer(wikirepository.NewRepository(db), cfg.KnowledgeBaseDir)
+	if err := wikiIndexer.Index(ctx); err != nil {
 		log.Fatal(err)
 	}
 	log.Print("knowledge base indexed")
