@@ -168,3 +168,116 @@ func TestSeed(t *testing.T) {
 		t.Fatalf("seed changed unrelated user: %+v, %v", user, err)
 	}
 }
+
+func TestMentorships(t *testing.T) {
+	repo, ctx := testRepository(t)
+	for _, user := range []users.User{
+		{ID: "a", Role: users.RoleIntern, Team: "backend"},
+		{ID: "b", Role: users.RoleIntern, Team: "backend"},
+		{ID: "c", Role: users.RoleIntern, Team: "platform"},
+		{ID: "mentor", Role: users.RoleMentor, Team: "backend"},
+		{ID: "other", Role: users.RoleMentor, Team: "platform"},
+	} {
+		if err := repo.Add(ctx, user); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, link := range []users.Mentorship{
+		{InternID: "b", MentorID: "mentor"},
+		{InternID: "a", MentorID: "mentor"},
+		{InternID: "c", MentorID: "other"},
+	} {
+		if err := repo.AddMentorship(ctx, link); err != nil {
+			t.Fatal(err)
+		}
+	}
+	interns, err := repo.ListInterns(ctx, "mentor")
+	if err != nil || len(interns) != 2 || interns[0].ID != "a" || interns[1].ID != "b" {
+		t.Fatalf("interns: %+v %v", interns, err)
+	}
+	for _, id := range []string{"missing", "a"} {
+		empty, err := repo.ListInterns(ctx, id)
+		if err != nil || empty == nil || len(empty) != 0 {
+			t.Fatalf("empty: %+v %v", empty, err)
+		}
+	}
+	for _, link := range []users.Mentorship{
+		{InternID: "a", MentorID: "mentor"}, // Duplicate.
+		{InternID: "a", MentorID: "other"},  // An intern cannot have two mentors.
+		{InternID: "missing", MentorID: "mentor"},
+		{InternID: "a", MentorID: "missing"},
+		{InternID: "mentor", MentorID: "other"},
+		{InternID: "other", MentorID: "a"},
+		{InternID: "mentor", MentorID: "mentor"},
+	} {
+		if err := repo.AddMentorship(ctx, link); err == nil {
+			t.Fatalf("invalid link accepted: %+v", link)
+		}
+	}
+	// Referential integrity also applies to direct writes.
+	if _, err := repo.db.ExecContext(ctx, `INSERT INTO mentorships (intern_id,mentor_id) VALUES ('missing','mentor')`); err == nil {
+		t.Fatal("orphan intern accepted")
+	}
+	if _, err := repo.db.ExecContext(ctx, `INSERT INTO mentorships (intern_id,mentor_id) VALUES ('other','missing')`); err == nil {
+		t.Fatal("orphan mentor accepted")
+	}
+	if _, err := repo.db.ExecContext(ctx, `DELETE FROM users WHERE id='a'`); err != nil {
+		t.Fatal(err)
+	}
+	interns, err = repo.ListInterns(ctx, "mentor")
+	if err != nil || len(interns) != 1 || interns[0].ID != "b" {
+		t.Fatalf("delete intern: %+v %v", interns, err)
+	}
+	if _, err := repo.db.ExecContext(ctx, `DELETE FROM users WHERE id='mentor'`); err != nil {
+		t.Fatal(err)
+	}
+	interns, err = repo.ListInterns(ctx, "mentor")
+	if err != nil || len(interns) != 0 {
+		t.Fatalf("delete mentor: %+v %v", interns, err)
+	}
+	if _, err := repo.Get(ctx, "b"); err != nil {
+		t.Fatal("deleting mentor deleted intern", err)
+	}
+}
+
+func TestSeedMentorships(t *testing.T) {
+	repo, ctx := testRepository(t)
+	// A failure when inserting a relationship must roll back seeded users as well.
+	if _, err := repo.db.ExecContext(ctx, `ALTER TABLE mentorships ADD CHECK (intern_id <> 'intern.platform.1')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := users.Seed(ctx, repo.db); err == nil {
+		t.Fatal("seed accepted rejected mentorship")
+	}
+	for _, query := range []string{`SELECT count(*) FROM users`, `SELECT count(*) FROM mentorships`} {
+		var count int
+		if err := repo.db.QueryRowContext(ctx, query).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("partial seed: %d %v", count, err)
+		}
+	}
+	if _, err := repo.db.ExecContext(ctx, `ALTER TABLE mentorships DROP CONSTRAINT mentorships_intern_id_check`); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := users.Seed(ctx, repo.db); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, team := range []string{"backend", "platform"} {
+		interns, err := repo.ListInterns(ctx, "mentor."+team)
+		if err != nil || len(interns) != 2 || interns[0].ID != "intern."+team+".1" || interns[1].ID != "intern."+team+".2" {
+			t.Fatalf("seed links: %+v %v", interns, err)
+		}
+	}
+	// Existing assignments are not replaced by the seed.
+	if _, err := repo.db.ExecContext(ctx, `UPDATE mentorships SET mentor_id='mentor.platform' WHERE intern_id='intern.backend.1'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := users.Seed(ctx, repo.db); err != nil {
+		t.Fatal(err)
+	}
+	interns, err := repo.ListInterns(ctx, "mentor.platform")
+	if err != nil || len(interns) != 3 || interns[0].ID != "intern.backend.1" {
+		t.Fatalf("seed replaced assignment: %+v %v", interns, err)
+	}
+}

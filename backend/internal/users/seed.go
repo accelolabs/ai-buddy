@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-// Seed adds demo users without changing users that already have the same IDs.
+// Seed adds demo users and mentorships without replacing existing records.
 func Seed(ctx context.Context, db *sql.DB) error {
 	demoUsers := []User{
 		{ID: "intern.backend.1", Name: "Фёдор Добронравов", Role: RoleIntern, Team: "backend"},
@@ -34,6 +34,18 @@ func Seed(ctx context.Context, db *sql.DB) error {
 			return fmt.Errorf("seed user %q: %w", user.ID, err)
 		}
 	}
+	for _, link := range []Mentorship{
+		{InternID: "intern.backend.1", MentorID: "mentor.backend"},
+		{InternID: "intern.backend.2", MentorID: "mentor.backend"},
+		{InternID: "intern.platform.1", MentorID: "mentor.platform"},
+		{InternID: "intern.platform.2", MentorID: "mentor.platform"},
+	} {
+		_, err := tx.ExecContext(ctx, `INSERT INTO mentorships (intern_id, mentor_id) VALUES ($1, $2) ON CONFLICT (intern_id) DO NOTHING`, link.InternID, link.MentorID)
+		if err != nil {
+			return fmt.Errorf("seed mentorship for %q: %w", link.InternID, err)
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit user seed: %w", err)
 	}
