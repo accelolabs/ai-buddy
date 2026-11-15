@@ -63,7 +63,8 @@ go run ./cmd/server
 ## Пользователи и сидирование
 
 Пакет `internal/users` содержит сущность `User` с полями `ID`, `Name`, `Role`,
-`Team` и HTTP-хендлер. PostgreSQL-репозиторий `users.Repository` находится
+`Team`. HTTP-хендлер находится в `internal/users/handler/handler.go`.
+PostgreSQL-репозиторий `users.Repository` находится
 в `internal/users/repository/repository.go`: `Add`, `Get`, `List`. ID задаёт вызывающий код;
 повторное добавление того же ID возвращает ошибку. Для отсутствующего ID `Get`
 возвращает ошибку, которую можно проверить через `errors.Is(err, sql.ErrNoRows)`.
@@ -112,10 +113,11 @@ docker compose run --rm --build seed
 
 ### Выбранный пользователь
 
-Middleware `users.Middleware(userRepository)(handler)` читает cookie `demo_user`,
+Middleware `middleware.Middleware(userRepository)(handler)` из
+`internal/users/middleware` читает cookie `demo_user`,
 декодирует значение, заданное через `encodeURIComponent(user.id)`, и загружает
 пользователя методом `Get`. В хендлере он доступен через
-`users.UserFromContext(r.Context())`, возвращающий `(User, bool)`.
+`middleware.UserFromContext(r.Context())`, возвращающий `(users.User, bool)`.
 
 Отсутствующая или пустая cookie и неизвестный ID дают HTTP 401,
 ошибка percent-кодирования — HTTP 400, ошибка репозитория — HTTP 500.

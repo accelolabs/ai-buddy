@@ -1,6 +1,7 @@
-package users
+package middleware
 
 import (
+	"backend/internal/users"
 	"context"
 	"database/sql"
 	"errors"
@@ -10,9 +11,9 @@ import (
 	"testing"
 )
 
-type getFunc func(context.Context, string) (User, error)
+type getFunc func(context.Context, string) (users.User, error)
 
-func (f getFunc) Get(ctx context.Context, id string) (User, error) {
+func (f getFunc) Get(ctx context.Context, id string) (users.User, error) {
 	return f(ctx, id)
 }
 
@@ -36,9 +37,9 @@ func TestMiddleware(t *testing.T) {
 			if tt.cookie != "" {
 				req.Header.Set("Cookie", tt.cookie)
 			}
-			want := User{ID: tt.id, Name: "Стажёр", Role: RoleIntern, Team: "backend"}
+			want := users.User{ID: tt.id, Name: "Стажёр", Role: users.RoleIntern, Team: "backend"}
 			getCalled := false
-			repository := getFunc(func(ctx context.Context, id string) (User, error) {
+			repository := getFunc(func(ctx context.Context, id string) (users.User, error) {
 				getCalled = true
 				if ctx != req.Context() || id != tt.id {
 					t.Fatalf("Get received context %v and ID %q, want request context and ID %q", ctx, id, tt.id)
@@ -63,7 +64,7 @@ func TestMiddleware(t *testing.T) {
 }
 
 func TestUserFromContextWithoutUser(t *testing.T) {
-	if user, ok := UserFromContext(context.Background()); ok || user != (User{}) {
+	if user, ok := UserFromContext(context.Background()); ok || user != (users.User{}) {
 		t.Fatalf("UserFromContext = %+v, %v; want zero user and false", user, ok)
 	}
 }

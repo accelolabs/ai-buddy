@@ -1,6 +1,7 @@
-package users
+package handler
 
 import (
+	"backend/internal/users"
 	"context"
 	"errors"
 	"net/http"
@@ -8,25 +9,25 @@ import (
 	"testing"
 )
 
-type listFunc func(context.Context) ([]User, error)
+type listFunc func(context.Context) ([]users.User, error)
 
-func (f listFunc) List(ctx context.Context) ([]User, error) {
+func (f listFunc) List(ctx context.Context) ([]users.User, error) {
 	return f(ctx)
 }
 
 func TestHandlerList(t *testing.T) {
 	tests := []struct {
 		name   string
-		users  []User
+		users  []users.User
 		err    error
 		status int
 		body   string
 	}{
 		{
 			name: "users",
-			users: []User{
-				{ID: "intern.backend.1", Name: "Фёдор Добронравов", Role: RoleIntern, Team: "backend"},
-				{ID: "mentor.backend", Name: "Сергей Дорогов", Role: RoleMentor, Team: "backend"},
+			users: []users.User{
+				{ID: "intern.backend.1", Name: "Фёдор Добронравов", Role: users.RoleIntern, Team: "backend"},
+				{ID: "mentor.backend", Name: "Сергей Дорогов", Role: users.RoleMentor, Team: "backend"},
 			},
 			status: http.StatusOK,
 			body: `[{"id":"intern.backend.1","name":"Фёдор Добронравов","role":"intern","team":"backend"},` +
@@ -48,7 +49,7 @@ func TestHandlerList(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
-			handler := NewHandler(listFunc(func(ctx context.Context) ([]User, error) {
+			handler := NewHandler(listFunc(func(ctx context.Context) ([]users.User, error) {
 				if ctx != req.Context() {
 					t.Error("repository did not receive request context")
 				}

@@ -2,7 +2,7 @@ package main
 
 import (
 	"backend/internal/config"
-	"backend/internal/users"
+	usershandler "backend/internal/users/handler"
 	usersrepository "backend/internal/users/repository"
 	"context"
 	"database/sql"
@@ -41,7 +41,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	userHandler := users.NewHandler(usersrepository.NewRepository(db))
+	userHandler := usershandler.NewHandler(usersrepository.NewRepository(db))
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/users", userHandler.List)
 

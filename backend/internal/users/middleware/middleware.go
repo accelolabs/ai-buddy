@@ -1,6 +1,7 @@
-package users
+package middleware
 
 import (
+	"backend/internal/users"
 	"context"
 	"database/sql"
 	"errors"
@@ -10,13 +11,13 @@ import (
 )
 
 type userGetter interface {
-	Get(context.Context, string) (User, error)
+	Get(context.Context, string) (users.User, error)
 }
 
 type userContextKey struct{}
 
-func UserFromContext(ctx context.Context) (User, bool) {
-	user, ok := ctx.Value(userContextKey{}).(User)
+func UserFromContext(ctx context.Context) (users.User, bool) {
+	user, ok := ctx.Value(userContextKey{}).(users.User)
 	return user, ok
 }
 

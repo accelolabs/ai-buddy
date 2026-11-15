@@ -1,6 +1,7 @@
-package users
+package handler
 
 import (
+	"backend/internal/users"
 	"context"
 	"encoding/json"
 	"log"
@@ -8,7 +9,7 @@ import (
 )
 
 type userLister interface {
-	List(context.Context) ([]User, error)
+	List(context.Context) ([]users.User, error)
 }
 
 type Handler struct {
