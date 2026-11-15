@@ -1,3 +1,4 @@
+// Package tracker manages intern tasks and derives calendar-based progress.
 package tracker
 
 import (
@@ -30,6 +31,7 @@ func (t Task) WithState(today string) Task {
 	}
 
 	t.Overdue = t.CompletedAt == nil && t.Deadline < today
+
 	return t
 }
 

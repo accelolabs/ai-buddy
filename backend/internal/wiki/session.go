@@ -1,14 +1,13 @@
 package wiki
 
 import (
+	"ai-buddy/internal/platform/cleanup"
 	"context"
 	"database/sql"
 	"database/sql/driver"
 	"errors"
 	"log/slog"
 	"time"
-
-	"ai-buddy/internal/platform/cleanup"
 )
 
 const lockID = 824165097
@@ -24,12 +23,15 @@ func (r *Store) Acquire(ctx context.Context) (*indexSession, error) {
 	}
 
 	var acquired bool
+
 	err = conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", lockID).Scan(&acquired)
 	if err != nil || !acquired {
 		cleanup.Close(conn)
+
 		if err == nil {
 			err = errors.New("wiki index is already running")
 		}
+
 		return nil, err
 	}
 
@@ -38,10 +40,12 @@ func (r *Store) Acquire(ctx context.Context) (*indexSession, error) {
 
 func (s *indexSession) Close() {
 	defer cleanup.Close(s.conn)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	var unlocked bool
+
 	err := s.conn.QueryRowContext(ctx, "SELECT pg_advisory_unlock($1)", lockID).Scan(&unlocked)
 	if err != nil || !unlocked {
 		// A connection with an unreleased session lock must not return to the pool.
@@ -53,7 +57,9 @@ func (s *indexSession) Close() {
 
 func (s *indexSession) Fingerprint(ctx context.Context) (string, error) {
 	var fingerprint string
-	err := s.conn.QueryRowContext(ctx, "SELECT fingerprint FROM wiki_state WHERE singleton").Scan(&fingerprint)
+
+	err := s.conn.QueryRowContext(ctx, "SELECT fingerprint FROM wiki_state WHERE singleton").
+		Scan(&fingerprint)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
@@ -73,11 +79,13 @@ func (s *indexSession) Hashes(ctx context.Context) (map[string]string, error) {
 	}()
 
 	hashes := map[string]string{}
+
 	for rows.Next() {
 		var id, hash string
 		if err := rows.Scan(&id, &hash); err != nil {
 			return nil, err
 		}
+
 		hashes[id] = hash
 	}
 

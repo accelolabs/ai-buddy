@@ -1,11 +1,10 @@
 package wiki
 
 import (
+	"ai-buddy/internal/platform/database"
 	"context"
 	"database/sql"
 	"errors"
-
-	"ai-buddy/internal/platform/database"
 )
 
 func (r *Store) List(ctx context.Context, team string) ([]Document, error) {
@@ -15,10 +14,17 @@ func (r *Store) List(ctx context.Context, team string) ([]Document, error) {
   WHERE team IN ('common',$1)
   ORDER BY path
  `
-	return database.Query(ctx, r.DB, query, func(row database.RowScanner) (d Document, err error) {
-		err = row.Scan(&d.ID, &d.Path, &d.Title)
-		return
-	}, team)
+
+	return database.Query(
+		ctx,
+		r.DB,
+		query,
+		func(row database.RowScanner) (d Document, err error) {
+			err = row.Scan(&d.ID, &d.Path, &d.Title)
+			return d, err
+		},
+		team,
+	)
 }
 
 func (r *Store) Get(ctx context.Context, team, id string) (Document, error) {
@@ -27,7 +33,9 @@ func (r *Store) Get(ctx context.Context, team, id string) (Document, error) {
   FROM documents
   WHERE id=$1 AND team IN ('common',$2)
  `
+
 	var document Document
+
 	err := r.DB.QueryRowContext(ctx, query, id, team).Scan(
 		&document.ID,
 		&document.Path,

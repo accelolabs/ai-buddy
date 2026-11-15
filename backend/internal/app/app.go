@@ -1,11 +1,7 @@
+// Package app wires the demo domains and manages application shutdown.
 package app
 
 import (
-	"context"
-	"database/sql"
-	"net/http"
-	"time"
-
 	"ai-buddy/internal/buddy"
 	"ai-buddy/internal/config"
 	"ai-buddy/internal/ollama"
@@ -14,6 +10,10 @@ import (
 	"ai-buddy/internal/tracker"
 	"ai-buddy/internal/users"
 	"ai-buddy/internal/wiki"
+	"context"
+	"database/sql"
+	"net/http"
+	"time"
 )
 
 type App struct {
@@ -27,40 +27,88 @@ func New(ctx context.Context, db *sql.DB, c config.Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	model := ollama.New(c.Ollama.URL)
 	profiles := &users.Store{DB: db}
 	selector := &users.Selector{Profiles: profiles}
 	trackerRepo := &tracker.Store{DB: db}
-	taskService := &tracker.Service{Store: trackerRepo, Profiles: profiles, Location: loc, Now: time.Now}
+	taskService := &tracker.Service{
+		Store:    trackerRepo,
+		Profiles: profiles,
+		Location: loc,
+		Now:      time.Now,
+	}
 
 	ticketService := ticket.New(&ticket.Store{DB: db}, profiles)
-	wikiService := &wiki.Service{Store: &wiki.Store{DB: db}, Embedder: model, Minimum: c.Wiki.MinSimilarity, Profiles: profiles}
+	wikiService := &wiki.Service{
+		Store:    &wiki.Store{DB: db},
+		Embedder: model,
+		Minimum:  c.Wiki.MinSimilarity,
+		Profiles: profiles,
+	}
+
 	repo := &buddy.Store{DB: db}
 	if err := repo.Recover(ctx); err != nil {
 		return nil, err
 	}
-	tools := &buddy.Tools{Repo: repo, Tracker: taskService, Ticket: ticketService, Wiki: wikiService}
+
+	tools := &buddy.Tools{
+		Repo:    repo,
+		Tracker: taskService,
+		Ticket:  ticketService,
+		Wiki:    wikiService,
+	}
 	worker, stop := context.WithCancel(ctx)
-	service := &buddy.Service{Repo: repo, Runner: buddy.NewAgent(repo, tools, model), Executor: tools, Context: worker}
+	service := &buddy.Service{
+		Repo:     repo,
+		Runner:   buddy.NewAgent(repo, tools, model),
+		Executor: tools,
+		Context:  worker,
+	}
 	mux := http.NewServeMux()
 	selector.Register(mux)
 	tracker.Register(mux, selector, taskService)
 	ticket.Register(mux, selector, ticketService)
 	wiki.Register(mux, selector, wikiService)
 	buddy.NewHandler(service).Register(mux, selector)
-	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) })
+	mux.HandleFunc(
+		"GET /health/live",
+		func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) },
+	)
 	mux.HandleFunc("GET /health/ready", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
+
 		if db.PingContext(ctx) != nil {
 			httpx.JSON(w, 503, map[string]string{"error": "database unavailable"})
 			return
 		}
-		w.WriteHeader(204)
+
+		w.WriteHeader(http.StatusNoContent)
 	})
 	httpx.Fallbacks(mux, map[string][]string{
-		"/api/users": {"GET"}, "/api/me": {"GET"}, "/api/tasks": {"POST"}, "/api/tasks/{taskID}/complete": {"POST"}, "/api/progress": {"GET"}, "/api/interns": {"GET"}, "/api/interns/{id}/progress": {"GET"}, "/api/tickets": {"GET", "POST"}, "/api/tickets/incoming": {"GET"}, "/api/documents": {"GET"}, "/api/documents/{id}": {"GET"}, "/api/chats": {"GET", "POST"}, "/api/chats/{id}": {"GET"}, "/api/chats/{id}/messages": {"POST"}, "/api/runs/{id}/events": {"GET"}, "/api/runs/{id}/retry": {"POST"}, "/api/actions/{id}/confirm": {"POST"}, "/api/actions/{id}/cancel": {"POST"},
+		"/api/users": {
+			http.MethodGet,
+		},
+		"/api/me":                      {http.MethodGet},
+		"/api/tasks":                   {http.MethodPost},
+		"/api/tasks/{taskID}/complete": {http.MethodPost},
+		"/api/progress":                {http.MethodGet},
+		"/api/interns":                 {http.MethodGet},
+		"/api/interns/{id}/progress":   {http.MethodGet},
+		"/api/tickets":                 {http.MethodGet, http.MethodPost},
+		"/api/tickets/incoming":        {http.MethodGet},
+		"/api/documents":               {http.MethodGet},
+		"/api/documents/{id}":          {http.MethodGet},
+		"/api/chats":                   {http.MethodGet, http.MethodPost},
+		"/api/chats/{id}":              {http.MethodGet},
+		"/api/chats/{id}/messages":     {http.MethodPost},
+		"/api/runs/{id}/events":        {http.MethodGet},
+		"/api/runs/{id}/retry":         {http.MethodPost},
+		"/api/actions/{id}/confirm":    {http.MethodPost},
+		"/api/actions/{id}/cancel":     {http.MethodPost},
 	})
+
 	return &App{Handler: mux, Buddy: service, stop: stop}, nil
 }
 func (a *App) Close() { a.stop(); a.Buddy.Close() }

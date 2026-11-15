@@ -1,11 +1,10 @@
 package ticket
 
 import (
+	"ai-buddy/internal/users"
 	"context"
 	"errors"
 	"strings"
-
-	"ai-buddy/internal/users"
 )
 
 type Repository interface {
@@ -31,10 +30,17 @@ func New(repository Repository, tracker MentorFinder) *Service {
 	}
 }
 
-func (s *Service) Create(ctx context.Context, sender, key string, input CreateInput) (Ticket, bool, error) {
+func (s *Service) Create(
+	ctx context.Context,
+	sender, key string,
+	input CreateInput,
+) (Ticket, bool, error) {
 	input.Question = strings.TrimSpace(input.Question)
+
 	input.Description = strings.TrimSpace(input.Description)
-	if strings.TrimSpace(sender) == "" || strings.TrimSpace(key) == "" || len(key) > 256 || input.Question == "" || input.Description == "" {
+	if strings.TrimSpace(sender) == "" || strings.TrimSpace(key) == "" || len(key) > 256 ||
+		input.Question == "" ||
+		input.Description == "" {
 		return Ticket{}, false, ErrInvalid
 	}
 
@@ -43,8 +49,10 @@ func (s *Service) Create(ctx context.Context, sender, key string, input CreateIn
 		if saved.Question != input.Question || saved.Description != input.Description {
 			return Ticket{}, false, ErrConflict
 		}
+
 		return saved, false, nil
 	}
+
 	if !errors.Is(err, ErrNotFound) {
 		return Ticket{}, false, err
 	}
@@ -53,6 +61,7 @@ func (s *Service) Create(ctx context.Context, sender, key string, input CreateIn
 	if err != nil {
 		return Ticket{}, false, err
 	}
+
 	if recipient == nil {
 		return Ticket{}, false, ErrNoMentor
 	}

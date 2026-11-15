@@ -1,6 +1,8 @@
+// Package buddy runs conversations, confirmed actions and persisted event streams.
 package buddy
 
 import (
+	"ai-buddy/internal/users"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -8,8 +10,6 @@ import (
 	"errors"
 	"strings"
 	"time"
-
-	"ai-buddy/internal/users"
 )
 
 var (
@@ -20,14 +20,18 @@ var (
 
 func ID() string {
 	var b [16]byte
+
 	_, _ = rand.Read(b[:]) // crypto/rand.Read always fills the buffer or terminates.
+
 	return hex.EncodeToString(b[:])
 }
+
 func Title(text string) string {
 	r := []rune(strings.Join(strings.Fields(text), " "))
 	if len(r) > 80 {
 		r = r[:80]
 	}
+
 	return string(r)
 }
 

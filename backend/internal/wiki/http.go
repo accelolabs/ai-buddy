@@ -1,39 +1,42 @@
 package wiki
 
 import (
+	"ai-buddy/internal/platform/httpx"
+	"ai-buddy/internal/users"
 	"context"
 	"errors"
 	"net/http"
 	"time"
-
-	"ai-buddy/internal/platform/httpx"
-	"ai-buddy/internal/users"
 )
 
-func (h *Service) ListHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *Service) ListHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	u := users.CurrentUser(ctx)
-	docs, err := h.Store.List(ctx, u.Team)
+
+	docs, err := s.Store.List(ctx, u.Team)
 	if err != nil {
 		fail(w, err)
 		return
 	}
 
 	out := []metadata{}
+
 	for _, d := range docs {
 		out = append(out, documentMetadata(d))
 	}
+
 	httpx.JSON(w, 200, out)
 }
 
-func (h *Service) GetHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *Service) GetHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	u := users.CurrentUser(ctx)
-	d, err := h.Store.Get(ctx, u.Team, r.PathValue("id"))
+
+	d, err := s.Store.Get(ctx, u.Team, r.PathValue("id"))
 	if err != nil {
 		fail(w, err)
 		return
@@ -71,14 +74,16 @@ func documentMetadata(d Document) metadata {
 func fail(w http.ResponseWriter, err error) {
 	code := 503
 	message := "service unavailable"
+
 	if errors.Is(err, ErrNotFound) {
 		code = 404
 		message = "not found"
 	}
+
 	httpx.JSON(w, code, map[string]string{"error": message})
 }
 
-func Register(mux *http.ServeMux, login *users.Selector, h *Service) {
-	mux.Handle("GET /api/documents", login.RequireUser(http.HandlerFunc(h.ListHTTP)))
-	mux.Handle("GET /api/documents/{id}", login.RequireUser(http.HandlerFunc(h.GetHTTP)))
+func Register(mux *http.ServeMux, login *users.Selector, s *Service) {
+	mux.Handle("GET /api/documents", login.RequireUser(http.HandlerFunc(s.ListHTTP)))
+	mux.Handle("GET /api/documents/{id}", login.RequireUser(http.HandlerFunc(s.GetHTTP)))
 }

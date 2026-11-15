@@ -11,8 +11,15 @@ type Changes struct {
 	Fingerprint string
 }
 
-func Run(ctx context.Context, store *Store, root string, embedder Embedder, full bool) (Stats, error) {
+func Run(
+	ctx context.Context,
+	store *Store,
+	root string,
+	embedder Embedder,
+	full bool,
+) (Stats, error) {
 	stats := Stats{}
+
 	session, err := store.Acquire(ctx)
 	if err != nil {
 		return stats, err
@@ -23,10 +30,12 @@ func Run(ctx context.Context, store *Store, root string, embedder Embedder, full
 	if err != nil {
 		return stats, err
 	}
+
 	stored, err := session.Fingerprint(ctx)
 	if err != nil {
 		return stats, err
 	}
+
 	if stored != "" && stored != fingerprint && !full {
 		return stats, errors.New("embedding fingerprint changed; run with --full")
 	}
@@ -35,6 +44,7 @@ func Run(ctx context.Context, store *Store, root string, embedder Embedder, full
 	if err != nil {
 		return stats, err
 	}
+
 	hashes, err := session.Hashes(ctx)
 	if err != nil {
 		return stats, err
@@ -44,6 +54,7 @@ func Run(ctx context.Context, store *Store, root string, embedder Embedder, full
 	if err != nil {
 		return stats, err
 	}
+
 	changes.Fingerprint = fingerprint
 
 	// A replacement during preparation must not publish mixed embeddings.
@@ -51,6 +62,7 @@ func Run(ctx context.Context, store *Store, root string, embedder Embedder, full
 	if err != nil {
 		return stats, err
 	}
+
 	if final != fingerprint {
 		return stats, errors.New("embedding model changed during indexing")
 	}
@@ -58,7 +70,13 @@ func Run(ctx context.Context, store *Store, root string, embedder Embedder, full
 	return stats, session.Publish(ctx, changes)
 }
 
-func prepare(ctx context.Context, documents []Document, hashes map[string]string, embedder Embedder, full bool) (Changes, Stats, error) {
+func prepare(
+	ctx context.Context,
+	documents []Document,
+	hashes map[string]string,
+	embedder Embedder,
+	full bool,
+) (Changes, Stats, error) {
 	changes := Changes{}
 	stats := Stats{}
 
@@ -70,6 +88,7 @@ func prepare(ctx context.Context, documents []Document, hashes map[string]string
 			stats.Skipped++
 			continue
 		}
+
 		if exists {
 			stats.Changed++
 		} else {
@@ -77,13 +96,16 @@ func prepare(ctx context.Context, documents []Document, hashes map[string]string
 		}
 
 		chunks := []Chunk{}
+
 		for _, chunk := range document.Chunks {
 			parts, err := embedChunk(ctx, embedder, document.Title, chunk)
 			if err != nil {
 				return changes, stats, err
 			}
+
 			chunks = append(chunks, parts...)
 		}
+
 		document.Chunks = chunks
 		changes.Documents = append(changes.Documents, document)
 	}
@@ -91,6 +113,7 @@ func prepare(ctx context.Context, documents []Document, hashes map[string]string
 	for id := range hashes {
 		changes.Deleted = append(changes.Deleted, id)
 	}
+
 	stats.Deleted = len(changes.Deleted)
 
 	return changes, stats, nil
@@ -101,5 +124,6 @@ func indexFingerprint(ctx context.Context, embedder Embedder) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return fingerprint + ":" + SplitVersion, nil
 }

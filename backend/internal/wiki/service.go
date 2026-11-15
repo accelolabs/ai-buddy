@@ -1,9 +1,8 @@
 package wiki
 
 import (
-	"context"
-
 	"ai-buddy/internal/users"
+	"context"
 )
 
 type Repository interface {
@@ -24,6 +23,7 @@ func (s *Service) Search(ctx context.Context, id, query string) ([]Source, error
 	if err != nil {
 		return nil, err
 	}
+
 	fingerprint, err := indexFingerprint(ctx, s.Embedder)
 	if err != nil {
 		return nil, ErrUnavailable

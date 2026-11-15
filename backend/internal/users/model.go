@@ -1,3 +1,4 @@
+// Package users stores demo profiles and resolves the selected user.
 package users
 
 type User struct {

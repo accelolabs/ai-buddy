@@ -1,13 +1,12 @@
 package tracker
 
 import (
+	"ai-buddy/internal/platform/database"
 	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
 	"errors"
-
-	"ai-buddy/internal/platform/database"
 )
 
 type Store struct {
@@ -26,6 +25,7 @@ const taskColumns = `
 
 func scanTask(row database.RowScanner) (Task, error) {
 	var task Task
+
 	err := row.Scan(
 		&task.ID,
 		&task.InternID,
@@ -65,6 +65,7 @@ func (p *Store) Create(ctx context.Context, id, key string, input CreateInput) (
 		RETURNING ` + taskColumns
 
 	var token [16]byte
+
 	_, _ = rand.Read(token[:]) // crypto/rand.Read always fills the buffer or terminates.
 
 	// A conflicting INSERT waits for the winning transaction. The following SELECT
@@ -79,10 +80,12 @@ func (p *Store) Create(ctx context.Context, id, key string, input CreateInput) (
 		input.Deadline,
 		key,
 	)
+
 	task, err := scanTask(row)
 	if err == nil {
 		return task, true, nil
 	}
+
 	if !errors.Is(err, ErrNotFound) {
 		return Task{}, false, err
 	}
@@ -94,6 +97,7 @@ func (p *Store) Create(ctx context.Context, id, key string, input CreateInput) (
 	`
 
 	row = p.DB.QueryRowContext(ctx, findQuery, id, key)
+
 	task, err = scanTask(row)
 	if err != nil {
 		return Task{}, false, err
@@ -116,5 +120,6 @@ func (p *Store) Complete(ctx context.Context, id, taskID string) (Task, error) {
 		RETURNING ` + taskColumns
 
 	row := p.DB.QueryRowContext(ctx, query, id, taskID)
+
 	return scanTask(row)
 }

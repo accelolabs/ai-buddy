@@ -8,6 +8,7 @@ import (
 func Split(s string) []string {
 	r := []rune(s)
 	parts := []string{}
+
 	for len(r) > 0 {
 		end := min(1200, len(r))
 		if end < len(r) {
@@ -18,14 +19,18 @@ func Split(s string) []string {
 				}
 			}
 		}
+
 		part := strings.TrimSpace(string(r[:end]))
 		if part != "" {
 			parts = append(parts, part)
 		}
+
 		if end == len(r) {
 			break
 		}
+
 		r = r[end-min(150, end):]
 	}
+
 	return parts
 }

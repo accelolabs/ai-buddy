@@ -7,7 +7,8 @@ import (
 )
 
 func TestNextTaskOrderAndNulls(t *testing.T) {
-	s, repo := fixture()
+	s, repo := fixture(t)
+
 	done := time.Now()
 	for _, tc := range []struct {
 		list               []Task
@@ -22,14 +23,20 @@ func TestNextTaskOrderAndNulls(t *testing.T) {
 		repo.snapshot.Tasks = tc.list
 		repo.snapshot.Mentor = nil
 		repo.snapshot.Intern.StartDate = nil
+
 		p, err := s.Progress(context.Background(), "i")
-		if err != nil || p.Tasks == nil || p.Mentor != nil || p.StartDate != nil || p.Completed != tc.completed || p.Percent != tc.percent {
+		if err != nil || p.Tasks == nil || p.Mentor != nil || p.StartDate != nil ||
+			p.Completed != tc.completed ||
+			p.Percent != tc.percent {
 			t.Fatal(p, err)
 		}
+
 		next := ""
+
 		if p.NextTask != nil {
 			next = p.NextTask.ID
 		}
+
 		if next != tc.next {
 			t.Fatal(next, tc.next)
 		}

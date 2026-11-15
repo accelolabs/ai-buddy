@@ -19,3 +19,9 @@ const (
 	EventDone       = "done"
 	EventError      = "error"
 )
+
+const (
+	roleAssistant = "assistant"
+	roleUser      = "user"
+	roleTool      = "tool"
+)

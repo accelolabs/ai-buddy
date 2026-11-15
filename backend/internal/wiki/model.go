@@ -1,15 +1,17 @@
+// Package wiki indexes Markdown documents and searches the permitted corpus.
 package wiki
 
 import (
+	"ai-buddy/internal/ollama"
 	"context"
 	"errors"
-
-	"ai-buddy/internal/ollama"
 )
 
-var ErrUnavailable = ollama.ErrUnavailable
-var ErrNotFound = errors.New("document not found")
-var ErrContext = ollama.ErrContext
+var (
+	ErrUnavailable = ollama.ErrUnavailable
+	ErrNotFound    = errors.New("document not found")
+	ErrContext     = ollama.ErrContext
+)
 
 const SplitVersion = "goldmark-sections-runes-1200-150-v1"
 

@@ -1,13 +1,13 @@
+// Package database opens PostgreSQL pools and consumes typed query results.
 package database
 
 import (
+	"ai-buddy/internal/platform/cleanup"
 	"context"
 	"database/sql"
 	"time"
 
-	"ai-buddy/internal/platform/cleanup"
-
-	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/jackc/pgx/v5/stdlib" // Register the pgx database/sql driver.
 )
 
 func Open(ctx context.Context, dsn string) (*sql.DB, error) {
@@ -19,6 +19,7 @@ func Open(ctx context.Context, dsn string) (*sql.DB, error) {
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(30 * time.Minute)
+
 	if err = db.PingContext(ctx); err != nil {
 		cleanup.Close(db)
 		return nil, err

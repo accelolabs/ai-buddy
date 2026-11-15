@@ -1,6 +1,7 @@
 package tracker
 
 import (
+	"ai-buddy/internal/users"
 	"context"
 	"errors"
 	"net/http"
@@ -8,8 +9,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"ai-buddy/internal/users"
 )
 
 type progressStub struct {
@@ -25,14 +24,23 @@ func (s *progressStub) Progress(_ context.Context, id string) (Progress, error) 
 func (s *progressStub) MentorProgress(_ context.Context, mentor, id string) (Progress, error) {
 	s.id = id
 	s.mentorID = mentor
+
 	return Progress{Intern: users.User{ID: id, Role: users.RoleIntern}}, s.err
 }
 
 func mentorRequest(t *testing.T, handler http.HandlerFunc) *httptest.ResponseRecorder {
 	t.Helper()
-	r := httptest.NewRequest("GET", "/api/interns/i/progress", nil)
+
+	r := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/api/interns/i/progress",
+		nil,
+	)
 	r.SetPathValue("id", "i")
-	r = r.WithContext(users.WithUser(r.Context(), users.User{ID: "m", Role: "mentor", Team: "backend"}))
+	r = r.WithContext(
+		users.WithUser(r.Context(), users.User{ID: "m", Role: "mentor", Team: "backend"}),
+	)
 	w := httptest.NewRecorder()
 	handler(w, r)
 
@@ -43,12 +51,24 @@ func TestProgressHandlers(t *testing.T) {
 	service := &progressStub{}
 	h := &Service{Profiles: service, Store: service, Location: time.UTC, Now: time.Now}
 	get := func() *httptest.ResponseRecorder {
-		r := httptest.NewRequest("GET", "/api/progress", nil)
-		r = r.WithContext(users.WithUser(r.Context(), users.User{ID: "i", Role: "intern", Team: "backend"}))
+		r := httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodGet,
+			"/api/progress",
+			nil,
+		)
+		r = r.WithContext(
+			users.WithUser(
+				r.Context(),
+				users.User{ID: "i", Role: "intern", Team: "backend"},
+			),
+		)
 		w := httptest.NewRecorder()
 		h.ProgressHTTP(w, r)
+
 		return w
 	}
+
 	w := get()
 	if w.Code != 200 || service.id != "i" {
 		t.Fatal(w, service)
@@ -64,6 +84,7 @@ func TestProgressHandlers(t *testing.T) {
 		code int
 	}{{ErrNotFound, 404}, {errors.New("SQL secret"), 500}} {
 		service.err = tc.err
+
 		for _, w := range []*httptest.ResponseRecorder{get(), mentorRequest(t, h.MentorProgressHTTP)} {
 			if w.Code != tc.code || strings.Contains(w.Body.String(), "secret") {
 				t.Fatal(w)
@@ -76,15 +97,26 @@ func (s *progressStub) Get(_ context.Context, id string) (users.User, error) {
 	s.id = id
 	return users.User{ID: id, Role: users.RoleIntern}, s.err
 }
-func (s *progressStub) Mentor(context.Context, string) (*users.User, error) { return nil, nil }
+
+//nolint:nilnil // This fixture models an unassigned mentor.
+func (*progressStub) Mentor(context.Context, string) (*users.User, error) { return nil, nil }
+
 func (s *progressStub) Assigned(_ context.Context, mentor, id string) (bool, error) {
 	s.mentorID = mentor
 	s.id = id
+
 	return true, s.err
 }
-func (s *progressStub) Interns(context.Context, string) ([]users.User, error) { panic("unused") }
-func (s *progressStub) Tasks(context.Context, string) ([]Task, error)         { return []Task{}, nil }
-func (s *progressStub) Create(context.Context, string, string, CreateInput) (Task, bool, error) {
+func (*progressStub) Interns(context.Context, string) ([]users.User, error) { panic("unused") }
+
+func (*progressStub) Tasks(
+	context.Context,
+	string,
+) ([]Task, error) {
+	return []Task{}, nil
+}
+
+func (*progressStub) Create(context.Context, string, string, CreateInput) (Task, bool, error) {
 	panic("unused")
 }
-func (s *progressStub) Complete(context.Context, string, string) (Task, error) { panic("unused") }
+func (*progressStub) Complete(context.Context, string, string) (Task, error) { panic("unused") }

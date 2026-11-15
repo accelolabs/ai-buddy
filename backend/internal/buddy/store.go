@@ -1,10 +1,9 @@
 package buddy
 
 import (
+	"ai-buddy/internal/platform/database"
 	"database/sql"
 	"errors"
-
-	"ai-buddy/internal/platform/database"
 )
 
 type Store struct{ DB *sql.DB }
@@ -13,6 +12,7 @@ func missing(err error) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
+
 	return err
 }
 
@@ -22,8 +22,19 @@ func scanRun(row database.RowScanner) (r Run, err error) {
 	err = row.Scan(&r.ID, &r.ChatID, &r.Owner, &r.MessageID, &r.Status, &r.Error, &r.CreatedAt)
 	return r, missing(err)
 }
+
 func scanAction(row database.RowScanner) (a Action, err error) {
-	err = row.Scan(&a.ID, &a.RunID, &a.Owner, &a.Kind, &a.Status, &a.Fields, &a.Result, &a.Error)
+	err = row.Scan(
+		&a.ID,
+		&a.RunID,
+		&a.Owner,
+		&a.Kind,
+		&a.Status,
+		&a.Fields,
+		&a.Result,
+		&a.Error,
+	)
+
 	return a, missing(err)
 }
 

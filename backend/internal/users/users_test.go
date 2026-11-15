@@ -16,9 +16,11 @@ func (p profiles) Get(_ context.Context, id string) (User, error) {
 	if p.err != nil {
 		return User{}, p.err
 	}
+
 	if id != "intern.backend.1" {
 		return User{}, sql.ErrNoRows
 	}
+
 	return User{ID: id, Role: RoleIntern, Team: "backend", Username: id}, nil
 }
 func (p profiles) List(context.Context) ([]User, error) { return []User{}, p.err }
@@ -31,26 +33,50 @@ func TestSelection(t *testing.T) {
 		mux := http.NewServeMux()
 		s := &Selector{Profiles: profiles{err: tc.err}}
 		s.Register(mux)
-		r := httptest.NewRequest("GET", "/api/me", nil)
+
+		r := httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodGet,
+			"/api/me",
+			nil,
+		)
 		r.Header.Set("Cookie", tc.cookie)
+
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, r)
-		if w.Code != tc.status || !strings.Contains(w.Header().Get("Content-Type"), "application/json") || strings.Contains(w.Body.String(), "secret") {
+
+		if w.Code != tc.status ||
+			!strings.Contains(w.Header().Get("Content-Type"), "application/json") ||
+			strings.Contains(w.Body.String(), "secret") {
 			t.Fatal(w)
 		}
 	}
+
 	mux := http.NewServeMux()
 	s := &Selector{Profiles: profiles{}}
 	s.Register(mux)
+
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, httptest.NewRequest("GET", "/api/users", nil))
+	mux.ServeHTTP(
+		w,
+		httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodGet,
+			"/api/users",
+			nil,
+		),
+	)
+
 	if w.Code != 200 || w.Body.String() != "{\"users\":[]}\n" {
 		t.Fatal(w)
 	}
+
 	w = httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/", nil)
+	r := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 	r.AddCookie(&http.Cookie{Name: "demo_user", Value: "intern.backend.1"})
-	s.RequireRoles(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("mentor handler called") }), RoleMentor).ServeHTTP(w, r)
+	s.RequireRoles(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("mentor handler called") }), RoleMentor).
+		ServeHTTP(w, r)
+
 	if w.Code != 403 {
 		t.Fatal(w)
 	}

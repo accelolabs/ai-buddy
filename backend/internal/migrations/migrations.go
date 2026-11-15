@@ -1,3 +1,4 @@
+// Package migrations embeds and applies the application database schema.
 package migrations
 
 import (
@@ -26,8 +27,15 @@ func Run(ctx context.Context, db *sql.DB, command string) error {
 		if statusErr != nil {
 			return statusErr
 		}
+
 		for _, status := range statuses {
-			fmt.Printf("%s: %s\n", status.Source.Path, status.State)
+			if _, printErr := fmt.Printf(
+				"%s: %s\n",
+				status.Source.Path,
+				status.State,
+			); printErr != nil {
+				return printErr
+			}
 		}
 	default:
 		return errors.New("command must be up, down or status")

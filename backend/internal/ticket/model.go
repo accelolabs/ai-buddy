@@ -1,3 +1,4 @@
+// Package ticket handles questions sent to assigned mentors.
 package ticket
 
 import (

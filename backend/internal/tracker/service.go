@@ -1,13 +1,12 @@
 package tracker
 
 import (
+	"ai-buddy/internal/users"
 	"context"
 	"database/sql"
 	"errors"
 	"strings"
 	"time"
-
-	"ai-buddy/internal/users"
 )
 
 type Repository interface {
@@ -30,9 +29,14 @@ type Service struct {
 	Now      func() time.Time
 }
 
-func (s *Service) CreateTask(ctx context.Context, id, key string, in CreateInput) (Task, bool, error) {
+func (s *Service) CreateTask(
+	ctx context.Context,
+	id, key string,
+	in CreateInput,
+) (Task, bool, error) {
 	in.Title = strings.TrimSpace(in.Title)
 	in.Description = strings.TrimSpace(in.Description)
+
 	in.Deadline = strings.TrimSpace(in.Deadline)
 	if strings.TrimSpace(key) == "" || len(key) > 256 || in.Title == "" {
 		return Task{}, false, ErrInvalid
@@ -43,6 +47,7 @@ func (s *Service) CreateTask(ctx context.Context, id, key string, in CreateInput
 	}
 
 	t, created, err := s.Store.Create(ctx, id, key, in)
+
 	return t.WithState(CalendarDate(s.Now(), s.Location)), created, err
 }
 
@@ -56,6 +61,7 @@ func (s *Service) Progress(ctx context.Context, id string) (Progress, error) {
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && intern.Role != users.RoleIntern) {
 		return Progress{}, ErrNotFound
 	}
+
 	if err != nil {
 		return Progress{}, err
 	}
@@ -64,14 +70,18 @@ func (s *Service) Progress(ctx context.Context, id string) (Progress, error) {
 	if err != nil {
 		return Progress{}, err
 	}
+
 	list, err := s.Store.Tasks(ctx, id)
 	if err != nil {
 		return Progress{}, err
 	}
+
 	if list == nil {
 		list = []Task{}
 	}
+
 	today := CalendarDate(s.Now(), s.Location)
+
 	result := Progress{
 		Intern:       intern,
 		Mentor:       mentor,
@@ -83,6 +93,7 @@ func (s *Service) Progress(ctx context.Context, id string) (Progress, error) {
 	}
 	for i := range list {
 		list[i] = list[i].WithState(today)
+
 		task := &list[i]
 		if task.CompletedAt != nil {
 			result.Completed++
@@ -90,7 +101,8 @@ func (s *Service) Progress(ctx context.Context, id string) (Progress, error) {
 		}
 
 		next := result.NextTask
-		if next == nil || (!next.Overdue && (task.Overdue || task.Deadline < next.Deadline)) {
+		if next == nil ||
+			(!next.Overdue && (task.Overdue || task.Deadline < next.Deadline)) {
 			result.NextTask = task
 		}
 	}

@@ -1,13 +1,12 @@
 package ticket
 
 import (
+	"ai-buddy/internal/platform/database"
 	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
 	"errors"
-
-	"ai-buddy/internal/platform/database"
 )
 
 type Store struct {
@@ -25,6 +24,7 @@ const columns = `
 
 func scan(row database.RowScanner) (Ticket, error) {
 	var ticket Ticket
+
 	err := row.Scan(
 		&ticket.ID,
 		&ticket.SenderID,
@@ -55,9 +55,15 @@ func (p *Store) Find(ctx context.Context, sender, key string) (Ticket, error) {
 	))
 }
 
-func (p *Store) Create(ctx context.Context, sender, recipient, key string, input CreateInput) (Ticket, bool, error) {
+func (p *Store) Create(
+	ctx context.Context,
+	sender, recipient, key string,
+	input CreateInput,
+) (Ticket, bool, error) {
 	var token [16]byte
+
 	_, _ = rand.Read(token[:]) // crypto/rand.Read always fills the buffer or terminates.
+
 	ticket, err := scan(p.DB.QueryRowContext(
 		ctx,
 		`INSERT INTO tickets (
@@ -81,6 +87,7 @@ func (p *Store) Create(ctx context.Context, sender, recipient, key string, input
 	if err == nil {
 		return ticket, true, nil
 	}
+
 	if !errors.Is(err, ErrNotFound) {
 		return Ticket{}, false, err
 	}
@@ -90,6 +97,7 @@ func (p *Store) Create(ctx context.Context, sender, recipient, key string, input
 	if err != nil {
 		return Ticket{}, false, err
 	}
+
 	if ticket.Question != input.Question || ticket.Description != input.Description {
 		return Ticket{}, false, ErrConflict
 	}

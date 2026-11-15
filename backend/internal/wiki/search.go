@@ -1,32 +1,51 @@
 package wiki
 
 import (
+	"ai-buddy/internal/platform/cleanup"
+	"ai-buddy/internal/platform/database"
 	"context"
 	"database/sql"
 	"strconv"
 	"strings"
-
-	"ai-buddy/internal/platform/cleanup"
-	"ai-buddy/internal/platform/database"
 )
 
 // Search keeps both candidate branches and index fingerprint validation in one database snapshot.
-func (r *Store) Search(ctx context.Context, team, query string, embedding []float64, minimum float64, fingerprint string) ([]Source, error) {
-	tx, err := r.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead})
+func (r *Store) Search(
+	ctx context.Context,
+	team, query string,
+	embedding []float64,
+	minimum float64,
+	fingerprint string,
+) ([]Source, error) {
+	tx, err := r.DB.BeginTx(
+		ctx,
+		&sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead},
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer cleanup.Rollback(tx)
 
 	var stored string
-	if err = tx.QueryRowContext(ctx, "SELECT fingerprint FROM wiki_state WHERE singleton").Scan(&stored); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT fingerprint FROM wiki_state WHERE singleton").
+		Scan(&stored); err != nil {
 		return nil, err
 	}
+
 	if stored != fingerprint {
 		return nil, ErrUnavailable
 	}
 
-	results, err := database.Query(ctx, tx, searchQuery, scanSource, team, query, vector(embedding), minimum)
+	results, err := database.Query(
+		ctx,
+		tx,
+		searchQuery,
+		scanSource,
+		team,
+		query,
+		vector(embedding),
+		minimum,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -39,11 +58,19 @@ func vector(embedding []float64) string {
 	for i, value := range embedding {
 		p[i] = strconv.FormatFloat(value, 'g', -1, 64)
 	}
+
 	return "[" + strings.Join(p, ",") + "]"
 }
 
 func scanSource(row database.RowScanner) (result Source, err error) {
-	err = row.Scan(&result.DocumentID, &result.Title, &result.Section, &result.Anchor, &result.Text)
+	err = row.Scan(
+		&result.DocumentID,
+		&result.Title,
+		&result.Section,
+		&result.Anchor,
+		&result.Text,
+	)
 	result.URL = "/api/documents/" + result.DocumentID
-	return
+
+	return result, err
 }

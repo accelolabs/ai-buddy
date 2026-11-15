@@ -1,6 +1,7 @@
 package tracker
 
 import (
+	"ai-buddy/internal/users"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,8 +10,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"ai-buddy/internal/users"
 )
 
 type tasksStub struct {
@@ -21,11 +20,16 @@ type tasksStub struct {
 	calls           int
 }
 
-func (s *tasksStub) Create(_ context.Context, id, key string, input CreateInput) (Task, bool, error) {
+func (s *tasksStub) Create(
+	_ context.Context,
+	id, key string,
+	input CreateInput,
+) (Task, bool, error) {
 	s.id = id
 	s.key = key
 	s.input = input
 	s.calls++
+
 	return Task{
 		ID:          "task",
 		InternID:    id,
@@ -39,16 +43,26 @@ func (s *tasksStub) Complete(_ context.Context, id, taskID string) (Task, error)
 	s.id = id
 	s.taskID = taskID
 	s.calls++
+
 	return Task{ID: taskID, InternID: id}, s.err
 }
 
 func request(handler http.HandlerFunc, body string) *httptest.ResponseRecorder {
-	r := httptest.NewRequest("POST", "/api/tasks", strings.NewReader(body))
-	r = r.WithContext(users.WithUser(r.Context(), users.User{ID: "i", Role: "intern", Team: "backend"}))
+	r := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/api/tasks",
+		strings.NewReader(body),
+	)
+	r = r.WithContext(
+		users.WithUser(r.Context(), users.User{ID: "i", Role: "intern", Team: "backend"}),
+	)
 	r.SetPathValue("taskID", "task")
 	r.Header.Set("Idempotency-Key", "key")
+
 	w := httptest.NewRecorder()
 	handler(w, r)
+
 	return w
 }
 
@@ -57,7 +71,9 @@ func TestTasksHandlers(t *testing.T) {
 	h := &Service{Store: service, Location: time.UTC, Now: time.Now}
 	input := `{"title":"Task","description":"Details","deadline":"2026-12-01"}`
 	w := request(h.CreateHTTP, input)
+
 	var task Task
+
 	err := json.Unmarshal(w.Body.Bytes(), &task)
 	if err != nil ||
 		w.Code != 201 ||
@@ -73,6 +89,7 @@ func TestTasksHandlers(t *testing.T) {
 	}
 
 	service.created = false
+
 	w = request(h.CreateHTTP, input)
 	if w.Code != 200 {
 		t.Fatal(w)
@@ -93,10 +110,14 @@ func TestTasksHandlers(t *testing.T) {
 		{errors.New("SQL secret"), 500},
 	} {
 		service.err = tc.err
+
 		for _, handler := range []http.HandlerFunc{h.CreateHTTP, h.CompleteHTTP} {
 			w = request(handler, input)
 			if w.Code != tc.code ||
-				!strings.Contains(w.Header().Get("Content-Type"), "application/json") ||
+				!strings.Contains(
+					w.Header().Get("Content-Type"),
+					"application/json",
+				) ||
 				strings.Contains(w.Body.String(), "secret") {
 				t.Fatal(w)
 			}
@@ -104,4 +125,4 @@ func TestTasksHandlers(t *testing.T) {
 	}
 }
 
-func (s *tasksStub) Tasks(context.Context, string) ([]Task, error) { panic("unused") }
+func (*tasksStub) Tasks(context.Context, string) ([]Task, error) { panic("unused") }

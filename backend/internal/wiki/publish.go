@@ -1,10 +1,9 @@
 package wiki
 
 import (
+	"ai-buddy/internal/platform/cleanup"
 	"context"
 	"database/sql"
-
-	"ai-buddy/internal/platform/cleanup"
 )
 
 func (s *indexSession) Publish(ctx context.Context, changes Changes) error {
@@ -15,10 +14,15 @@ func (s *indexSession) Publish(ctx context.Context, changes Changes) error {
 	defer cleanup.Rollback(tx)
 
 	for _, id := range changes.Deleted {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM documents WHERE id=$1", id); err != nil {
+		if _, err := tx.ExecContext(
+			ctx,
+			"DELETE FROM documents WHERE id=$1",
+			id,
+		); err != nil {
 			return err
 		}
 	}
+
 	for _, document := range changes.Documents {
 		if err := replaceDocument(ctx, tx, document); err != nil {
 			return err
@@ -42,9 +46,15 @@ func replaceDocument(ctx context.Context, tx *sql.Tx, document Document) error {
   INSERT INTO documents(id,path,team,title,markdown,hash)
   VALUES($1,$2,$3,$4,$5,$6)
  `
-	if _, err := tx.ExecContext(ctx, "DELETE FROM documents WHERE id=$1", document.ID); err != nil {
+
+	if _, err := tx.ExecContext(
+		ctx,
+		"DELETE FROM documents WHERE id=$1",
+		document.ID,
+	); err != nil {
 		return err
 	}
+
 	if _, err := tx.ExecContext(
 		ctx, query,
 		document.ID,
@@ -73,6 +83,7 @@ func replaceDocument(ctx context.Context, tx *sql.Tx, document Document) error {
 			return err
 		}
 	}
+
 	for ordinal, chunk := range document.Chunks {
 		const query = `
    INSERT INTO chunks(document_id,section,ordinal,text,embedding)

@@ -1,13 +1,13 @@
 package users
 
 import (
+	"ai-buddy/internal/platform/database"
 	"context"
 	"database/sql"
 	"errors"
-
-	"ai-buddy/internal/platform/database"
 )
 
+//nolint:nilnil // An unassigned mentor is an expected optional relation.
 func (p *Store) Mentor(ctx context.Context, id string) (*User, error) {
 	const query = `
 		SELECT ` + columns + `
@@ -18,10 +18,12 @@ func (p *Store) Mentor(ctx context.Context, id string) (*User, error) {
 	`
 
 	row := p.DB.QueryRowContext(ctx, query, id)
+
 	mentor, err := scan(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -50,6 +52,8 @@ func (p *Store) Assigned(ctx context.Context, mentor, id string) (bool, error) {
 	`
 
 	var assigned bool
+
 	err := p.DB.QueryRowContext(ctx, query, mentor, id).Scan(&assigned)
+
 	return assigned, err
 }

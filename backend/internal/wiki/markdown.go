@@ -19,7 +19,9 @@ func digest(value string) string {
 
 func Parse(path, markdown string) Document {
 	source := []byte(markdown)
-	tree := goldmark.New(goldmark.WithExtensions(extension.GFM)).Parser().Parse(text.NewReader(source))
+	tree := goldmark.New(goldmark.WithExtensions(extension.GFM)).
+		Parser().
+		Parse(text.NewReader(source))
 	document := Document{
 		ID:       digest(path),
 		Path:     path,
@@ -43,14 +45,21 @@ func Parse(path, markdown string) Document {
 			if current.Text != "" {
 				used[current.Anchor] = true
 			}
+
 			base := slug(title)
+
 			anchor := base
 			for suffix := 1; used[anchor]; suffix++ {
 				anchor = fmt.Sprintf("%s-%d", base, suffix)
 			}
+
 			used[anchor] = true
-			document.Sections = append(document.Sections, Section{Title: title, Anchor: anchor})
+			document.Sections = append(
+				document.Sections,
+				Section{Title: title, Anchor: anchor},
+			)
 			current = &document.Sections[len(document.Sections)-1]
+
 			continue
 		}
 
@@ -63,9 +72,13 @@ func Parse(path, markdown string) Document {
 	if document.Sections[0].Text == "" {
 		document.Sections = document.Sections[1:]
 	}
+
 	for section, content := range document.Sections {
 		for _, part := range Split(content.Text) {
-			document.Chunks = append(document.Chunks, Chunk{Section: section, Text: part})
+			document.Chunks = append(
+				document.Chunks,
+				Chunk{Section: section, Text: part},
+			)
 		}
 	}
 
@@ -75,41 +88,51 @@ func Parse(path, markdown string) Document {
 func nodeText(root ast.Node, source []byte) string {
 	var content strings.Builder
 	// This callback never returns an error.
-	_ = ast.Walk(root, func(node ast.Node, enter bool) (ast.WalkStatus, error) {
+	walkErr := ast.Walk(root, func(node ast.Node, enter bool) (ast.WalkStatus, error) {
 		if !enter {
 			if node.Type() == ast.TypeBlock {
-				content.WriteByte('\n')
+				_ = content.WriteByte('\n')
 			}
+
 			return ast.WalkContinue, nil
 		}
 
 		switch value := node.(type) {
 		case *ast.Text:
-			content.Write(value.Value(source))
+			_, _ = content.Write(value.Value(source))
+
 			if value.SoftLineBreak() || value.HardLineBreak() {
-				content.WriteByte('\n')
+				_ = content.WriteByte('\n')
 			}
 		case *ast.String:
-			content.Write(value.Value)
+			_, _ = content.Write(value.Value)
 		case *ast.FencedCodeBlock, *ast.CodeBlock:
-			content.Write(node.Lines().Value(source))
+			_, _ = content.Write(node.Lines().Value(source))
 		}
 
 		return ast.WalkContinue, nil
 	})
+	if walkErr != nil {
+		panic(walkErr)
+	}
 
 	return strings.TrimSpace(content.String())
 }
 
 func slug(title string) string {
 	var anchor strings.Builder
+
 	for _, character := range strings.ToLower(title) {
-		if unicode.IsLetter(character) || unicode.IsDigit(character) || character == '_' || character == '-' {
-			anchor.WriteRune(character)
-		} else if unicode.IsSpace(character) {
-			anchor.WriteByte('-')
+		if unicode.IsLetter(character) || unicode.IsDigit(character) || character == '_' ||
+			character == '-' {
+			_, _ = anchor.WriteRune(character)
+		} else if unicode.IsSpace(
+			character,
+		) {
+			_ = anchor.WriteByte('-')
 		}
 	}
+
 	if anchor.Len() == 0 {
 		return "section"
 	}

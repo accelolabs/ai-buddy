@@ -1,3 +1,4 @@
+// Package ollama implements the chat and embedding protocols used by the demo.
 package ollama
 
 import (
@@ -6,11 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
-
-	"log/slog"
 )
 
 type Function struct {
@@ -55,62 +55,108 @@ type Client struct {
 }
 
 func New(base string) *Client {
-	return &Client{strings.TrimRight(base, "/"), &http.Client{Timeout: 5 * time.Minute, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	return &Client{
+		strings.TrimRight(base, "/"),
+		&http.Client{
+			Timeout:       5 * time.Minute,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+	}
 }
-func (c *Client) Chat(ctx context.Context, messages []Message, tools []Tool, emit func(string) error) (Response, error) {
+
+func (c *Client) Chat(
+	ctx context.Context,
+	messages []Message,
+	tools []Tool,
+	emit func(string) error,
+) (Response, error) {
 	stream := emit != nil
+
 	var last Response
-	b, err := json.Marshal(Request{Model: "qwen3.5:4b", Messages: messages, Tools: tools, Stream: stream, Think: false, Options: map[string]int{"num_ctx": 4096, "num_predict": 512}})
+
+	b, err := json.Marshal(
+		Request{
+			Model:    "qwen3.5:4b",
+			Messages: messages,
+			Tools:    tools,
+			Stream:   stream,
+			Think:    false,
+			Options:  map[string]int{"num_ctx": 4096, "num_predict": 512},
+		},
+	)
 	if err != nil {
 		return last, err
 	}
+
 	req, err := c.request(ctx, "POST", "/api/chat", b)
 	if err != nil {
 		return last, err
 	}
+
 	res, err := c.HTTP.Do(req)
 	if err != nil {
 		return last, errors.New("ollama unavailable")
 	}
+
 	defer func() {
 		if err := res.Body.Close(); err != nil {
 			slog.Warn("resource cleanup failed", "error", err)
 		}
 	}()
-	if res.StatusCode != 200 {
+
+	if res.StatusCode != http.StatusOK {
 		return last, errors.New("ollama rejected request")
 	}
-	d := json.NewDecoder(io.LimitReader(res.Body, 2<<20))
+
+	return decodeChat(io.LimitReader(res.Body, 2<<20), emit)
+}
+
+func decodeChat(reader io.Reader, emit func(string) error) (Response, error) {
+	var last Response
+
+	stream := emit != nil
+	d := json.NewDecoder(reader)
+
 	for {
 		var r Response
-		if err = d.Decode(&r); err != nil {
-			if err == io.EOF {
+		if err := d.Decode(&r); err != nil {
+			if errors.Is(err, io.EOF) {
 				err = errors.New("incomplete Ollama response")
 			}
+
 			return last, err
 		}
+
 		if r.Error != "" {
 			return last, errors.New("ollama generation failed")
 		}
+
 		last = r
 		if len(r.Message.Calls) > 0 && stream {
 			return last, errors.New("unexpected final tool call")
 		}
+
 		if stream && r.Message.Content != "" {
-			if err = emit(r.Message.Content); err != nil {
+			if err := emit(r.Message.Content); err != nil {
 				return last, err
 			}
 		}
+
 		if !stream || r.Done {
 			return last, nil
 		}
 	}
 }
 
-func (c *Client) request(ctx context.Context, method, path string, data []byte) (*http.Request, error) {
+func (c *Client) request(
+	ctx context.Context,
+	method, path string,
+	data []byte,
+) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.Base+path, bytes.NewReader(data))
 	if err == nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+
 	return req, err
 }

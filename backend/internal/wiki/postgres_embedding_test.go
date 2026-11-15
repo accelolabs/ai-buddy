@@ -21,12 +21,15 @@ func (f *fakeEmbedder) Embed(_ context.Context, s string) ([]float64, error) {
 	if f.hook != nil {
 		f.hook()
 	}
+
 	if f.err != nil {
 		return nil, f.err
 	}
+
 	_, body, _ := strings.Cut(s, " | text: ")
 	if f.limit > 0 && len([]rune(body)) > f.limit {
 		return nil, ErrContext
 	}
+
 	return embedding(), nil
 }
