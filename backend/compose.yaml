@@ -8,6 +8,9 @@ services:
     environment:
       ADDR: :8080
       DATABASE_URL: postgres://buddy:${POSTGRES_PASSWORD:-buddy}@postgres:5432/buddy?sslmode=disable
+      KNOWLEDGE_BASE_DIR: /knowledge-base
+    volumes:
+      - ../knowledge-base:/knowledge-base:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

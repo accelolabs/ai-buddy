@@ -15,6 +15,40 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
+func (r *Repository) List(ctx context.Context) ([]wiki.Document, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, path, team, title FROM documents ORDER BY path`)
+	if err != nil {
+		return nil, fmt.Errorf("list wiki documents: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	documents := make([]wiki.Document, 0)
+	for rows.Next() {
+		var document wiki.Document
+		if err := rows.Scan(&document.ID, &document.Path, &document.Team, &document.Title); err != nil {
+			return nil, fmt.Errorf("scan wiki document: %w", err)
+		}
+		documents = append(documents, document)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read wiki documents: %w", err)
+	}
+	return documents, nil
+}
+
+func (r *Repository) Get(ctx context.Context, id string) (wiki.Document, error) {
+	var document wiki.Document
+	err := r.db.QueryRowContext(ctx, `
+		SELECT id, path, team, title FROM documents
+		WHERE id = $1`, id).
+		Scan(&document.ID, &document.Path, &document.Team, &document.Title)
+	if err != nil {
+		return wiki.Document{}, fmt.Errorf("get wiki document: %w", err)
+	}
+	return document, nil
+}
+
 func (r *Repository) Sync(ctx context.Context, documents []wiki.Document) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {

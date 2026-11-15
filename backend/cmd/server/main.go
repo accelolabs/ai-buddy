@@ -3,7 +3,10 @@ package main
 import (
 	"backend/internal/config"
 	usershandler "backend/internal/users/handler"
+	"backend/internal/users/middleware"
 	usersrepository "backend/internal/users/repository"
+	wikihandler "backend/internal/wiki/handler"
+	wikirepository "backend/internal/wiki/repository"
 	"context"
 	"database/sql"
 	"errors"
@@ -41,9 +44,14 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	userHandler := usershandler.NewHandler(usersrepository.NewRepository(db))
+	userRepository := usersrepository.NewRepository(db)
+	userHandler := usershandler.NewHandler(userRepository)
+	wikiHandler := wikihandler.NewHandler(wikirepository.NewRepository(db), cfg.KnowledgeBaseDir)
+	selectedUser := middleware.Middleware(userRepository)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/users", userHandler.List)
+	mux.Handle("GET /api/wiki", selectedUser(http.HandlerFunc(wikiHandler.List)))
+	mux.Handle("GET /api/wiki/{id}", selectedUser(http.HandlerFunc(wikiHandler.Get)))
 
 	server := &http.Server{
 		Addr:              cfg.Addr,
