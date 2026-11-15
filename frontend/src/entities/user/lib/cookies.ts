@@ -1,5 +1,5 @@
 export const USER_ID_COOKIE = 'user_id';
-const DEFAULT_MAX_AGE = 60 * 60 * 24 * 30; // 30 дней
+const DEFAULT_MAX_AGE = 60 * 60 * 24 * 30;
 
 export function getUserIdCookie(): string | null {
   if (typeof document === 'undefined') return null;

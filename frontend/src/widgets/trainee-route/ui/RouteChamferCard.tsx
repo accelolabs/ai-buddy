@@ -17,10 +17,8 @@ export const RouteChamferCard = memo(function RouteChamferCard({
   const isError = task.status === 'error' || task.hasError;
   const isGlitching = task.isGlitching;
 
-  // Formatting order number e.g. "01", "02"
   const orderStr = String(task.order).padStart(2, '0');
 
-  // Colors according to 1-in-1 design of route.svg
   let borderColor = '#CBD5E1';
   let bgColor = '#FFFFFF';
   let statusText = 'Впереди';
@@ -46,7 +44,6 @@ export const RouteChamferCard = memo(function RouteChamferCard({
         isGlitching ? 'animate-glitch-shake' : ''
       }`}
     >
-      {/* 1. Chamfered Vector Frame with 13px Cut Corners matching route.svg */}
       <svg
         viewBox="0 0 810 94"
         fill="none"
@@ -54,7 +51,6 @@ export const RouteChamferCard = memo(function RouteChamferCard({
         className="pointer-events-none absolute inset-0 h-full w-full select-none"
         preserveAspectRatio="none"
       >
-        {/* Chamfer Path: M13 0 H810 V81 L797 94 H0 V13 L13 0 Z */}
         <path
           d="M13 1H809V81L797 93H1V13L13 1Z"
           fill={bgColor}
@@ -64,23 +60,18 @@ export const RouteChamferCard = memo(function RouteChamferCard({
         />
       </svg>
 
-      {/* 2. Card Content Layout */}
       <div className="relative z-10 flex min-h-[94px] items-center justify-between gap-4 px-5 py-3.5 sm:px-7">
-        {/* Left Information Section */}
         <div className="flex flex-col justify-center">
-          {/* Top Line: 01 · Status */}
           <div className="flex items-center gap-1.5 text-xs font-semibold">
             <span className="font-mono text-[#94A3B8]">{orderStr}</span>
             <span className="text-[#94A3B8]">·</span>
             <span style={{ color: statusTextColor }}>{statusText}</span>
           </div>
 
-          {/* Title */}
           <h3 className="mt-0.5 text-sm sm:text-base font-bold text-[#0F172A] tracking-tight line-clamp-1">
             {task.title}
           </h3>
 
-          {/* Bottom Line: Deadline · Subtitle */}
           <div className="mt-0.5 flex items-center gap-1.5 text-xs font-mono">
             <span className="text-[#64748B]">{task.deadline}</span>
             <span className="text-[#94A3B8]">·</span>
@@ -88,7 +79,6 @@ export const RouteChamferCard = memo(function RouteChamferCard({
           </div>
         </div>
 
-        {/* Right Action / Status Button */}
         <div className="shrink-0">
           {isCompleted ? (
             <button

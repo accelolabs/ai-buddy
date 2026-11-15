@@ -8,12 +8,10 @@ export const RouteInternTabs = memo(function RouteInternTabs() {
 
   return (
     <div className="mb-6 w-full">
-      {/* 1. Page Title */}
       <h1 className="mb-6 text-[32px] font-bold tracking-tight text-[#0F172A] leading-tight">
         Мои стажеры
       </h1>
 
-      {/* 2. Tabs Row */}
       <div className="flex flex-wrap items-center gap-3">
         {interns.map((intern) => {
           const isActive = intern.id === activeInternId;
@@ -26,7 +24,6 @@ export const RouteInternTabs = memo(function RouteInternTabs() {
                 onClick={() => setActiveIntern(intern.id)}
                 className="relative inline-flex h-[38px] items-center gap-2 rounded-xl border border-[#7DD3FC] bg-[#F0F9FF] px-4 font-semibold text-xs sm:text-sm text-[#0C4A6E] shadow-2xs transition-all cursor-pointer"
               >
-                {/* Chip / Plug Pin Icon from route.svg */}
                 <svg
                   width="14"
                   height="14"

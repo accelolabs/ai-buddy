@@ -7,7 +7,6 @@ interface RouteState {
   activeInternId: string;
   activeGlitchTaskId: string | null;
 
-  // Actions
   setActiveIntern: (id: string) => void;
   toggleTask: (taskId: string) => void;
   retryTask: (taskId: string) => void;
@@ -31,7 +30,6 @@ export const useRouteStore = create<RouteState>((set, get) => ({
     const task = activeIntern.tasks.find((t) => t.id === taskId);
     if (!task) return;
 
-    // If it's the error task and currently has error, clicking retries or triggers glitch shake
     if (task.hasError && !task.completed) {
       set({
         activeGlitchTaskId: taskId,
@@ -52,7 +50,6 @@ export const useRouteStore = create<RouteState>((set, get) => ({
         ),
       });
 
-      // Clear glitch shake after 1.5s
       setTimeout(() => {
         set((state) => ({
           activeGlitchTaskId: null,
@@ -137,10 +134,7 @@ export const useRouteStore = create<RouteState>((set, get) => ({
 }));
 
 export const selectActiveIntern = (state: RouteState): TraineeIntern => {
-  return (
-    state.interns.find((i) => i.id === state.activeInternId) ||
-    state.interns[0]
-  );
+  return state.interns.find((i) => i.id === state.activeInternId) || state.interns[0];
 };
 
 export const selectCompletedCount = (state: RouteState): number => {

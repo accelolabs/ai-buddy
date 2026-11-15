@@ -7,7 +7,6 @@ export async function getDialogs() {
 }
 
 export async function createDialog(payload) {
-  const dialogs = await getDialogs();
   const newDialog = {
     id: `dlg-${Date.now().toString().slice(-4)}`,
     title: payload?.title || "Новый диалог",

@@ -26,11 +26,6 @@ export {
   type TicketDraftState,
   type TicketDraftActions,
 } from './store/ticketDraftStore';
-export {
-  MentorContactForm,
-  type MentorContactFormProps,
-  type MentorContactFormValues,
-} from './ui/MentorContactForm';
 export { TicketDraftCard, type TicketDraftCardProps } from './ui/TicketDraftCard';
 export { TicketSuccessCard, type TicketSuccessCardProps } from './ui/TicketSuccessCard';
 export { ChatMessageItem, type ChatMessageItemProps } from './ui/ChatMessageItem';
