@@ -115,20 +115,33 @@ func TestIndexerPublishesChunks(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "backend", "guide.md"), []byte("# Заголовок\nТекст\n\n## Раздел\nДетали"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	ctx := context.Background()
+	embedded := make(map[string][]float64)
+	embedding := embedFunc(func(gotCtx context.Context, input string) ([]float64, error) {
+		if gotCtx != ctx {
+			t.Fatal("embedding context changed")
+		}
+		vector := []float64{float64(len(embedded) + 1)}
+		embedded[input] = vector
+		return vector, nil
+	})
 	called := false
 	repository := syncFunc(func(_ context.Context, documents []wiki.Document, chunks []wiki.Chunk) error {
 		called = true
 		if len(documents) != 1 || documents[0].Path != "backend/guide.md" || documents[0].Team != "backend" || len(chunks) != 2 {
 			t.Fatalf("documents=%#v chunks=%#v", documents, chunks)
 		}
+		if len(embedded) != len(chunks) {
+			t.Fatal("sync called before all embeddings were generated")
+		}
 		for _, chunk := range chunks {
-			if chunk.DocumentID != documents[0].ID {
+			if chunk.DocumentID != documents[0].ID || !reflect.DeepEqual(chunk.Embedding, embedded[chunk.Text]) {
 				t.Fatal("wrong document relation")
 			}
 		}
 		return nil
 	})
-	if err := NewIndexer(repository, root).Index(context.Background()); err != nil {
+	if err := NewIndexer(repository, embedding, root).Index(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if !called {

@@ -79,3 +79,26 @@ func TestLoad(t *testing.T) {
 		})
 	}
 }
+
+func TestRAGChunkCount(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/buddy")
+	t.Setenv("RAG_CHUNK_COUNT", "")
+	if err := os.Unsetenv("RAG_CHUNK_COUNT"); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil || cfg.RAGChunkCount != 3 {
+		t.Fatalf("default = %v, %v", cfg.RAGChunkCount, err)
+	}
+	for _, value := range []string{"5", "0", "-1", "invalid"} {
+		t.Setenv("RAG_CHUNK_COUNT", value)
+		cfg, err := Load()
+		if value == "5" {
+			if err != nil || cfg.RAGChunkCount != 5 {
+				t.Fatalf("configured = %v, %v", cfg.RAGChunkCount, err)
+			}
+		} else if err == nil {
+			t.Fatalf("accepted %q", value)
+		}
+	}
+}

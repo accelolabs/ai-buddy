@@ -15,13 +15,18 @@ type documentSyncer interface {
 	Sync(context.Context, []wiki.Document, []wiki.Chunk) error
 }
 
+type embedder interface {
+	Embed(context.Context, string) ([]float64, error)
+}
+
 type Indexer struct {
 	repository documentSyncer
+	embedder   embedder
 	root       string
 }
 
-func NewIndexer(repository documentSyncer, root string) *Indexer {
-	return &Indexer{repository: repository, root: root}
+func NewIndexer(repository documentSyncer, embedder embedder, root string) *Indexer {
+	return &Indexer{repository: repository, embedder: embedder, root: root}
 }
 
 func (s *Indexer) Index(ctx context.Context) error {
@@ -47,6 +52,16 @@ func (s *Indexer) Index(ctx context.Context) error {
 	})
 	if err != nil {
 		return fmt.Errorf("read knowledge base: %w", err)
+	}
+	for i := range chunks {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("embed wiki chunks: %w", err)
+		}
+		embedding, err := s.embedder.Embed(ctx, chunks[i].Text)
+		if err != nil {
+			return fmt.Errorf("embed wiki chunk %q/%d: %w", chunks[i].DocumentID, chunks[i].Ordinal, err)
+		}
+		chunks[i].Embedding = embedding
 	}
 	if err := s.repository.Sync(ctx, documents, chunks); err != nil {
 		return fmt.Errorf("index wiki: %w", err)

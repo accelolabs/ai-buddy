@@ -5,4 +5,5 @@ type Chunk struct {
 	Ordinal    int
 	Anchor     string
 	Text       string
+	Embedding  []float64
 }

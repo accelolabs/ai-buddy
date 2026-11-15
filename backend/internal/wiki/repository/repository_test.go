@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"reflect"
 	"testing"
@@ -96,8 +97,10 @@ func TestChunksSync(t *testing.T) {
 	repo, ctx := testRepository(t)
 	first := wiki.Document{ID: "a", Path: "a.md", Title: "First"}
 	second := wiki.Document{ID: "b", Path: "b.md", Title: "Second"}
+	embedding := make([]float64, 768)
+	embedding[0], embedding[767] = 0.25, -0.5
 	chunks := []wiki.Chunk{
-		{DocumentID: "a", Ordinal: 1, Anchor: "раздел", Text: "Second chunk"},
+		{DocumentID: "a", Ordinal: 1, Anchor: "раздел", Text: "Second chunk", Embedding: embedding},
 		{DocumentID: "b", Ordinal: 0, Text: "Another document"},
 		{DocumentID: "a", Ordinal: 0, Text: "First chunk"},
 	}
@@ -118,6 +121,8 @@ func TestChunksSync(t *testing.T) {
 	// Failed inserts must roll back metadata updates, document deletions and chunk replacement.
 	for _, bad := range [][]wiki.Chunk{
 		{{DocumentID: "missing", Ordinal: 0, Text: "orphan"}},
+		{{DocumentID: "a", Ordinal: 0, Text: "wrong dimension", Embedding: []float64{1, 2}}},
+		{{DocumentID: "a", Ordinal: 0, Text: "invalid number", Embedding: []float64{math.NaN()}}},
 		{{DocumentID: "a", Ordinal: 0, Text: "one"}, {DocumentID: "a", Ordinal: 0, Text: "duplicate"}},
 	} {
 		if err := repo.Sync(ctx, []wiki.Document{changed}, bad); err == nil {
@@ -160,5 +165,38 @@ func TestChunksSync(t *testing.T) {
 	}
 	if stored, err := repo.ListChunks(ctx, "a"); err != nil || len(stored) != 0 {
 		t.Fatalf("empty corpus: %#v, %v", stored, err)
+	}
+}
+
+func TestSearchChunks(t *testing.T) {
+	repo, ctx := testRepository(t)
+	vector := func(x, y float64) []float64 { v := make([]float64, 768); v[0], v[1] = x, y; return v }
+	docs := []wiki.Document{{ID: "a", Path: "a.md"}, {ID: "b", Path: "b.md"}}
+	chunks := []wiki.Chunk{
+		{DocumentID: "a", Ordinal: 0, Anchor: "first", Text: "closest", Embedding: vector(1, 0)},
+		{DocumentID: "a", Ordinal: 1, Text: "further", Embedding: vector(0, 1)},
+		{DocumentID: "a", Ordinal: 2, Text: "without vector"},
+		{DocumentID: "b", Ordinal: 0, Text: "excluded", Embedding: vector(1, 0)},
+	}
+	if err := repo.Sync(ctx, docs, chunks); err != nil {
+		t.Fatal(err)
+	}
+	for _, limit := range []int{1, 3} {
+		got, err := repo.SearchChunks(ctx, vector(1, 0), []string{"a"}, limit)
+		wantCount := min(limit, 2)
+		if err != nil || len(got) != wantCount {
+			t.Fatalf("search = %v, %v", got, err)
+		}
+		for i, chunk := range got {
+			want := chunks[i]
+			want.Embedding = nil
+			if !reflect.DeepEqual(chunk, want) {
+				t.Fatalf("chunk = %+v, want %+v", chunk, want)
+			}
+		}
+	}
+	got, err := repo.SearchChunks(ctx, vector(1, 0), []string{}, 3)
+	if err != nil || got == nil || len(got) != 0 {
+		t.Fatalf("empty scope = %v, %v", got, err)
 	}
 }

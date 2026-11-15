@@ -7,6 +7,7 @@ import (
 )
 
 type Config struct {
+	RAGChunkCount    int    `env:"RAG_CHUNK_COUNT" env-default:"3"`
 	Addr             string `env:"ADDR" env-default:":8080"`
 	DatabaseURL      string `env:"DATABASE_URL" env-required:"true"`
 	KnowledgeBaseDir string `env:"KNOWLEDGE_BASE_DIR" env-default:"../knowledge-base"`
@@ -18,6 +19,10 @@ func Load() (Config, error) {
 	var cfg Config
 	if err := cleanenv.ReadEnv(&cfg); err != nil {
 		return Config{}, fmt.Errorf("read config: %w", err)
+	}
+
+	if cfg.RAGChunkCount <= 0 {
+		return Config{}, fmt.Errorf("RAG_CHUNK_COUNT must be positive")
 	}
 
 	return cfg, nil

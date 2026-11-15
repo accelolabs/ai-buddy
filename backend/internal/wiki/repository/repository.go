@@ -4,6 +4,7 @@ import (
 	"backend/internal/wiki"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 )
 
@@ -51,7 +52,7 @@ func (r *Repository) Get(ctx context.Context, id string) (wiki.Document, error) 
 
 func (r *Repository) ListChunks(ctx context.Context, documentID string) ([]wiki.Chunk, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT document_id, ordinal, anchor, text FROM chunks
+		SELECT document_id, ordinal, anchor, text, embedding::text FROM chunks
 		WHERE document_id = $1 ORDER BY ordinal`, documentID)
 	if err != nil {
 		return nil, fmt.Errorf("list wiki chunks: %w", err)
@@ -60,8 +61,14 @@ func (r *Repository) ListChunks(ctx context.Context, documentID string) ([]wiki.
 	chunks := make([]wiki.Chunk, 0)
 	for rows.Next() {
 		var chunk wiki.Chunk
-		if err := rows.Scan(&chunk.DocumentID, &chunk.Ordinal, &chunk.Anchor, &chunk.Text); err != nil {
+		var embedding sql.NullString
+		if err := rows.Scan(&chunk.DocumentID, &chunk.Ordinal, &chunk.Anchor, &chunk.Text, &embedding); err != nil {
 			return nil, fmt.Errorf("scan wiki chunk: %w", err)
+		}
+		if embedding.Valid {
+			if err := json.Unmarshal([]byte(embedding.String), &chunk.Embedding); err != nil {
+				return nil, fmt.Errorf("decode wiki chunk embedding: %w", err)
+			}
 		}
 		chunks = append(chunks, chunk)
 	}
@@ -100,9 +107,17 @@ func (r *Repository) Sync(ctx context.Context, documents []wiki.Document, chunks
 		return fmt.Errorf("delete old wiki chunks: %w", err)
 	}
 	for _, chunk := range chunks {
+		var embedding any
+		if len(chunk.Embedding) > 0 {
+			encoded, err := json.Marshal(chunk.Embedding)
+			if err != nil {
+				return fmt.Errorf("encode wiki chunk embedding: %w", err)
+			}
+			embedding = string(encoded)
+		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO chunks (document_id, ordinal, anchor, text) VALUES ($1, $2, $3, $4)`,
-			chunk.DocumentID, chunk.Ordinal, chunk.Anchor, chunk.Text); err != nil {
+			INSERT INTO chunks (document_id, ordinal, anchor, text, embedding) VALUES ($1, $2, $3, $4, $5)`,
+			chunk.DocumentID, chunk.Ordinal, chunk.Anchor, chunk.Text, embedding); err != nil {
 			return fmt.Errorf("sync wiki chunk %q/%d: %w", chunk.DocumentID, chunk.Ordinal, err)
 		}
 	}
@@ -111,4 +126,32 @@ func (r *Repository) Sync(ctx context.Context, documents []wiki.Document, chunks
 	}
 
 	return nil
+}
+
+func (r *Repository) SearchChunks(ctx context.Context, embedding []float64, documentIDs []string, limit int) ([]wiki.Chunk, error) {
+	encoded, err := json.Marshal(embedding)
+	if err != nil {
+		return nil, fmt.Errorf("encode search embedding: %w", err)
+	}
+	rows, err := r.db.QueryContext(ctx, `
+  SELECT document_id, ordinal, anchor, text FROM chunks
+  WHERE document_id = ANY($1::text[]) AND embedding IS NOT NULL
+  ORDER BY embedding OPERATOR(public.<=>) $2::public.vector, document_id, ordinal
+  LIMIT $3`, documentIDs, string(encoded), limit)
+	if err != nil {
+		return nil, fmt.Errorf("search wiki chunks: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	chunks := make([]wiki.Chunk, 0)
+	for rows.Next() {
+		var chunk wiki.Chunk
+		if err := rows.Scan(&chunk.DocumentID, &chunk.Ordinal, &chunk.Anchor, &chunk.Text); err != nil {
+			return nil, fmt.Errorf("scan search chunk: %w", err)
+		}
+		chunks = append(chunks, chunk)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read search chunks: %w", err)
+	}
+	return chunks, nil
 }

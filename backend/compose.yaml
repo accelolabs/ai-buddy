@@ -7,6 +7,7 @@ services:
       - "8080:8080"
     environment:
       ADDR: :8080
+      RAG_CHUNK_COUNT: ${RAG_CHUNK_COUNT:-3}
       DATABASE_URL: postgres://buddy:${POSTGRES_PASSWORD:-buddy}@postgres:5432/buddy?sslmode=disable
       KNOWLEDGE_BASE_DIR: /knowledge-base
       OLLAMA_URL: http://ollama:11434
@@ -43,10 +44,14 @@ services:
     environment:
       DATABASE_URL: postgres://buddy:${POSTGRES_PASSWORD:-buddy}@postgres:5432/buddy?sslmode=disable
       KNOWLEDGE_BASE_DIR: /knowledge-base
+      OLLAMA_URL: http://ollama:11434
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-embeddinggemma:300m}
     volumes:
       - ../knowledge-base:/knowledge-base:ro
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      ollama-model:
         condition: service_completed_successfully
 
   ollama:
@@ -63,15 +68,18 @@ services:
 
   ollama-model:
     image: ollama/ollama:latest
+    entrypoint: ["/bin/sh", "-c"]
     environment:
       OLLAMA_HOST: http://ollama:11434
-    command: ["pull", "${EMBEDDING_MODEL:-embeddinggemma:300m}"]
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-embeddinggemma:300m}
+    command:
+      - 'ollama show "$$EMBEDDING_MODEL" >/dev/null 2>&1 || ollama pull "$$EMBEDDING_MODEL"'
     depends_on:
       ollama:
         condition: service_healthy
 
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: buddy
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-buddy}
