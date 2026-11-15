@@ -3,56 +3,107 @@ package indexer
 import (
 	"backend/internal/wiki"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
-	"unicode/utf8"
 )
 
-func TestSplitChunks(t *testing.T) {
+func TestGetChunksSections(t *testing.T) {
 	content := "Введение\n\n# Статья\nТекст\n\n## Раздел\nПример:\n```md\n# Не заголовок\n```\nКонец\n"
 	want := []wiki.Chunk{
 		{DocumentID: "doc", Ordinal: 0, Text: "Введение"},
 		{DocumentID: "doc", Ordinal: 1, Anchor: "статья", Text: "# Статья\nТекст"},
 		{DocumentID: "doc", Ordinal: 2, Anchor: "раздел", Text: "## Раздел\nПример:\n```md\n# Не заголовок\n```\nКонец"},
 	}
-	if got := SplitChunks("doc", content); !reflect.DeepEqual(got, want) {
-		t.Fatalf("SplitChunks = %#v, want %#v", got, want)
+	for _, text := range []string{content, strings.ReplaceAll(content, "\n", "\r\n")} {
+		if got := GetChunks(wiki.Document{ID: "doc"}, text); !reflect.DeepEqual(got, want) {
+			t.Fatalf("GetChunks = %#v, want %#v", got, want)
+		}
 	}
-	if got := SplitChunks("doc", strings.ReplaceAll(content, "\n", "\r\n")); !reflect.DeepEqual(got, want) {
-		t.Fatalf("CRLF: %#v", got)
-	}
-	if got := SplitChunks("doc", " \n\t "); got == nil || len(got) != 0 {
+	if got := GetChunks(wiki.Document{ID: "doc"}, " \n\t "); got == nil || len(got) != 0 {
 		t.Fatalf("empty: %#v", got)
 	}
 }
 
-func TestChunkBoundaries(t *testing.T) {
-	for _, content := range []string{
-		strings.Repeat("Я", 4000),
-		strings.Repeat("Русский абзац со словами.\n\n", 200),
-		strings.Repeat("A", 700) + "\n\n" + strings.Repeat("B", 700),
-		"~~~markdown\n# Внутри кода\n~~~~\n## Снаружи\nТекст",
-	} {
-		chunks := SplitChunks("doc", content)
-		var combined strings.Builder
-		for i, chunk := range chunks {
-			if chunk.DocumentID != "doc" || chunk.Ordinal != i || !utf8.ValidString(chunk.Text) || utf8.RuneCountInString(chunk.Text) > maxChunkRunes || strings.TrimSpace(chunk.Text) == "" {
-				t.Fatalf("invalid chunk: %#v", chunk)
+func TestGetChunksWindows(t *testing.T) {
+	for _, count := range []int{1, 199, 200, 201, 360, 361, 520} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			words := make([]string, count)
+			for i := range words {
+				words[i] = fmt.Sprintf("слово%d", i+1)
 			}
-			combined.WriteString(chunk.Text)
-		}
-		// Splitting may trim boundary whitespace but must not lose or repeat text.
-		normalize := func(s string) string { return strings.Join(strings.Fields(s), "") }
-		if normalize(combined.String()) != normalize(content) {
-			t.Fatal("text lost or duplicated")
+			content := strings.Join(words, " ")
+			chunks := GetChunks(wiki.Document{ID: "doc"}, content)
+			wantCount := 1
+			if count > 200 {
+				wantCount += (count - 200 + 159) / 160
+			}
+			if len(chunks) != wantCount {
+				t.Fatalf("chunks=%d, want %d", len(chunks), wantCount)
+			}
+			for i, chunk := range chunks {
+				start := i * 160
+				end := min(start+200, count)
+				if chunk.DocumentID != "doc" || chunk.Ordinal != i || chunk.Anchor != "" || !reflect.DeepEqual(strings.Fields(chunk.Text), words[start:end]) {
+					t.Fatalf("window %d: %#v", i, chunk)
+				}
+				if i > 0 {
+					previous := strings.Fields(chunks[i-1].Text)
+					current := strings.Fields(chunk.Text)
+					if !reflect.DeepEqual(previous[len(previous)-40:], current[:40]) {
+						t.Fatalf("overlap is not 40 words")
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestGetChunksDoNotCrossHeadings(t *testing.T) {
+	content := "Перед заголовком\n\n## Первый\n" + strings.Repeat("текст ", 400) + "\n### Второй\nДругой текст"
+	chunks := GetChunks(wiki.Document{ID: "doc"}, content)
+	if chunks[0].Anchor != "" || chunks[0].Text != "Перед заголовком" {
+		t.Fatalf("introduction: %#v", chunks[0])
+	}
+	for _, chunk := range chunks[1 : len(chunks)-1] {
+		if chunk.Anchor != "первый" || strings.Contains(chunk.Text, "Второй") || strings.Contains(chunk.Text, "Другой") {
+			t.Fatalf("window crossed heading: %#v", chunk)
 		}
 	}
-	chunks := SplitChunks("doc", strings.Repeat("A", 700)+"\n\n"+strings.Repeat("B", 700))
-	if len(chunks) != 2 || chunks[0].Text != strings.Repeat("A", 700) {
-		t.Fatal("paragraph boundary ignored")
+	last := chunks[len(chunks)-1]
+	if last.Anchor != "второй" || last.Text != "### Второй\nДругой текст" {
+		t.Fatalf("last section: %#v", last)
+	}
+}
+
+func TestGetChunksAnchors(t *testing.T) {
+	content := "# Настройка окружения\n## API: версии 1.2!\n## Настройка окружения\n## Настройка окружения-1\n## Настройка окружения\n## C#\n## Конец ###"
+	chunks := GetChunks(wiki.Document{ID: "doc"}, content)
+	got := make([]string, 0, len(chunks))
+	for _, chunk := range chunks {
+		got = append(got, chunk.Anchor)
+	}
+	want := []string{"настройка-окружения", "api-версии-12", "настройка-окружения-1", "настройка-окружения-1-1", "настройка-окружения-2", "c", "конец"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("anchors=%v, want %v", got, want)
+	}
+	if got := GetChunks(wiki.Document{ID: "other"}, "# Настройка окружения"); got[0].Anchor != "настройка-окружения" {
+		t.Fatal("anchors leaked between documents")
+	}
+}
+
+func TestGetChunksPreservesCodeAndFormatting(t *testing.T) {
+	content := "# Пример\n\n~~~markdown\n# Внутри кода\n~~~~\n\n```go\nfunc main() {\n\tfmt.Println(1)\n}\n```\n\n    # Отступ\n\n#СледующийБезПробела\n\n## Следующий\nКонец"
+	chunks := GetChunks(wiki.Document{ID: "doc"}, content)
+	if len(chunks) != 2 || chunks[0].Anchor != "пример" || chunks[1].Anchor != "следующий" {
+		t.Fatalf("chunks: %#v", chunks)
+	}
+	expected := content[:strings.Index(content, "\n\n## Следующий")]
+	if chunks[0].Text != expected {
+		t.Fatalf("formatting changed: %q", chunks[0].Text)
 	}
 }
 

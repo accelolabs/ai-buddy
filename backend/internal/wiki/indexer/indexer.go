@@ -42,7 +42,7 @@ func (s *Indexer) Index(ctx context.Context) error {
 		}
 		document := parseDocument(name, string(content))
 		documents = append(documents, document)
-		chunks = append(chunks, SplitChunks(document.ID, string(content))...)
+		chunks = append(chunks, GetChunks(document, string(content))...)
 		return nil
 	})
 	if err != nil {
