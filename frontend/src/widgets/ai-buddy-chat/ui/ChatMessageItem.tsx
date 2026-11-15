@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import type { ChatMessage, MentorPayload } from '@/entities/chat';
 import { BuddyAvatar } from './BuddyAvatar';
 import { ExecutionStages } from './ExecutionStages';
@@ -55,7 +55,11 @@ const RETRY_ICON = (
   </svg>
 );
 
-export function ChatMessageItem({ message, onRetry, onContactMentor }: ChatMessageItemProps) {
+export const ChatMessageItem = memo(function ChatMessageItem({
+  message,
+  onRetry,
+  onContactMentor,
+}: ChatMessageItemProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -159,6 +163,6 @@ export function ChatMessageItem({ message, onRetry, onContactMentor }: ChatMessa
       </div>
     </div>
   );
-}
+});
 
 export default ChatMessageItem;
