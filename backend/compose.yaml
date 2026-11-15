@@ -9,6 +9,8 @@ services:
       ADDR: :8080
       DATABASE_URL: postgres://buddy:${POSTGRES_PASSWORD:-buddy}@postgres:5432/buddy?sslmode=disable
       KNOWLEDGE_BASE_DIR: /knowledge-base
+      OLLAMA_URL: http://ollama:11434
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-embeddinggemma:300m}
     volumes:
       - ../knowledge-base:/knowledge-base:ro
     depends_on:
@@ -47,6 +49,27 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  ollama-model:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command: ["pull", "${EMBEDDING_MODEL:-embeddinggemma:300m}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -65,3 +88,4 @@ services:
 
 volumes:
   postgres:
+  ollama:

@@ -10,6 +10,8 @@ type Config struct {
 	Addr             string `env:"ADDR" env-default:":8080"`
 	DatabaseURL      string `env:"DATABASE_URL" env-required:"true"`
 	KnowledgeBaseDir string `env:"KNOWLEDGE_BASE_DIR" env-default:"../knowledge-base"`
+	OllamaURL        string `env:"OLLAMA_URL" env-default:"http://localhost:11434"`
+	EmbeddingModel   string `env:"EMBEDDING_MODEL" env-default:"embeddinggemma:300m"`
 }
 
 func Load() (Config, error) {

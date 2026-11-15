@@ -74,7 +74,7 @@ func TestDocuments(t *testing.T) {
 	common := wiki.Document{ID: "common", Path: "guide.md", Title: "Общая"}
 	backend := wiki.Document{ID: "backend", Path: "backend/guide.md", Team: "backend", Title: "Backend"}
 	platform := wiki.Document{ID: "platform", Path: "platform/guide.md", Team: "platform", Title: "Platform"}
-	if err := repo.Sync(ctx, []wiki.Document{platform, common, backend}); err != nil {
+	if err := repo.Sync(ctx, []wiki.Document{platform, common, backend}, nil); err != nil {
 		t.Fatal(err)
 	}
 	list, err = repo.List(ctx)
@@ -89,5 +89,76 @@ func TestDocuments(t *testing.T) {
 	}
 	if _, err := repo.Get(ctx, "missing"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("missing: %v", err)
+	}
+}
+
+func TestChunksSync(t *testing.T) {
+	repo, ctx := testRepository(t)
+	first := wiki.Document{ID: "a", Path: "a.md", Title: "First"}
+	second := wiki.Document{ID: "b", Path: "b.md", Title: "Second"}
+	chunks := []wiki.Chunk{
+		{DocumentID: "a", Ordinal: 1, Anchor: "раздел", Text: "Second chunk"},
+		{DocumentID: "b", Ordinal: 0, Text: "Another document"},
+		{DocumentID: "a", Ordinal: 0, Text: "First chunk"},
+	}
+	for range 2 {
+		if err := repo.Sync(ctx, []wiki.Document{first, second}, chunks); err != nil {
+			t.Fatal(err)
+		}
+		got, err := repo.ListChunks(ctx, "a")
+		if err != nil || !reflect.DeepEqual(got, []wiki.Chunk{chunks[2], chunks[0]}) {
+			t.Fatalf("ListChunks: %#v, %v", got, err)
+		}
+	}
+	if got, err := repo.ListChunks(ctx, "missing"); err != nil || got == nil || len(got) != 0 {
+		t.Fatalf("missing chunks: %v, %v", got, err)
+	}
+	changed := first
+	changed.Title = "Changed"
+	// Failed inserts must roll back metadata updates, document deletions and chunk replacement.
+	for _, bad := range [][]wiki.Chunk{
+		{{DocumentID: "missing", Ordinal: 0, Text: "orphan"}},
+		{{DocumentID: "a", Ordinal: 0, Text: "one"}, {DocumentID: "a", Ordinal: 0, Text: "duplicate"}},
+	} {
+		if err := repo.Sync(ctx, []wiki.Document{changed}, bad); err == nil {
+			t.Fatal("invalid chunks accepted")
+		}
+		got, err := repo.Get(ctx, "a")
+		if err != nil || got != first {
+			t.Fatalf("metadata rollback: %v, %v", got, err)
+		}
+		if _, err := repo.Get(ctx, "b"); err != nil {
+			t.Fatalf("document deletion not rolled back: %v", err)
+		}
+		stored, err := repo.ListChunks(ctx, "a")
+		if err != nil || !reflect.DeepEqual(stored, []wiki.Chunk{chunks[2], chunks[0]}) {
+			t.Fatalf("chunks rollback: %#v, %v", stored, err)
+		}
+	}
+	updated := []wiki.Chunk{{DocumentID: "a", Ordinal: 0, Anchor: "new-anchor", Text: "Changed content"}}
+	if err := repo.Sync(ctx, []wiki.Document{first}, updated); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := repo.ListChunks(ctx, "a")
+	if err != nil || !reflect.DeepEqual(stored, updated) {
+		t.Fatalf("updated chunks: %#v, %v", stored, err)
+	}
+	if stored, err := repo.ListChunks(ctx, "b"); err != nil || len(stored) != 0 {
+		t.Fatalf("deleted document chunks: %#v, %v", stored, err)
+	}
+	if _, err := repo.db.ExecContext(ctx, `DELETE FROM documents WHERE id='a'`); err != nil {
+		t.Fatal(err)
+	}
+	if stored, err := repo.ListChunks(ctx, "a"); err != nil || len(stored) != 0 {
+		t.Fatalf("cascade: %#v, %v", stored, err)
+	}
+	if err := repo.Sync(ctx, []wiki.Document{first}, updated); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Sync(ctx, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if stored, err := repo.ListChunks(ctx, "a"); err != nil || len(stored) != 0 {
+		t.Fatalf("empty corpus: %#v, %v", stored, err)
 	}
 }

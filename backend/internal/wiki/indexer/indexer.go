@@ -12,7 +12,7 @@ import (
 )
 
 type documentSyncer interface {
-	Sync(context.Context, []wiki.Document) error
+	Sync(context.Context, []wiki.Document, []wiki.Chunk) error
 }
 
 type Indexer struct {
@@ -27,6 +27,7 @@ func NewIndexer(repository documentSyncer, root string) *Indexer {
 func (s *Indexer) Index(ctx context.Context) error {
 	files := os.DirFS(s.root)
 	documents := make([]wiki.Document, 0)
+	chunks := make([]wiki.Chunk, 0)
 	err := fs.WalkDir(files, ".", func(name string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -39,13 +40,15 @@ func (s *Indexer) Index(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		documents = append(documents, parseDocument(name, string(content)))
+		document := parseDocument(name, string(content))
+		documents = append(documents, document)
+		chunks = append(chunks, SplitChunks(document.ID, string(content))...)
 		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("read knowledge base: %w", err)
 	}
-	if err := s.repository.Sync(ctx, documents); err != nil {
+	if err := s.repository.Sync(ctx, documents, chunks); err != nil {
 		return fmt.Errorf("index wiki: %w", err)
 	}
 
