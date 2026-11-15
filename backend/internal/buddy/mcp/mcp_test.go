@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"backend/internal/users"
 	"backend/internal/wiki"
 	"backend/internal/wiki/rag"
 	"context"
@@ -25,7 +26,7 @@ func (f *fakeRAG) Search(_ context.Context, query, team string) ([]rag.Match, er
 func TestSearch(t *testing.T) {
 	ctx := t.Context()
 	source := &fakeRAG{chunks: []rag.Match{{Document: wiki.Document{Title: "Title"}, Chunk: wiki.Chunk{DocumentID: "doc", Ordinal: 2, Anchor: "setup", Text: "Setup"}}}}
-	h := NewHandler(source, "backend")
+	h := NewHandler(source, users.User{Team: "backend"}, nil)
 	_, found, err := h.Search(ctx, nil, SearchArgs{Query: "question"})
 	if err != nil || len(found.Chunks) != 1 || source.query != "question" || source.team != "backend" {
 		t.Fatalf("search: %+v, %v", found, err)
@@ -50,7 +51,7 @@ func TestSearch(t *testing.T) {
 func TestMCPTools(t *testing.T) {
 	ctx := t.Context()
 	server := sdk.NewServer(&sdk.Implementation{Name: "test", Version: "1"}, nil)
-	NewHandler(&fakeRAG{chunks: []rag.Match{{Chunk: wiki.Chunk{DocumentID: "doc", Text: "Text"}}}}, "backend").Register(server)
+	NewHandler(&fakeRAG{chunks: []rag.Match{{Chunk: wiki.Chunk{DocumentID: "doc", Text: "Text"}}}}, users.User{Team: "backend"}, nil).Register(server)
 	ct, st := sdk.NewInMemoryTransports()
 	ss, err := server.Connect(ctx, st, nil)
 	if err != nil {
@@ -103,7 +104,7 @@ func TestMCPTools(t *testing.T) {
 func TestAttachSessionResults(t *testing.T) {
 	ctx := t.Context()
 	search := &fakeRAG{chunks: []rag.Match{{Document: wiki.Document{Title: "Title"}, Chunk: wiki.Chunk{DocumentID: "a", Ordinal: 2, Anchor: "экватор", Text: "Old"}}}}
-	h := NewHandler(search, "backend")
+	h := NewHandler(search, users.User{Team: "backend"}, nil)
 	attach := func(id string, ordinal int, wantError bool) {
 		t.Helper()
 		_, result, err := h.Attach(ctx, nil, AttachArgs{DocumentID: id, Ordinal: ordinal})
@@ -142,7 +143,7 @@ func TestAttachSessionResults(t *testing.T) {
 		t.Fatal("expected search error")
 	}
 	attach("hidden", 0, true)
-	other := NewHandler(search, "platform")
+	other := NewHandler(search, users.User{Team: "platform"}, nil)
 	if _, _, err := other.Attach(ctx, nil, AttachArgs{DocumentID: "b"}); err == nil || other.Source() != nil {
 		t.Fatal("results leaked across runs")
 	}

@@ -57,7 +57,7 @@ func main() {
 	wikiRepository := wikirepository.NewRepository(db)
 	wikiHandler := wikihandler.NewHandler(wikiRepository, cfg.KnowledgeBaseDir)
 	search := rag.NewRAG(wikiRepository, ollama.NewClient(cfg.OllamaURL, cfg.EmbeddingModel), cfg.RAGChunkCount)
-	buddyAgent, err := agent.NewAgent(ollama.NewChatClient(cfg.OllamaURL, cfg.ChatModel, cfg.ChatContextLength), search, cfg.SystemPromptFile)
+	buddyAgent, err := agent.NewAgent(ollama.NewChatClient(cfg.OllamaURL, cfg.ChatModel, cfg.ChatContextLength), search, cfg.SystemPromptFile, userRepository)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func main() {
 	selectedUser := middleware.Middleware(userRepository)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/users", userHandler.List)
-	mux.Handle("POST /api/tickets", selectedUser(http.HandlerFunc(ticketHandler.Create)))
+	mux.Handle("POST /api/chats/{chatID}/messages/{messageID}/ticket/confirm", selectedUser(http.HandlerFunc(dialogHandler.ConfirmTicket)))
 	mux.Handle("GET /api/tickets", selectedUser(http.HandlerFunc(ticketHandler.List)))
 	mux.Handle("GET /api/tickets/{id}", selectedUser(http.HandlerFunc(ticketHandler.Get)))
 	mux.Handle("GET /api/chats", selectedUser(http.HandlerFunc(dialogHandler.ListChats)))

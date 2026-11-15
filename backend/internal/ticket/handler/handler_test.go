@@ -40,30 +40,8 @@ func (s userRepository) Get(context.Context, string) (users.User, error) {
 	return users.User{ID: "intern", Role: s.role}, nil
 }
 
-func TestValidation(t *testing.T) {
-	for i, body := range []string{
-		"", "null", "[]", "{", `{"title":"x"}`, `{"description":"x"}`, `{"title":" \t\n","description":"x"}`,
-		`{"title":"x","description":"\u2003"}`, `{"title":1,"description":"x"}`, `{"title":"x","description":null}`,
-		`{"title":"x","description":"y"} {}`, `{"title":"x","description":"y"} junk`,
-		`{"title":"` + strings.Repeat("x", 1<<20) + `","description":"y"}`,
-		`{"title":"x","description":"y"}` + strings.Repeat(" ", 1<<20),
-	} {
-		t.Run(fmt.Sprintf("body-%d", i), func(t *testing.T) {
-			repo := &failingRepository{}
-			h := NewHandler(repo)
-			r := httptest.NewRequest("POST", "/api/tickets", strings.NewReader(body))
-			r.AddCookie(&http.Cookie{Name: "demo_user", Value: "intern"})
-			w := httptest.NewRecorder()
-			middleware.Middleware(userRepository{users.RoleIntern})(http.HandlerFunc(h.Create)).ServeHTTP(w, r)
-			if w.Code != 400 || repo.calls != 0 {
-				t.Fatalf("validation: %d calls=%d", w.Code, repo.calls)
-			}
-		})
-	}
-}
-
 func TestErrors(t *testing.T) {
-	for _, method := range []string{"create", "list", "get"} {
+	for _, method := range []string{"list", "get"} {
 		for _, tc := range []struct {
 			role     string
 			selected bool
@@ -80,8 +58,6 @@ func TestErrors(t *testing.T) {
 				h := NewHandler(repo)
 				f := h.Get
 				switch method {
-				case "create":
-					f = h.Create
 				case "list":
 					f = h.List
 				}
@@ -94,9 +70,7 @@ func TestErrors(t *testing.T) {
 				w := httptest.NewRecorder()
 				target.ServeHTTP(w, r)
 				want := tc.status
-				if tc.selected && method == "create" && tc.role == users.RoleMentor {
-					want = 403
-				} else if tc.status == 404 && method != "get" {
+				if tc.status == 404 && method != "get" {
 					want = 500
 				}
 				if w.Code != want || strings.Contains(w.Body.String(), "private") || strings.Contains(w.Body.String(), "wrapped") {

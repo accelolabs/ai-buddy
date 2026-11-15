@@ -47,3 +47,14 @@ func (r *Repository) ListInterns(ctx context.Context, mentorID string) ([]users.
 	}
 	return interns, nil
 }
+
+func (r *Repository) GetMentor(ctx context.Context, internID string) (users.User, error) {
+	var user users.User
+	err := r.db.QueryRowContext(ctx, `SELECT u.id, u.name, u.role, u.team FROM users u
+ JOIN mentorships m ON m.mentor_id = u.id WHERE m.intern_id = $1`, internID).
+		Scan(&user.ID, &user.Name, &user.Role, &user.Team)
+	if err != nil {
+		return users.User{}, fmt.Errorf("get mentor: %w", err)
+	}
+	return user, nil
+}

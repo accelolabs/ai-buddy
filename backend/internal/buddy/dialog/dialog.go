@@ -13,11 +13,14 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("chat not found")
-	ErrBusy     = errors.New("chat is already generating a response")
+	ErrNotFound      = errors.New("chat not found")
+	ErrBusy          = errors.New("chat is already generating a response")
+	ErrForbidden     = errors.New("only interns can confirm tickets")
+	ErrInvalidTicket = errors.New("title and description are required")
 )
 
 type repository interface {
+	ConfirmTicket(context.Context, string, string, int64, string, string) (buddy.Ticket, bool, error)
 	AddChat(context.Context, buddy.Chat) (buddy.Chat, error)
 	ListChats(context.Context, string) ([]buddy.Chat, error)
 	GetChat(context.Context, string) (buddy.Chat, error)
@@ -116,7 +119,7 @@ func (s *Service) Send(ctx context.Context, user users.User, chatID, text string
 	if err != nil {
 		return buddy.Message{}, fmt.Errorf("generate dialog answer: %w", err)
 	}
-	message, err := s.repository.AddMessage(ctx, buddy.Message{ChatID: chatID, Role: buddy.RoleAssistant, Content: answer.Content, Source: answer.Source})
+	message, err := s.repository.AddMessage(ctx, buddy.Message{ChatID: chatID, Role: buddy.RoleAssistant, Content: answer.Content, Source: answer.Source, Ticket: answer.Ticket})
 	if err != nil {
 		return buddy.Message{}, fmt.Errorf("save assistant message: %w", err)
 	}
@@ -125,5 +128,28 @@ func (s *Service) Send(ctx context.Context, user users.User, chatID, text string
 			return buddy.Message{}, fmt.Errorf("emit source: %w", err)
 		}
 	}
+	if message.Ticket != nil && emit != nil {
+		if err := emit(buddy.Event{Type: "ticket", Ticket: message.Ticket}); err != nil {
+			return buddy.Message{}, fmt.Errorf("emit ticket: %w", err)
+		}
+	}
 	return message, nil
+}
+
+func (s *Service) ConfirmTicket(ctx context.Context, user users.User, chatID string, messageID int64, title, description string) (buddy.Ticket, bool, error) {
+	if user.Role != users.RoleIntern {
+		return buddy.Ticket{}, false, ErrForbidden
+	}
+	title, description = strings.TrimSpace(title), strings.TrimSpace(description)
+	if title == "" || description == "" {
+		return buddy.Ticket{}, false, ErrInvalidTicket
+	}
+	if _, err := s.ownedChat(ctx, user, chatID); err != nil {
+		return buddy.Ticket{}, false, err
+	}
+	card, created, err := s.repository.ConfirmTicket(ctx, user.ID, chatID, messageID, title, description)
+	if errors.Is(err, sql.ErrNoRows) {
+		return buddy.Ticket{}, false, ErrNotFound
+	}
+	return card, created, err
 }

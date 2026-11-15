@@ -11,4 +11,5 @@ type Source struct {
 type Answer struct {
 	Content string
 	Source  *Source
+	Ticket  *Ticket
 }

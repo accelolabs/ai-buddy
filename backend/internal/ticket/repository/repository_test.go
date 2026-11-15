@@ -75,7 +75,7 @@ func testRepository(t *testing.T) (*Repository, context.Context) {
 
 func TestTickets(t *testing.T) {
 	repo, ctx := testRepository(t)
-	if err := users.Seed(ctx, repo.db); err != nil {
+	if err := users.Seed(ctx, repo.db.(*sql.DB)); err != nil {
 		t.Fatal(err)
 	}
 	intern := users.User{ID: "intern.backend.1", Role: users.RoleIntern}
@@ -111,10 +111,10 @@ func TestTickets(t *testing.T) {
 		values[i] = added
 	}
 	// Force equal timestamps for the ID tie-break, then a newer ticket with a smaller ID.
-	if _, err := repo.db.ExecContext(ctx, `UPDATE tickets SET created_at = '2026-01-01Z'`); err != nil {
+	if _, err := repo.db.(*sql.DB).ExecContext(ctx, `UPDATE tickets SET created_at = '2026-01-01Z'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.db.ExecContext(ctx, `UPDATE tickets SET created_at = '2026-01-02Z' WHERE id = 'a'`); err != nil {
+	if _, err := repo.db.(*sql.DB).ExecContext(ctx, `UPDATE tickets SET created_at = '2026-01-02Z' WHERE id = 'a'`); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
@@ -161,7 +161,7 @@ func TestTickets(t *testing.T) {
 		t.Fatal("orphan accepted")
 	}
 	// Access follows current assignments, independently of team membership.
-	if _, err := repo.db.ExecContext(ctx, `UPDATE mentorships SET mentor_id='mentor.platform' WHERE intern_id=$1`, intern.ID); err != nil {
+	if _, err := repo.db.(*sql.DB).ExecContext(ctx, `UPDATE mentorships SET mentor_id='mentor.platform' WHERE intern_id=$1`, intern.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := repo.Get(ctx, mentor, "a"); !errors.Is(err, sql.ErrNoRows) {
@@ -170,17 +170,17 @@ func TestTickets(t *testing.T) {
 	if _, err := repo.Get(ctx, users.User{ID: "mentor.platform", Role: users.RoleMentor}, "a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := goose.DownContext(ctx, repo.db, "../../../migrations"); err != nil {
+	if err := goose.DownToContext(ctx, repo.db.(*sql.DB), "../../../migrations", 3); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := repo.List(ctx, intern); err == nil {
 		t.Fatal("table survived rollback")
 	}
 	var count int
-	if err := repo.db.QueryRowContext(ctx, `SELECT count(*) FROM users`).Scan(&count); err != nil || count != 6 {
+	if err := repo.db.(*sql.DB).QueryRowContext(ctx, `SELECT count(*) FROM users`).Scan(&count); err != nil || count != 6 {
 		t.Fatalf("rollback changed users: %d %v", count, err)
 	}
-	if err := goose.UpContext(ctx, repo.db, "../../../migrations"); err != nil {
+	if err := goose.UpContext(ctx, repo.db.(*sql.DB), "../../../migrations"); err != nil {
 		t.Fatal(err)
 	}
 	if list, err := repo.List(ctx, intern); err != nil || len(list) != 0 {
@@ -190,13 +190,13 @@ func TestTickets(t *testing.T) {
 
 func TestHTTPAccess(t *testing.T) {
 	repo, ctx := testRepository(t)
-	if err := users.Seed(ctx, repo.db); err != nil {
+	if err := users.Seed(ctx, repo.db.(*sql.DB)); err != nil {
 		t.Fatal(err)
 	}
 	h := handler.NewHandler(repo)
-	selected := middleware.Middleware(usersrepository.NewRepository(repo.db))
+	selected := middleware.Middleware(usersrepository.NewRepository(repo.db.(*sql.DB)))
 	mux := http.NewServeMux()
-	mux.Handle("POST /api/tickets", selected(http.HandlerFunc(h.Create)))
+
 	mux.Handle("GET /api/tickets", selected(http.HandlerFunc(h.List)))
 	mux.Handle("GET /api/tickets/{id}", selected(http.HandlerFunc(h.Get)))
 	request := func(method, path, user, body string, status int) *httptest.ResponseRecorder {
@@ -213,18 +213,18 @@ func TestHTTPAccess(t *testing.T) {
 		return w
 	}
 	for _, user := range []string{"", "missing"} {
-		request("POST", "/api/tickets", user, `{"title":"x","description":"y"}`, 401)
+		request("POST", "/api/tickets", user, `{"title":"x","description":"y"}`, 405)
 		request("GET", "/api/tickets", user, "", 401)
 		request("GET", "/api/tickets/missing", user, "", 401)
 	}
-	request("POST", "/api/tickets", "mentor.backend", `{"title":"x","description":"y"}`, 403)
-	w := request("POST", "/api/tickets", "intern.backend.1", `{"title":"  Помогите  ","description":"\nНет доступа 🔑\t","user_id":"intern.platform.1"}`, 201)
+	request("POST", "/api/tickets", "mentor.backend", `{"title":"x","description":"y"}`, 405)
+	if _, err := repo.Add(ctx, ticket.Ticket{ID: "created", UserID: "intern.backend.1", Title: "Помогите", Description: "Нет доступа 🔑"}); err != nil {
+		t.Fatal(err)
+	}
+	w := request("GET", "/api/tickets/created", "intern.backend.1", "", 200)
 	var created ticketResponseForTest
 	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
 		t.Fatal(err)
-	}
-	if created.ID == "" || created.UserID != "intern.backend.1" || created.Title != "Помогите" || created.Description != "Нет доступа 🔑" || created.CreatedAt.IsZero() {
-		t.Fatalf("created: %+v", created)
 	}
 	for _, user := range []string{"intern.backend.1", "mentor.backend"} {
 		got := request("GET", "/api/tickets/"+created.ID, user, "", 200)

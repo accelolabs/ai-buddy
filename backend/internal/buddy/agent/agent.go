@@ -25,23 +25,28 @@ type searcher interface {
 	Search(context.Context, string, string) ([]rag.Match, error)
 }
 
+type mentorRepository interface {
+	GetMentor(context.Context, string) (users.User, error)
+}
+
 type Agent struct {
+	users        mentorRepository
 	rag          searcher
 	model        model
 	systemPrompt string
 }
 
-func NewAgent(model model, rag searcher, promptFile string) (*Agent, error) {
+func NewAgent(model model, rag searcher, promptFile string, users mentorRepository) (*Agent, error) {
 	prompt, err := os.ReadFile(promptFile)
 	if err != nil {
 		return nil, fmt.Errorf("read system prompt: %w", err)
 	}
-	return &Agent{model: model, rag: rag, systemPrompt: string(prompt)}, nil
+	return &Agent{users: users, model: model, rag: rag, systemPrompt: string(prompt)}, nil
 }
 
 // Generate creates and closes an MCP session bound to the trusted current user.
 func (a *Agent) Generate(ctx context.Context, user users.User, history []buddy.Message, emit func(buddy.Event) error) (buddy.Answer, error) {
-	handler := buddymcp.NewHandler(a.rag, user.Team)
+	handler := buddymcp.NewHandler(a.rag, user, a.users)
 	session, closeSession, err := handler.OpenSession(ctx)
 	if err != nil {
 		return buddy.Answer{}, err
@@ -82,7 +87,7 @@ func (a *Agent) Generate(ctx context.Context, user users.User, history []buddy.M
 			return buddy.Answer{}, fmt.Errorf("generate answer: %w", err)
 		}
 		if len(response.Message.Calls) == 0 {
-			return buddy.Answer{Content: content.String(), Source: handler.Source()}, nil
+			return buddy.Answer{Content: content.String(), Source: handler.Source(), Ticket: handler.Ticket()}, nil
 		}
 		if calls+len(response.Message.Calls) > maxToolCalls {
 			return buddy.Answer{}, fmt.Errorf("tool call limit exceeded")

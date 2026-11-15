@@ -72,5 +72,5 @@ func (h *Handler) GetChat(w http.ResponseWriter, r *http.Request) {
 }
 
 func messageView(message buddy.Message) messageResponse {
-	return messageResponse{ID: message.ID, ChatID: message.ChatID, Role: message.Role, Content: message.Content, CreatedAt: message.CreatedAt, Source: sourceView(message.Source)}
+	return messageResponse{ID: message.ID, ChatID: message.ChatID, Role: message.Role, Content: message.Content, CreatedAt: message.CreatedAt, Source: sourceView(message.Source), Ticket: ticketView(message.Ticket)}
 }

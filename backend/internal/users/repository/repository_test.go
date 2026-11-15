@@ -281,3 +281,36 @@ func TestSeedMentorships(t *testing.T) {
 		t.Fatalf("seed replaced assignment: %+v %v", interns, err)
 	}
 }
+
+func TestGetMentor(t *testing.T) {
+	r, ctx := testRepository(t)
+	if err := users.Seed(ctx, r.db); err != nil {
+		t.Fatal(err)
+	}
+	want, err := r.Get(ctx, "mentor.backend")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.GetMentor(ctx, "intern.backend.1")
+	if err != nil || got != want {
+		t.Fatalf("mentor: %+v %v", got, err)
+	}
+	for _, id := range []string{"missing", "mentor.backend"} {
+		if _, err := r.GetMentor(ctx, id); !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("%s: %v", id, err)
+		}
+	}
+	if _, err := r.db.ExecContext(ctx, `UPDATE mentorships SET mentor_id='mentor.platform' WHERE intern_id='intern.backend.1'`); err != nil {
+		t.Fatal(err)
+	}
+	got, err = r.GetMentor(ctx, "intern.backend.1")
+	if err != nil || got.ID != "mentor.platform" || got.Name == "" {
+		t.Fatalf("reassigned: %+v %v", got, err)
+	}
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM mentorships WHERE intern_id='intern.backend.1'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.GetMentor(ctx, "intern.backend.1"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("unassigned: %v", err)
+	}
+}

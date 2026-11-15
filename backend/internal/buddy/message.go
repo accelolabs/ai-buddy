@@ -14,4 +14,5 @@ type Message struct {
 	Content   string
 	CreatedAt time.Time
 	Source    *Source
+	Ticket    *Ticket
 }

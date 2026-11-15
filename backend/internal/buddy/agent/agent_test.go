@@ -44,7 +44,7 @@ func testAgent(t *testing.T, model *fakeModel, rag *fakeRAG) *Agent {
 	if err := os.WriteFile(path, []byte("Отвечай по-русски"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	agent, err := NewAgent(model, rag, path)
+	agent, err := NewAgent(model, rag, path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestGenerateFailures(t *testing.T) {
 			}
 		})
 	}
-	if _, err := NewAgent(&fakeModel{}, &fakeRAG{}, filepath.Join(t.TempDir(), "missing")); err == nil {
+	if _, err := NewAgent(&fakeModel{}, &fakeRAG{}, filepath.Join(t.TempDir(), "missing"), nil); err == nil {
 		t.Fatal("missing prompt accepted")
 	}
 }
@@ -346,5 +346,44 @@ func TestGenerateToolErrors(t *testing.T) {
 				t.Fatalf("answer: %+v, calls: %d, error: %v", answer, model.calls, err)
 			}
 		})
+	}
+}
+
+type mentorStore struct{}
+
+func (mentorStore) GetMentor(context.Context, string) (users.User, error) {
+	return users.User{ID: "mentor", Name: "Ментор"}, nil
+}
+
+func TestTicketGeneration(t *testing.T) {
+	model := &fakeModel{}
+	model.reply = func(messages []ollama.Message, tools []ollama.Tool) (ollama.Response, error) {
+		if model.calls == 1 {
+			if len(tools) != 3 {
+				t.Fatalf("tools: %v", tools)
+			}
+			return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{{Function: ollama.Function{Name: "prepare_ticket", Arguments: []byte(`{"title":" Тема ","description":" Текст "}`)}}}}}, nil
+		}
+		if model.calls == 2 {
+			if last := messages[len(messages)-1]; last.ToolName != "prepare_ticket" || !strings.Contains(last.Content, "true") {
+				t.Fatalf("tool result: %+v", last)
+			}
+			return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{{Function: ollama.Function{Name: "prepare_ticket", Arguments: []byte(`{"title":" ","description":"bad"}`)}}}}}, nil
+		}
+		if model.calls == 3 && !strings.Contains(messages[len(messages)-1].Content, "error") {
+			t.Fatal("tool error not returned to model")
+		}
+		return ollama.Response{Message: ollama.Message{Content: "Подтвердите карточку"}}, nil
+	}
+	a := testAgent(t, model, &fakeRAG{})
+	a.users = mentorStore{}
+	user := users.User{ID: "intern", Role: users.RoleIntern}
+	answer, err := a.Generate(t.Context(), user, nil, nil)
+	if err != nil || answer.Ticket == nil || answer.Ticket.Title != "Тема" || answer.Ticket.Recipient.ID != "mentor" {
+		t.Fatalf("answer: %+v %v", answer, err)
+	}
+	answer, err = a.Generate(t.Context(), user, nil, nil)
+	if err != nil || answer.Ticket != nil {
+		t.Fatalf("draft leaked: %+v %v", answer, err)
 	}
 }

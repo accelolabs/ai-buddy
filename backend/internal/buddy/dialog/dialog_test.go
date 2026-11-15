@@ -11,6 +11,7 @@ import (
 )
 
 type fakeRepository struct {
+	confirm      func(context.Context, string, string, int64, string, string) (buddy.Ticket, bool, error)
 	chat         buddy.Chat
 	messages     []buddy.Message
 	fail         string
@@ -79,6 +80,7 @@ func (r *fakeRepository) ListRecentMessages(_ context.Context, _ string, limit i
 }
 
 type fakeAgent struct {
+	ticket  *buddy.Ticket
 	source  *buddy.Source
 	history []buddy.Message
 	err     error
@@ -95,7 +97,7 @@ func (a *fakeAgent) Generate(_ context.Context, user users.User, history []buddy
 			return buddy.Answer{}, err
 		}
 	}
-	return buddy.Answer{Content: "Ответ", Source: a.source}, nil
+	return buddy.Answer{Content: "Ответ", Source: a.source, Ticket: a.ticket}, nil
 }
 
 func TestDialog(t *testing.T) {
@@ -409,5 +411,89 @@ func TestSendCancellation(t *testing.T) {
 	service.agent = &fakeAgent{}
 	if _, err := service.Send(t.Context(), users.User{ID: "user"}, "chat", "next", nil); err != nil {
 		t.Fatal("slot not released after cancellation", err)
+	}
+}
+
+func (r *fakeRepository) ConfirmTicket(ctx context.Context, userID, chatID string, messageID int64, title, description string) (buddy.Ticket, bool, error) {
+	return r.confirm(ctx, userID, chatID, messageID, title, description)
+}
+
+func TestTicketPersistenceAndEvents(t *testing.T) {
+	card := &buddy.Ticket{Title: "Тема", Description: "Описание", Recipient: buddy.Recipient{ID: "mentor", Name: "Ментор"}}
+	for _, fail := range []string{"", "generate", "save", "emit"} {
+		t.Run(fail, func(t *testing.T) {
+			repo := &fakeRepository{chat: buddy.Chat{ID: "chat", UserID: "user"}}
+			agent := &fakeAgent{ticket: card, source: &buddy.Source{DocumentID: "doc"}}
+			if fail == "generate" {
+				agent.err = errFailure
+			}
+			if fail == "save" {
+				repo.fail = buddy.RoleAssistant
+			}
+			service := NewService(repo, agent, 6)
+			var events []string
+			reply, err := service.Send(t.Context(), users.User{ID: "user"}, "chat", "вопрос", func(e buddy.Event) error {
+				events = append(events, e.Type)
+				if e.Type == "ticket" {
+					if e.Ticket != card || len(repo.messages) != 2 {
+						t.Fatal("ticket emitted before save")
+					}
+					if fail == "emit" {
+						return errFailure
+					}
+				}
+				return nil
+			})
+			if fail == "" {
+				if err != nil || reply.Ticket != card || strings.Join(events, ",") != "text,source,ticket" {
+					t.Fatalf("reply: %+v %v %v", reply, events, err)
+				}
+			} else if err == nil {
+				t.Fatal("expected error")
+			}
+			if fail == "generate" || fail == "save" {
+				if len(repo.messages) != 1 || strings.Contains(strings.Join(events, ","), "ticket") {
+					t.Fatal("failed generation saved card")
+				}
+			} else if repo.messages[1].Ticket != card {
+				t.Fatal("card not persisted")
+			}
+		})
+	}
+}
+
+func TestConfirmTicket(t *testing.T) {
+	for _, tc := range []struct {
+		name, role, owner, title string
+		repoErr, want            error
+	}{
+		{name: "success", role: users.RoleIntern, owner: "user", title: " title "},
+		{name: "mentor", role: users.RoleMentor, owner: "user", title: "title", want: ErrForbidden},
+		{name: "foreign", role: users.RoleIntern, owner: "other", title: "title", want: ErrNotFound},
+		{name: "empty", role: users.RoleIntern, owner: "user", title: " \t", want: ErrInvalidTicket},
+		{name: "missing card", role: users.RoleIntern, owner: "user", title: "title", repoErr: sql.ErrNoRows, want: ErrNotFound},
+		{name: "changed mentor", role: users.RoleIntern, owner: "user", title: "title", repoErr: buddy.ErrMentorChanged, want: buddy.ErrMentorChanged},
+		{name: "internal", role: users.RoleIntern, owner: "user", title: "title", repoErr: errFailure, want: errFailure},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			repo := &fakeRepository{chat: buddy.Chat{ID: "chat", UserID: tc.owner}, confirm: func(_ context.Context, userID, chatID string, id int64, title, description string) (buddy.Ticket, bool, error) {
+				calls++
+				if userID != "user" || chatID != "chat" || id != 42 || title != "title" || description != "description" {
+					t.Fatal("wrong confirmation arguments")
+				}
+				return buddy.Ticket{Title: title}, true, tc.repoErr
+			}}
+			card, created, err := NewService(repo, nil, 6).ConfirmTicket(t.Context(), users.User{ID: "user", Role: tc.role}, "chat", 42, tc.title, " description ")
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("error: %v want %v", err, tc.want)
+			}
+			if tc.want == nil && (!created || card.Title != "title") {
+				t.Fatal("missing result")
+			}
+			if (errors.Is(tc.want, ErrForbidden) || errors.Is(tc.want, ErrInvalidTicket) || tc.name == "foreign") && calls != 0 {
+				t.Fatal("unauthorized confirmation")
+			}
+		})
 	}
 }

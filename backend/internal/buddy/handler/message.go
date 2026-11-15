@@ -17,6 +17,7 @@ import (
 )
 
 type dialogService interface {
+	ConfirmTicket(context.Context, users.User, string, int64, string, string) (buddy.Ticket, bool, error)
 	ListChats(context.Context, users.User) ([]buddy.Chat, error)
 	GetChat(context.Context, users.User, string) (buddy.Chat, []buddy.Message, error)
 	Send(context.Context, users.User, string, string, func(buddy.Event) error) (buddy.Message, error)
@@ -48,6 +49,7 @@ type (
 		Content   string          `json:"content"`
 		CreatedAt time.Time       `json:"created_at"`
 		Source    *sourceResponse `json:"source"`
+		Ticket    *ticketResponse `json:"ticket"`
 	}
 )
 
@@ -101,6 +103,8 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 			return stream.send("state", stateResponse{State: event.State, Progress: event.Progress})
 		case "source":
 			return stream.send("source", sourceView(event.Source))
+		case "ticket":
+			return stream.send("ticket", ticketView(event.Ticket))
 		case "text":
 			return stream.send("text", textResponse{Text: event.Text})
 		default:

@@ -8,4 +8,5 @@ type Event struct {
 	Progress string
 	Text     string
 	Source   *Source
+	Ticket   *Ticket
 }

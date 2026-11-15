@@ -21,10 +21,11 @@ func (userStore) Get(context.Context, string) (users.User, error) {
 }
 
 type fakeDialog struct {
-	calls int
-	list  func(context.Context, users.User) ([]buddy.Chat, error)
-	get   func(context.Context, users.User, string) (buddy.Chat, []buddy.Message, error)
-	send  func(context.Context, users.User, string, string, func(buddy.Event) error) (buddy.Message, error)
+	confirm func(context.Context, users.User, string, int64, string, string) (buddy.Ticket, bool, error)
+	calls   int
+	list    func(context.Context, users.User) ([]buddy.Chat, error)
+	get     func(context.Context, users.User, string) (buddy.Chat, []buddy.Message, error)
+	send    func(context.Context, users.User, string, string, func(buddy.Event) error) (buddy.Message, error)
 }
 
 func (d *fakeDialog) ListChats(ctx context.Context, user users.User) ([]buddy.Chat, error) {
@@ -215,4 +216,9 @@ func TestFirstMessageValidation(t *testing.T) {
 	if w := messageRequestAt(service, "/api/chats/messages", `{"content":"q"}`, false); w.Code != 401 || service.calls != 0 {
 		t.Fatalf("unauthorized new chat: %d calls %d", w.Code, service.calls)
 	}
+}
+
+func (d *fakeDialog) ConfirmTicket(ctx context.Context, user users.User, chatID string, messageID int64, title, description string) (buddy.Ticket, bool, error) {
+	d.calls++
+	return d.confirm(ctx, user, chatID, messageID, title, description)
 }

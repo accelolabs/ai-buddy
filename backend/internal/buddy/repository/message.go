@@ -14,7 +14,7 @@ func (r *Repository) AddMessage(ctx context.Context, message buddy.Message) (bud
 	defer func() { _ = tx.Rollback() }()
 	err = tx.QueryRowContext(ctx, `
   INSERT INTO messages (chat_id, role, content, attachment) VALUES ($1, $2, $3, $4)
-  RETURNING id, created_at`, message.ChatID, message.Role, message.Content, message.Source != nil).
+  RETURNING id, created_at`, message.ChatID, message.Role, message.Content, message.Source != nil || message.Ticket != nil).
 		Scan(&message.ID, &message.CreatedAt)
 	if err != nil {
 		return buddy.Message{}, fmt.Errorf("add message: %w", err)
@@ -25,6 +25,16 @@ func (r *Repository) AddMessage(ctx context.Context, message buddy.Message) (bud
    VALUES ($1, $2, $3, $4, $5, $6)`, message.ID, source.DocumentID, source.Ordinal, source.Title, source.Anchor, source.Quote)
 		if err != nil {
 			return buddy.Message{}, fmt.Errorf("add message source: %w", err)
+		}
+	}
+	if card := message.Ticket; card != nil {
+		if message.Role != buddy.RoleAssistant || card.TicketID != nil {
+			return buddy.Message{}, fmt.Errorf("invalid ticket draft")
+		}
+		_, err := tx.ExecContext(ctx, `INSERT INTO message_tickets (message_id, title, description, recipient_id, recipient_name)
+ VALUES ($1,$2,$3,$4,$5)`, message.ID, card.Title, card.Description, card.Recipient.ID, card.Recipient.Name)
+		if err != nil {
+			return buddy.Message{}, fmt.Errorf("add ticket draft: %w", err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -83,6 +93,28 @@ func (r *Repository) ListMessages(ctx context.Context, chatID string) ([]buddy.M
 	}
 	if err := sources.Err(); err != nil {
 		return nil, fmt.Errorf("read message sources: %w", err)
+	}
+	if err := sources.Close(); err != nil {
+		return nil, fmt.Errorf("close message sources: %w", err)
+	}
+	cards, err := r.db.QueryContext(ctx, `SELECT c.message_id, c.title, c.description, c.recipient_id, c.recipient_name, c.ticket_id
+ FROM message_tickets c JOIN messages m ON m.id = c.message_id WHERE m.chat_id = $1`, chatID)
+	if err != nil {
+		return nil, fmt.Errorf("list message tickets: %w", err)
+	}
+	defer func() { _ = cards.Close() }()
+	for cards.Next() {
+		var id int64
+		var card buddy.Ticket
+		if err := cards.Scan(&id, &card.Title, &card.Description, &card.Recipient.ID, &card.Recipient.Name, &card.TicketID); err != nil {
+			return nil, fmt.Errorf("scan message ticket: %w", err)
+		}
+		if index, ok := attachments[id]; ok {
+			messages[index].Ticket = &card
+		}
+	}
+	if err := cards.Err(); err != nil {
+		return nil, fmt.Errorf("read message tickets: %w", err)
 	}
 	return messages, nil
 }
