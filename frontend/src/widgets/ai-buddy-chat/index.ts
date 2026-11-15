@@ -1,16 +1,14 @@
 export { BuddyChat } from './ui/BuddyChat';
-export { ChatHeader } from './ui/ChatHeader';
 export { ChatBackground } from './ui/ChatBackground';
 export { ChatInput } from './ui/ChatInput';
 export { BuddyAvatar } from './ui/BuddyAvatar';
 export { ExecutionStages } from './ui/ExecutionStages';
 export { SourceCard } from './ui/SourceCard';
-export { MentorCard } from './ui/MentorCard';
+export { MentorCard, type MentorCardProps } from './ui/MentorCard';
 export {
   MentorContactForm,
   type MentorContactFormProps,
   type MentorContactFormValues,
 } from './ui/MentorContactForm';
-export { MentorContactModal, type MentorContactModalProps } from './ui/MentorContactModal';
 export { ChatMessageItem } from './ui/ChatMessageItem';
 export { MessageList } from './ui/MessageList';
