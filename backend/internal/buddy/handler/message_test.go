@@ -22,7 +22,19 @@ func (userStore) Get(context.Context, string) (users.User, error) {
 
 type fakeDialog struct {
 	calls int
+	list  func(context.Context, users.User) ([]buddy.Chat, error)
+	get   func(context.Context, users.User, string) (buddy.Chat, []buddy.Message, error)
 	send  func(context.Context, users.User, string, string, func(buddy.Event) error) (buddy.Message, error)
+}
+
+func (d *fakeDialog) ListChats(ctx context.Context, user users.User) ([]buddy.Chat, error) {
+	d.calls++
+	return d.list(ctx, user)
+}
+
+func (d *fakeDialog) GetChat(ctx context.Context, user users.User, id string) (buddy.Chat, []buddy.Message, error) {
+	d.calls++
+	return d.get(ctx, user, id)
 }
 
 func (d *fakeDialog) Send(ctx context.Context, user users.User, id, text string, emit func(buddy.Event) error) (buddy.Message, error) {
@@ -32,9 +44,15 @@ func (d *fakeDialog) Send(ctx context.Context, user users.User, id, text string,
 
 func request(t *testing.T, service *fakeDialog, body string, auth bool) *httptest.ResponseRecorder {
 	t.Helper()
+	return messageRequestAt(service, "/api/chats/chat/messages", body, auth)
+}
+
+func messageRequestAt(service *fakeDialog, target, body string, auth bool) *httptest.ResponseRecorder {
 	mux := http.NewServeMux()
-	mux.Handle("POST /api/chats/{id}/messages", middleware.Middleware(userStore{})(http.HandlerFunc(NewHandler(service).Send)))
-	r := httptest.NewRequest(http.MethodPost, "/api/chats/chat/messages", strings.NewReader(body))
+	h := middleware.Middleware(userStore{})(http.HandlerFunc(NewHandler(service).Send))
+	mux.Handle("POST /api/chats/{id}/messages", h)
+	mux.Handle("POST /api/chats/messages", h)
+	r := httptest.NewRequest(http.MethodPost, target, strings.NewReader(body))
 	if auth {
 		r.AddCookie(&http.Cookie{Name: "demo_user", Value: "user"})
 	}
@@ -150,5 +168,51 @@ func TestSourceStream(t *testing.T) {
 		} else if len(parts) != 2 || strings.Contains(body, "event: source") || !strings.Contains(body, `"source":null`) {
 			t.Fatal(body)
 		}
+	}
+}
+
+func TestFirstMessageStream(t *testing.T) {
+	for _, failure := range []bool{false, true} {
+		service := &fakeDialog{send: func(_ context.Context, user users.User, id, text string, emit func(buddy.Event) error) (buddy.Message, error) {
+			if user.ID != "user" || id != "" || text != "Первый вопрос" {
+				t.Fatal("wrong new chat inputs")
+			}
+			if err := emit(buddy.Event{Type: "chat", Chat: &buddy.Chat{ID: "created", UserID: user.ID, Title: text}}); err != nil {
+				return buddy.Message{}, err
+			}
+			if failure {
+				return buddy.Message{}, errors.New("internal secret")
+			}
+			if err := emit(buddy.Event{Type: "text", Text: "Ответ"}); err != nil {
+				return buddy.Message{}, err
+			}
+			return buddy.Message{ID: 2, ChatID: "created", Role: buddy.RoleAssistant, Content: "Ответ"}, nil
+		}}
+		w := messageRequestAt(service, "/api/chats/messages", `{"content":"Первый вопрос"}`, true)
+		body := w.Body.String()
+		if w.Code != 200 || w.Header().Get("Content-Type") != "text/event-stream" || !w.Flushed || !strings.HasPrefix(body, "event: chat\n") || !strings.Contains(body, `"id":"created","user_id":"user","title":"Первый вопрос"`) {
+			t.Fatalf("new chat stream: %d %s", w.Code, body)
+		}
+		if failure {
+			if !strings.Contains(body, "event: error") || strings.Contains(body, "event: done") || strings.Contains(body, "secret") {
+				t.Fatal(body)
+			}
+		} else if !strings.Contains(body, "event: done") || !strings.Contains(body, `"chat_id":"created"`) {
+			t.Fatal(body)
+		}
+	}
+}
+
+func TestFirstMessageValidation(t *testing.T) {
+	for _, body := range []string{`broken`, `{}`, `{"content":" "}`, `{"content":3}`, `{"content":"q"} {}`} {
+		service := &fakeDialog{}
+		w := messageRequestAt(service, "/api/chats/messages", body, true)
+		if w.Code != 400 || service.calls != 0 {
+			t.Fatalf("invalid new chat: %d calls %d", w.Code, service.calls)
+		}
+	}
+	service := &fakeDialog{}
+	if w := messageRequestAt(service, "/api/chats/messages", `{"content":"q"}`, false); w.Code != 401 || service.calls != 0 {
+		t.Fatalf("unauthorized new chat: %d calls %d", w.Code, service.calls)
 	}
 }

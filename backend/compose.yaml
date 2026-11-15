@@ -22,6 +22,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      ollama-chat-model:
+        condition: service_completed_successfully
 
   migrate:
     build: .
@@ -79,6 +81,18 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-embeddinggemma:300m}
     command:
       - 'ollama show "$$EMBEDDING_MODEL" >/dev/null 2>&1 || ollama pull "$$EMBEDDING_MODEL"'
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  ollama-chat-model:
+    image: ollama/ollama:latest
+    entrypoint: ["/bin/sh", "-c"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      CHAT_MODEL: ${CHAT_MODEL:-qwen3.5:4b}
+    command:
+      - 'ollama show "$$CHAT_MODEL" >/dev/null 2>&1 || ollama pull "$$CHAT_MODEL"'
     depends_on:
       ollama:
         condition: service_healthy

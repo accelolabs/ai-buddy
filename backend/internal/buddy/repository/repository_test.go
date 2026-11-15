@@ -293,3 +293,28 @@ func TestChatMigration(t *testing.T) {
 		t.Fatalf("reapplied migration: %+v %v", history, err)
 	}
 }
+
+func TestListChats(t *testing.T) {
+	repo, ctx := testRepository(t)
+	if _, err := repo.db.ExecContext(ctx, `INSERT INTO users (id,name,role,team) VALUES ('user','User','intern','backend'), ('other','Other','intern','backend')`); err != nil {
+		t.Fatal(err)
+	}
+	chats, err := repo.ListChats(ctx, "user")
+	if err != nil || chats == nil || len(chats) != 0 {
+		t.Fatalf("empty: %+v %v", chats, err)
+	}
+	if _, err := repo.db.ExecContext(ctx, `INSERT INTO chats (id,user_id,title,created_at) VALUES
+	  ('old','user','Old','2026-01-01'), ('a','user','A','2026-01-02'),
+	  ('b','user','B','2026-01-02'), ('foreign','other','Foreign','2026-01-03')`); err != nil {
+		t.Fatal(err)
+	}
+	chats, err = repo.ListChats(ctx, "user")
+	if err != nil || len(chats) != 3 {
+		t.Fatalf("list: %+v %v", chats, err)
+	}
+	for i, id := range []string{"b", "a", "old"} {
+		if chats[i].ID != id || chats[i].UserID != "user" || chats[i].Title == "" || chats[i].CreatedAt.IsZero() {
+			t.Fatalf("order/isolation: %+v", chats)
+		}
+	}
+}

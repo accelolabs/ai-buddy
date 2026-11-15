@@ -17,6 +17,8 @@ import (
 )
 
 type dialogService interface {
+	ListChats(context.Context, users.User) ([]buddy.Chat, error)
+	GetChat(context.Context, users.User, string) (buddy.Chat, []buddy.Message, error)
 	Send(context.Context, users.User, string, string, func(buddy.Event) error) (buddy.Message, error)
 }
 
@@ -66,7 +68,7 @@ func sourceView(source *buddy.Source) *sourceResponse {
 
 func NewHandler(dialog dialogService) *Handler { return &Handler{dialog: dialog} }
 
-// Send accepts a message and streams agent activity and its persisted reply via SSE.
+// Send accepts a message, creates a chat when the route has no id, and streams the reply via SSE.
 func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
@@ -106,6 +108,11 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 	reply, err := h.dialog.Send(r.Context(), user, r.PathValue("id"), input.Content, func(event buddy.Event) error {
 		switch event.Type {
+		case "chat":
+			if event.Chat == nil {
+				return fmt.Errorf("missing chat in event")
+			}
+			return send("chat", chatResponse(*event.Chat))
 		case "state":
 			return send("state", stateResponse{State: event.State, Progress: event.Progress})
 		case "source":
@@ -134,7 +141,7 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if err := send("done", messageResponse{ID: reply.ID, ChatID: reply.ChatID, Role: reply.Role, Content: reply.Content, CreatedAt: reply.CreatedAt, Source: sourceView(reply.Source)}); err != nil {
+	if err := send("done", messageView(reply)); err != nil {
 		log.Printf("write dialog reply: %v", err)
 	}
 }

@@ -19,6 +19,7 @@ var (
 
 type repository interface {
 	AddChat(context.Context, buddy.Chat) (buddy.Chat, error)
+	ListChats(context.Context, string) ([]buddy.Chat, error)
 	GetChat(context.Context, string) (buddy.Chat, error)
 	AddMessage(context.Context, buddy.Message) (buddy.Message, error)
 	ListMessages(context.Context, string) ([]buddy.Message, error)
@@ -42,21 +43,57 @@ func (s *Service) CreateChat(ctx context.Context, userID, title string) (buddy.C
 	return s.repository.AddChat(ctx, buddy.Chat{ID: rand.Text(), UserID: userID, Title: title})
 }
 
-// Send requires a trusted current user.
+// ListChats returns only chats owned by the trusted current user.
+func (s *Service) ListChats(ctx context.Context, user users.User) ([]buddy.Chat, error) {
+	return s.repository.ListChats(ctx, user.ID)
+}
+
+// GetChat returns the owned chat and its complete persisted history.
+func (s *Service) GetChat(ctx context.Context, user users.User, id string) (buddy.Chat, []buddy.Message, error) {
+	chat, err := s.repository.GetChat(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return buddy.Chat{}, nil, ErrNotFound
+	}
+	if err != nil {
+		return buddy.Chat{}, nil, fmt.Errorf("get dialog chat: %w", err)
+	}
+	if chat.UserID != user.ID {
+		return buddy.Chat{}, nil, ErrNotFound
+	}
+	messages, err := s.repository.ListMessages(ctx, id)
+	if err != nil {
+		return buddy.Chat{}, nil, fmt.Errorf("load dialog history: %w", err)
+	}
+	return chat, messages, nil
+}
+
+// Send requires a trusted current user. An empty chatID creates a chat from the first message.
 // Concurrent sends to one chat are rejected within this service instance.
 func (s *Service) Send(ctx context.Context, user users.User, chatID, text string, emit func(buddy.Event) error) (buddy.Message, error) {
 	if strings.TrimSpace(text) == "" {
 		return buddy.Message{}, fmt.Errorf("message must not be empty")
 	}
-	chat, err := s.repository.GetChat(ctx, chatID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return buddy.Message{}, ErrNotFound
-	}
-	if err != nil {
-		return buddy.Message{}, fmt.Errorf("get dialog chat: %w", err)
-	}
-	if chat.UserID != user.ID {
-		return buddy.Message{}, ErrNotFound
+	newChat := chatID == ""
+	var chat buddy.Chat
+	var err error
+	if newChat {
+		title := []rune(strings.Join(strings.Fields(text), " "))
+		chat, err = s.CreateChat(ctx, user.ID, string(title[:min(len(title), 80)]))
+		if err != nil {
+			return buddy.Message{}, fmt.Errorf("create dialog chat: %w", err)
+		}
+		chatID = chat.ID
+	} else {
+		chat, err = s.repository.GetChat(ctx, chatID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return buddy.Message{}, ErrNotFound
+		}
+		if err != nil {
+			return buddy.Message{}, fmt.Errorf("get dialog chat: %w", err)
+		}
+		if chat.UserID != user.ID {
+			return buddy.Message{}, ErrNotFound
+		}
 	}
 	if _, busy := s.active.LoadOrStore(chatID, struct{}{}); busy {
 		return buddy.Message{}, ErrBusy
@@ -65,6 +102,11 @@ func (s *Service) Send(ctx context.Context, user users.User, chatID, text string
 	_, err = s.repository.AddMessage(ctx, buddy.Message{ChatID: chatID, Role: buddy.RoleUser, Content: text})
 	if err != nil {
 		return buddy.Message{}, fmt.Errorf("save user message: %w", err)
+	}
+	if newChat && emit != nil {
+		if err := emit(buddy.Event{Type: "chat", Chat: &chat}); err != nil {
+			return buddy.Message{}, fmt.Errorf("emit new chat: %w", err)
+		}
 	}
 	history, err := s.repository.ListMessages(ctx, chatID)
 	if err != nil {

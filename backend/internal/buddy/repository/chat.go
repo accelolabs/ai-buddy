@@ -30,3 +30,25 @@ func (r *Repository) GetChat(ctx context.Context, id string) (buddy.Chat, error)
 	}
 	return chat, nil
 }
+
+func (r *Repository) ListChats(ctx context.Context, userID string) ([]buddy.Chat, error) {
+	rows, err := r.db.QueryContext(ctx, `
+  SELECT id, user_id, title, created_at FROM chats WHERE user_id = $1
+  ORDER BY created_at DESC, id DESC`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list chats: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	chats := make([]buddy.Chat, 0)
+	for rows.Next() {
+		var chat buddy.Chat
+		if err := rows.Scan(&chat.ID, &chat.UserID, &chat.Title, &chat.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan chat: %w", err)
+		}
+		chats = append(chats, chat)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read chats: %w", err)
+	}
+	return chats, nil
+}
