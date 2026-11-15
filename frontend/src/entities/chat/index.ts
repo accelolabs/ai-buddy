@@ -2,3 +2,4 @@ export { useChatStore, type ChatStore, type ChatState, type ChatActions } from '
 export * from './model/types';
 export * from './model/helpers';
 export * from './api/chatStream';
+export * from './api/ticketApi';

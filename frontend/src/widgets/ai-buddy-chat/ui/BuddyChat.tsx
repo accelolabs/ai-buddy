@@ -1,10 +1,8 @@
-import { useState } from 'react';
 import { PromptButton, Picture } from '@/shared/ui';
 import chipLogo from '@/assets/chip-logo.svg';
-import { useChatStore, type ChatStore, type MentorPayload } from '@/entities/chat';
+import { useChatStore, type ChatStore } from '@/entities/chat';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
-import { MentorContactModal } from './MentorContactModal';
 
 interface PromptAction {
   title: string;
@@ -39,9 +37,6 @@ export function BuddyChat() {
   const applyPrompt = useChatStore((state: ChatStore) => state.applyPrompt);
   const messages = useChatStore((state: ChatStore) => state.messages);
   const retryMessage = useChatStore((state: ChatStore) => state.retryMessage);
-  const sendMentorTicket = useChatStore((state: ChatStore) => state.sendMentorTicket);
-
-  const [selectedMentor, setSelectedMentor] = useState<MentorPayload | null>(null);
 
   const hasMessages = messages.length > 0;
 
@@ -49,11 +44,7 @@ export function BuddyChat() {
     <>
       {hasMessages ? (
         <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
-          <MessageList
-            messages={messages}
-            onRetry={retryMessage}
-            onContactMentor={setSelectedMentor}
-          />
+          <MessageList messages={messages} onRetry={retryMessage} />
           <div className="mx-auto flex w-full max-w-[760px] justify-center px-4 pb-6 pt-2">
             <ChatInput />
           </div>
@@ -92,17 +83,6 @@ export function BuddyChat() {
           </div>
         </div>
       )}
-
-      <MentorContactModal
-        open={Boolean(selectedMentor)}
-        onOpenChange={(open) => {
-          if (!open) setSelectedMentor(null);
-        }}
-        mentor={selectedMentor}
-        onSubmit={(values) => {
-          sendMentorTicket(values);
-        }}
-      />
     </>
   );
 }
