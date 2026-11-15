@@ -2,6 +2,7 @@ package main
 
 import (
 	"backend/internal/config"
+	"backend/internal/users"
 	"context"
 	"database/sql"
 	"errors"
@@ -39,9 +40,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	userHandler := users.NewHandler(users.NewRepository(db))
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/users", userHandler.List)
+
 	server := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           http.NewServeMux(),
+		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	serverErr := make(chan error, 1)
