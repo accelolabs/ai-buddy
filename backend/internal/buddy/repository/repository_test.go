@@ -268,7 +268,7 @@ func TestChatMigration(t *testing.T) {
 	if _, err := repo.AddMessage(ctx, buddy.Message{ChatID: "chat", Role: buddy.RoleAssistant, Content: "Answer", Source: &buddy.Source{DocumentID: "doc", Quote: "Quote"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := goose.DownContext(ctx, repo.db, "../../../migrations"); err != nil {
+	if err := goose.DownToContext(ctx, repo.db, "../../../migrations", 2); err != nil {
 		t.Fatal(err)
 	}
 	for _, table := range []string{"chats", "messages", "message_sources"} {
