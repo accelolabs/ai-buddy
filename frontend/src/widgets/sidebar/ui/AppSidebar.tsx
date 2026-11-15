@@ -31,7 +31,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { data: user } = useUser();
   const isUserTrainee = isTrainee(user);
 
-  // Запрашиваем диалоги только если пользователь — стажер
   const {
     data: dialogs = [],
     isLoading,
@@ -48,7 +47,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const setActiveDialogId = useChatStore((s) => s.setActiveDialogId);
   const startNewChat = useChatStore((s) => s.startNewChat);
 
-  // Синхронизация ID активного диалога из URL-параметров при переходе по ссылке
   const currentDialogId = searchParams.get('dialogId') || activeDialogId;
 
   React.useEffect(() => {

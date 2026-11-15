@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useEffect, memo } from 'react';
+import { Check, Pencil, FileText, Loader2 } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 import type { TicketDraftPayload } from '@/entities/chat';
+import { useTicketDraftStore } from '../store/ticketDraftStore';
 
 export interface TicketDraftCardProps {
   draft: TicketDraftPayload;
@@ -9,89 +12,56 @@ export interface TicketDraftCardProps {
   isSubmitting?: boolean;
 }
 
-const CHECK_ICON = (
-  <svg
-    className="h-4 w-4 shrink-0 text-white"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <polyline points="20 6 9 17 4 12" />
-  </svg>
-);
-
-const PENCIL_ICON = (
-  <svg
-    className="h-3.5 w-3.5 shrink-0"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-    <path d="m15 5 4 4" />
-  </svg>
-);
-
-const FILE_TEXT_ICON = (
-  <svg
-    className="h-4 w-4 text-[#0284C7]"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-    <polyline points="14 2 14 8 20 8" />
-    <line x1="16" y1="13" x2="8" y2="13" />
-    <line x1="16" y1="17" x2="8" y2="17" />
-    <line x1="10" y1="9" x2="8" y2="9" />
-  </svg>
-);
-
-export function TicketDraftCard({
+export const TicketDraftCard = memo(function TicketDraftCard({
   draft,
   onApprove,
   onUpdate,
   isSubmitting = false,
 }: TicketDraftCardProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [localSubmitting, setLocalSubmitting] = useState(false);
-  const [editedSubject, setEditedSubject] = useState(draft.subject);
-  const [editedMessage, setEditedMessage] = useState(draft.message);
+  const {
+    isEditing,
+    editedSubject,
+    editedMessage,
+    isStoreSubmitting,
+  } = useTicketDraftStore(
+    useShallow((state) => ({
+      isEditing: state.isEditing,
+      editedSubject: state.editedSubject,
+      editedMessage: state.editedMessage,
+      isStoreSubmitting: state.isSubmitting,
+    }))
+  );
 
-  const submitting = isSubmitting || localSubmitting;
+  const startEditing = useTicketDraftStore((state) => state.startEditing);
+  const cancelEditing = useTicketDraftStore((state) => state.cancelEditing);
+  const setEditedSubject = useTicketDraftStore((state) => state.setEditedSubject);
+  const setEditedMessage = useTicketDraftStore((state) => state.setEditedMessage);
+  const saveEdit = useTicketDraftStore((state) => state.saveEdit);
+  const approveDraft = useTicketDraftStore((state) => state.approveDraft);
 
-  const handleApprove = async () => {
-    if (submitting) return;
-    setLocalSubmitting(true);
-    try {
-      await onApprove?.(draft);
-    } finally {
-      setLocalSubmitting(false);
+  useEffect(() => {
+    if (!isEditing) {
+      setEditedSubject(draft.subject);
+      setEditedMessage(draft.message);
     }
+  }, [draft.subject, draft.message, isEditing, setEditedSubject, setEditedMessage]);
+
+  const submitting = isSubmitting || isStoreSubmitting;
+
+  const handleApprove = () => {
+    void approveDraft(draft, onApprove);
   };
 
-  const handleSaveEdit = () => {
-    if (!editedSubject.trim() || !editedMessage.trim()) return;
-    onUpdate?.({
-      subject: editedSubject.trim(),
-      message: editedMessage.trim(),
-    });
-    setIsEditing(false);
+  const handleStartEdit = () => {
+    startEditing(draft.subject, draft.message);
   };
 
   const handleCancelEdit = () => {
-    setEditedSubject(draft.subject);
-    setEditedMessage(draft.message);
-    setIsEditing(false);
+    cancelEditing(draft.subject, draft.message);
+  };
+
+  const handleSaveEdit = () => {
+    saveEdit(onUpdate);
   };
 
   return (
@@ -101,7 +71,7 @@ export function TicketDraftCard({
     >
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/70 pb-3.5">
         <div className="flex items-center gap-2 rounded-full bg-[#E0F2FE] px-3 py-1 text-xs font-semibold text-[#0284C7]">
-          {FILE_TEXT_ICON}
+          <FileText className="h-4 w-4 text-[#0284C7]" />
           <span>Черновик тикета</span>
         </div>
 
@@ -188,10 +158,10 @@ export function TicketDraftCard({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setIsEditing(true)}
+                onClick={handleStartEdit}
                 className="flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-[#334155] shadow-2xs transition-colors hover:bg-slate-100"
               >
-                {PENCIL_ICON}
+                <Pencil className="h-3.5 w-3.5 text-[#334155]" />
                 <span>Изменить</span>
               </button>
 
@@ -201,7 +171,11 @@ export function TicketDraftCard({
                 disabled={submitting}
                 className="flex items-center gap-2 rounded-xl bg-[#70C5FF] px-5 py-2 text-xs font-bold text-white shadow-[0_4px_12px_rgba(112,197,255,0.35)] transition-all duration-150 hover:bg-[#52B7FF] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {CHECK_ICON}
+                {submitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-white" />
+                ) : (
+                  <Check className="h-4 w-4 text-white" />
+                )}
                 <span>{submitting ? 'Отправка...' : 'Подтвердить и отправить'}</span>
               </button>
             </div>
@@ -210,6 +184,6 @@ export function TicketDraftCard({
       </div>
     </div>
   );
-}
+});
 
 export default TicketDraftCard;

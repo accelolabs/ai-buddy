@@ -210,7 +210,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       isStreaming: true,
     }));
 
-    // Инвалидируем список диалогов для актуализации сайдбара
     void queryClient.invalidateQueries({ queryKey: ['dialogs'] });
 
     try {

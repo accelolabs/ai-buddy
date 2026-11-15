@@ -1,7 +1,7 @@
 import type { FormEvent } from 'react';
-import { X, Clock, Send } from 'lucide-react';
+import { X, Clock, Send, Loader2 } from 'lucide-react';
 import type { MentorPayload } from '@/entities/chat';
-import type { MentorCardFormErrors } from '../model/useMentorCard';
+import type { MentorCardFormErrors } from '../store/mentorCardStore';
 
 export interface MentorCardFormProps {
   mentor: MentorPayload;
@@ -137,10 +137,16 @@ export function MentorCardForm({
           disabled={isSubmitting}
           className="flex items-center gap-2 rounded-xl bg-[#00AAFF] px-5 py-2 text-xs font-bold text-white shadow-xs transition-all duration-200 hover:bg-[#0096E6] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <Send className="h-4 w-4 shrink-0 text-white" />
+          {isSubmitting ? (
+            <Loader2 className="h-4 w-4 animate-spin text-white" />
+          ) : (
+            <Send className="h-4 w-4 shrink-0 text-white" />
+          )}
           <span>{isSubmitting ? 'Отправка...' : 'Отправить наставнику'}</span>
         </button>
       </div>
     </form>
   );
 }
+
+export default MentorCardForm;

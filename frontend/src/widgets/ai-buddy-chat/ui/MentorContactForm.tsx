@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from 'react';
+import { X, Clock, Send } from 'lucide-react';
 import type { MentorPayload } from '@/entities/chat';
+import { DEFAULT_MENTOR, MENTOR_SCHEDULE_NOTICE } from '../constants/mentorDefaults';
 
 export interface MentorContactFormValues {
   subject: string;
@@ -15,61 +17,6 @@ export interface MentorContactFormProps {
   onCancel?: () => void;
   onSubmit?: (values: MentorContactFormValues) => void | Promise<void>;
 }
-
-const DEFAULT_MENTOR: MentorPayload = {
-  id: 'mentor-1',
-  name: 'Мария Соколова',
-  role: 'Наставник стажёров',
-  team: 'Команда онбординга',
-  schedule: 'Отвечает в будни с 10:00 до 19:00',
-  initials: 'МС',
-  isOnline: true,
-};
-
-const CLOSE_ICON = (
-  <svg
-    className="h-5 w-5"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M18 6 6 18" />
-    <path d="m6 6 12 12" />
-  </svg>
-);
-
-const CLOCK_ICON = (
-  <svg
-    className="h-4 w-4 shrink-0 text-[#0284C7]"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <circle cx="12" cy="12" r="10" />
-    <polyline points="12 6 12 12 16 14" />
-  </svg>
-);
-
-const SEND_PLANE_ICON = (
-  <svg
-    className="h-4 w-4 shrink-0 text-white"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="m22 2-7 20-4-9-9-4Z" />
-    <path d="M22 2 11 13" />
-  </svg>
-);
 
 export function MentorContactForm({
   mentor = DEFAULT_MENTOR,
@@ -147,19 +94,19 @@ export function MentorContactForm({
             title="Закрыть"
             aria-label="Закрыть"
           >
-            {CLOSE_ICON}
+            <X className="h-5 w-5" />
           </button>
         )}
       </div>
 
       <div className="flex items-start gap-3 rounded-[14px] border border-[#E0F2FE] bg-[#F4FAFF] p-3.5 text-[13px] leading-relaxed text-[#334155]">
-        <div className="mt-0.5">{CLOCK_ICON}</div>
+        <Clock className="mt-0.5 h-4 w-4 shrink-0 text-[#0284C7]" />
         <div className="flex flex-col">
           <div>
             <strong className="font-bold text-[#0F172A]">График наставника:</strong>{' '}
             <span>{currentMentor.schedule || 'Отвечает в будни с 10:00 до 19:00.'}</span>
           </div>
-          <div>Среднее время первого ответа — 15 минут.</div>
+          <div>{MENTOR_SCHEDULE_NOTICE}</div>
         </div>
       </div>
 
@@ -223,7 +170,7 @@ export function MentorContactForm({
           disabled={isSubmitting}
           className="flex items-center gap-2 rounded-[14px] bg-[#70C5FF] px-6 py-2.5 text-sm font-bold text-white shadow-[0_4px_12px_rgba(112,197,255,0.35)] transition-all duration-200 hover:bg-[#52B7FF] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {SEND_PLANE_ICON}
+          <Send className="h-4 w-4 shrink-0 text-white" />
           <span>{isSubmitting ? 'Отправка...' : 'Отправить наставнику'}</span>
         </button>
       </div>

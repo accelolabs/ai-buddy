@@ -1,3 +1,5 @@
+import { memo } from 'react';
+import { Send } from 'lucide-react';
 import { useChatInput } from '../model/useChatInput';
 
 export interface ChatInputProps {
@@ -5,22 +7,7 @@ export interface ChatInputProps {
   className?: string;
 }
 
-const SEND_ICON = (
-  <svg
-    className="h-4 w-4 text-white"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M22 2L11 13" />
-    <path d="M22 2L15 22L11 13L2 9L22 2Z" />
-  </svg>
-);
-
-export function ChatInput({ onSubmit, className = '' }: ChatInputProps) {
+export const ChatInput = memo(function ChatInput({ onSubmit, className = '' }: ChatInputProps) {
   const {
     textareaRef,
     draft,
@@ -69,7 +56,7 @@ export function ChatInput({ onSubmit, className = '' }: ChatInputProps) {
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#00AAFF] transition-all duration-200 hover:bg-[#0096e6]"
             title="Начать ввод"
           >
-            {SEND_ICON}
+            <Send className="h-4 w-4 text-white" />
           </button>
         )}
       </div>
@@ -98,12 +85,12 @@ export function ChatInput({ onSubmit, className = '' }: ChatInputProps) {
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#00AAFF] transition-all duration-200 hover:bg-[#0096e6] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
             title="Отправить сообщение"
           >
-            {SEND_ICON}
+            <Send className="h-4 w-4 text-white" />
           </button>
         </div>
       )}
     </div>
   );
-}
+});
 
 export default ChatInput;

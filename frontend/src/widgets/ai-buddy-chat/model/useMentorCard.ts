@@ -1,14 +1,15 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, type FormEvent } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { MentorPayload } from '@/entities/chat';
-import { createTicket, type CreatedTicket } from '@/entities/chat/api/ticketApi';
-import { useChatStore } from '@/entities/chat';
+import type { CreatedTicket } from '@/entities/chat/api/ticketApi';
+import {
+  useMentorCardStore,
+  resolveDefaultTicketData,
+  type MentorCardViewState,
+  type MentorCardFormErrors,
+} from '../store/mentorCardStore';
 
-export type MentorCardViewState = 'compact' | 'form' | 'success';
-
-export interface MentorCardFormErrors {
-  subject?: string;
-  message?: string;
-}
+export type { MentorCardViewState, MentorCardFormErrors };
 
 export interface UseMentorCardOptions {
   mentor: MentorPayload;
@@ -19,29 +20,6 @@ export interface UseMentorCardOptions {
   onTicketCreated?: (ticket: CreatedTicket) => void;
 }
 
-function getDefaultTicketData(customSubject?: string, customMessage?: string) {
-  if (customSubject && customMessage) {
-    return { subject: customSubject, message: customMessage };
-  }
-
-  const messages = useChatStore.getState().messages;
-  const lastUserMsg = [...messages].reverse().find((m) => m.sender === 'user')?.text || '';
-
-  const subject =
-    customSubject ||
-    (lastUserMsg
-      ? `Вопрос по теме: ${lastUserMsg.length > 40 ? lastUserMsg.slice(0, 37) + '...' : lastUserMsg}`
-      : 'Вопрос по материалам онбординга');
-
-  const message =
-    customMessage ||
-    (lastUserMsg
-      ? `Здравствуйте!\n\nНе удалось найти ответ в базе знаний по вопросу: «${lastUserMsg}».\n\nПрошу подсказать, где найти информацию или как лучше поступить.`
-      : 'Здравствуйте! Прошу помочь разобраться с вопросом по стажировке.');
-
-  return { subject, message };
-}
-
 export function useMentorCard({
   mentor,
   defaultOpen = false,
@@ -50,82 +28,60 @@ export function useMentorCard({
   onContact,
   onTicketCreated,
 }: UseMentorCardOptions) {
-  const defaults = getDefaultTicketData(initialSubject, initialMessage);
-
-  const [viewState, setViewState] = useState<MentorCardViewState>(
-    defaultOpen ? 'form' : 'compact',
+  const {
+    viewState,
+    subject,
+    message,
+    errors,
+    isSubmitting,
+    createdTicket,
+  } = useMentorCardStore(
+    useShallow((state) => ({
+      viewState: state.viewState,
+      subject: state.subject,
+      message: state.message,
+      errors: state.errors,
+      isSubmitting: state.isSubmitting,
+      createdTicket: state.createdTicket,
+    }))
   );
-  const [subject, setSubject] = useState(defaults.subject);
-  const [message, setMessage] = useState(defaults.message);
-  const [errors, setErrors] = useState<MentorCardFormErrors>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [createdTicket, setCreatedTicket] = useState<CreatedTicket | null>(null);
+
+  const setViewState = useMentorCardStore((state) => state.setViewState);
+  const setSubject = useMentorCardStore((state) => state.setSubject);
+  const setMessage = useMentorCardStore((state) => state.setMessage);
+  const openForm = useMentorCardStore((state) => state.openForm);
+  const closeForm = useMentorCardStore((state) => state.closeForm);
+  const submitTicket = useMentorCardStore((state) => state.submitTicket);
+
+  useEffect(() => {
+    if (defaultOpen && viewState === 'compact') {
+      const defaults = resolveDefaultTicketData(initialSubject, initialMessage);
+      setSubject(defaults.subject);
+      setMessage(defaults.message);
+      setViewState('form');
+    }
+  }, [defaultOpen, viewState, initialSubject, initialMessage, setSubject, setMessage, setViewState]);
 
   const handleOpenForm = () => {
-    const latest = getDefaultTicketData(initialSubject, initialMessage);
-    if (!subject.trim()) {
-      setSubject(latest.subject);
-    }
-    if (!message.trim()) {
-      setMessage(latest.message);
-    }
-    setViewState('form');
+    openForm({ initialSubject, initialMessage, mentor });
     onContact?.(mentor);
   };
 
   const handleCancel = () => {
-    setViewState('compact');
-    setErrors({});
+    closeForm();
   };
 
   const handleSubjectChange = (val: string) => {
     setSubject(val);
-    if (errors.subject) {
-      setErrors((prev) => ({ ...prev, subject: undefined }));
-    }
   };
 
   const handleMessageChange = (val: string) => {
     setMessage(val);
-    if (errors.message) {
-      setErrors((prev) => ({ ...prev, message: undefined }));
-    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-
-    const newErrors: MentorCardFormErrors = {};
-    if (!subject.trim()) {
-      newErrors.subject = 'Укажите тему вопроса';
-    }
-    if (!message.trim()) {
-      newErrors.message = 'Напишите текст сообщения';
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-
-    setErrors({});
-    setIsSubmitting(true);
-
-    try {
-      const ticket = await createTicket({
-        subject: subject.trim(),
-        message: message.trim(),
-        mentorId: mentor.id,
-      });
-
-      setCreatedTicket(ticket);
-      setViewState('success');
-      onTicketCreated?.(ticket);
-    } catch {
-      setErrors({ message: 'Не удалось отправить тикет. Попробуйте еще раз.' });
-    } finally {
-      setIsSubmitting(false);
-    }
+    await submitTicket(mentor.id, onTicketCreated);
   };
 
   return {
