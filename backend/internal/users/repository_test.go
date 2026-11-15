@@ -97,7 +97,7 @@ func TestRepository(t *testing.T) {
 		t.Fatal("invalid role was accepted")
 	}
 
-	if err := goose.DownContext(ctx, repo.db, "../../migrations"); err != nil {
+	if err := goose.DownToContext(ctx, repo.db, "../../migrations", 0); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := repo.List(ctx); err == nil {

@@ -7,8 +7,9 @@ import (
 )
 
 type Config struct {
-	Addr        string `env:"ADDR" env-default:":8080"`
-	DatabaseURL string `env:"DATABASE_URL" env-required:"true"`
+	Addr             string `env:"ADDR" env-default:":8080"`
+	DatabaseURL      string `env:"DATABASE_URL" env-required:"true"`
+	KnowledgeBaseDir string `env:"KNOWLEDGE_BASE_DIR" env-default:"../knowledge-base"`
 }
 
 func Load() (Config, error) {

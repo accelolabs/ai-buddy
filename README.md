@@ -10,7 +10,7 @@ AI Buddy — демо для адаптации стажёров: чат с ин
 - [Запуск, конфигурация и проверки](backend-ai/README.md)
 - [Архитектура прежней реализации](docs/SDD.md)
 - [Единый OpenAPI](backend-ai/api/openapi.yaml)
-- [База знаний](knowledge-base/README.md)
+- [База знаний](docs/KNOWLEDGE_BASE.md)
 
 ```sh
 cd backend-ai

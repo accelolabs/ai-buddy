@@ -31,6 +31,19 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  index:
+    build: .
+    profiles: [tools]
+    command: ["./index"]
+    environment:
+      DATABASE_URL: postgres://buddy:${POSTGRES_PASSWORD:-buddy}@postgres:5432/buddy?sslmode=disable
+      KNOWLEDGE_BASE_DIR: /knowledge-base
+    volumes:
+      - ../knowledge-base:/knowledge-base:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
   postgres:
     image: postgres:16-alpine
     environment:
