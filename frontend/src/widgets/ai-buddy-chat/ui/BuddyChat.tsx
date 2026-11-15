@@ -1,45 +1,22 @@
+import { useShallow } from 'zustand/react/shallow';
 import { PromptButton, Picture } from '@/shared/ui';
 import chipLogo from '@/assets/chip-logo.svg';
-import { useChatStore, type ChatStore } from '@/entities/chat';
+import { useChatStore } from '@/entities/chat';
+import { PROMPT_ACTIONS } from '../constants/promptActions';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
 
-interface PromptAction {
-  title: string;
-  subtitle: string;
-  promptText: string;
-}
-
-const PROMPT_ACTIONS: PromptAction[] = [
-  {
-    title: 'Покажи документы команды',
-    subtitle: 'ссылка на нужный раздел',
-    promptText: 'Покажи документы команды',
-  },
-  {
-    title: 'Защита данных и КИ',
-    subtitle: 'ознакомление с инструкциями',
-    promptText: 'Защита данных и КИ',
-  },
-  {
-    title: 'Мой прогресс',
-    subtitle: 'открытие карты прогресса',
-    promptText: '/progress',
-  },
-  {
-    title: 'Покажи памятку',
-    subtitle: 'о закрытии практики',
-    promptText: 'Покажи памятку о закрытии практики',
-  },
-];
-
 export function BuddyChat() {
-  const applyPrompt = useChatStore((state: ChatStore) => state.applyPrompt);
-  const messages = useChatStore((state: ChatStore) => state.messages);
-  const retryMessage = useChatStore((state: ChatStore) => state.retryMessage);
-  const approveTicketDraft = useChatStore((state: ChatStore) => state.approveTicketDraft);
-  const updateTicketDraft = useChatStore((state: ChatStore) => state.updateTicketDraft);
+  const { applyPrompt, retryMessage, approveTicketDraft, updateTicketDraft } = useChatStore(
+    useShallow((state) => ({
+      applyPrompt: state.applyPrompt,
+      retryMessage: state.retryMessage,
+      approveTicketDraft: state.approveTicketDraft,
+      updateTicketDraft: state.updateTicketDraft,
+    }))
+  );
 
+  const messages = useChatStore((state) => state.messages);
   const hasMessages = messages.length > 0;
 
   return (

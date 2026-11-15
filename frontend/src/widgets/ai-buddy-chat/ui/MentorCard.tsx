@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { MentorPayload } from '@/entities/chat';
 import type { CreatedTicket } from '@/entities/chat/api/ticketApi';
 import { useMentorCard } from '../model/useMentorCard';
@@ -14,7 +15,7 @@ export interface MentorCardProps {
   onTicketCreated?: (ticket: CreatedTicket) => void;
 }
 
-export function MentorCard({
+export const MentorCard = memo(function MentorCard({
   mentor,
   defaultOpen = false,
   initialSubject,
@@ -64,6 +65,6 @@ export function MentorCard({
   }
 
   return <MentorCardCompact mentor={mentor} onOpenForm={handleOpenForm} />;
-}
+});
 
 export default MentorCard;

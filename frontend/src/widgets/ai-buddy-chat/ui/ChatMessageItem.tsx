@@ -1,4 +1,5 @@
 import { memo, useState } from 'react';
+import { Copy, Check, RotateCcw } from 'lucide-react';
 import type { ChatMessage, MentorPayload, TicketDraftPayload } from '@/entities/chat';
 import { BuddyAvatar } from './BuddyAvatar';
 import { ExecutionStages } from './ExecutionStages';
@@ -15,50 +16,6 @@ export interface ChatMessageItemProps {
   onUpdateDraft?: (updated: Partial<TicketDraftPayload>) => void;
 }
 
-const COPY_ICON = (
-  <svg
-    className="h-4 w-4"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-  </svg>
-);
-
-const CHECK_SMALL_ICON = (
-  <svg
-    className="h-4 w-4 text-[#04E061]"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <polyline points="20 6 9 17 4 12" />
-  </svg>
-);
-
-const RETRY_ICON = (
-  <svg
-    className="h-4 w-4"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-    <path d="M3 3v5h5" />
-  </svg>
-);
-
 export const ChatMessageItem = memo(function ChatMessageItem({
   message,
   onRetry,
@@ -74,8 +31,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       await navigator.clipboard.writeText(message.text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (e) {
-      void e;
+    } catch {
+      void 0;
     }
   };
 
@@ -169,7 +126,11 @@ export const ChatMessageItem = memo(function ChatMessageItem({
               className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-slate-100 hover:text-[#0F172A]"
               title={copied ? 'Скопировано!' : 'Копировать'}
             >
-              {copied ? CHECK_SMALL_ICON : COPY_ICON}
+              {copied ? (
+                <Check className="h-4 w-4 text-[#04E061]" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
             </button>
             {onRetry && (
               <button
@@ -178,7 +139,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                 className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-slate-100 hover:text-[#0F172A]"
                 title="Перегенерировать ответ"
               >
-                {RETRY_ICON}
+                <RotateCcw className="h-4 w-4" />
               </button>
             )}
           </div>
