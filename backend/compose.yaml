@@ -1,0 +1,41 @@
+name: buddy-backend
+
+services:
+  server:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      ADDR: :8080
+      DATABASE_URL: postgres://buddy:${POSTGRES_PASSWORD:-buddy}@postgres:5432/buddy?sslmode=disable
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  migrate:
+    build: .
+    command: ["./migrate"]
+    environment:
+      DATABASE_URL: postgres://buddy:${POSTGRES_PASSWORD:-buddy}@postgres:5432/buddy?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: buddy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-buddy}
+      POSTGRES_DB: buddy
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U buddy -d buddy"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres:

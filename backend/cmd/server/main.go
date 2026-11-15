@@ -1,0 +1,67 @@
+package main
+
+import (
+	"backend/internal/config"
+	"context"
+	"database/sql"
+	"errors"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
+)
+
+func main() {
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	db, err := sql.Open("pgx", cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("open database: %v", err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("close database: %v", err)
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	err = db.PingContext(ctx)
+	cancel()
+	if err != nil {
+		log.Fatalf("ping database: %v", err)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	server := &http.Server{
+		Addr:              cfg.Addr,
+		Handler:           http.NewServeMux(),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- server.ListenAndServe()
+	}()
+
+	log.Printf("HTTP server starting on %s", cfg.Addr)
+	select {
+	case err := <-serverErr:
+		if !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("serve HTTP: %v", err)
+		}
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Fatalf("shutdown HTTP server: %v", err)
+		}
+	}
+}
