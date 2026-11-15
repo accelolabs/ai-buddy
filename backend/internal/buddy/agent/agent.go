@@ -63,41 +63,21 @@ func (a *Agent) Generate(ctx context.Context, user users.User, history []buddy.M
 		tools = append(tools, ollama.Tool{Type: "function", Function: ollama.Definition{Name: tool.Name, Description: tool.Description, Parameters: tool.InputSchema}})
 		known[tool.Name] = true
 	}
-	sendState := func(state, progress string) error {
-		if emit == nil {
-			return nil
-		}
-		return emit(buddy.Event{Type: "state", State: state, Progress: progress})
-	}
 	calls := 0
 	var content strings.Builder
 	for {
 		if err := ctx.Err(); err != nil {
 			return buddy.Answer{}, err
 		}
-		if err := sendState("thinking", ""); err != nil {
-			return buddy.Answer{}, err
+		if emit != nil {
+			if err := emit(buddy.Event{Type: "state", State: "thinking"}); err != nil {
+				return buddy.Answer{}, err
+			}
 		}
 		if calls == maxToolCalls {
 			tools = nil
 		}
-		answering := false
-		response, err := a.model.Chat(ctx, messages, tools, func(text string) error {
-			if text == "" {
-				return nil
-			}
-			if !answering {
-				if err := sendState("answering", ""); err != nil {
-					return err
-				}
-				answering = true
-			}
-			content.WriteString(text)
-			if emit != nil {
-				return emit(buddy.Event{Type: "text", Text: text})
-			}
-			return nil
-		})
+		response, err := a.streamResponse(ctx, messages, tools, &content, emit)
 		if err != nil {
 			return buddy.Answer{}, fmt.Errorf("generate answer: %w", err)
 		}
@@ -109,32 +89,66 @@ func (a *Agent) Generate(ctx context.Context, user users.User, history []buddy.M
 		}
 		response.Message.Role = "assistant"
 		messages = append(messages, response.Message)
-		for _, call := range response.Message.Calls {
-			if !known[call.Function.Name] {
-				return buddy.Answer{}, fmt.Errorf("unknown tool %q", call.Function.Name)
-			}
-			var args map[string]any
-			if err := json.Unmarshal(call.Function.Arguments, &args); err != nil || args == nil {
-				return buddy.Answer{}, fmt.Errorf("invalid arguments for tool %q", call.Function.Name)
-			}
-			if err := sendState("progress", call.Function.Name); err != nil {
-				return buddy.Answer{}, err
-			}
-			result, err := session.CallTool(ctx, &sdk.CallToolParams{Name: call.Function.Name, Arguments: args})
-			if err != nil {
-				return buddy.Answer{}, fmt.Errorf("call tool %q: %w", call.Function.Name, err)
-			}
-			var text strings.Builder
-			for _, content := range result.Content {
-				if part, ok := content.(*sdk.TextContent); ok {
-					text.WriteString(part.Text)
+		results, err := a.callTools(ctx, session, response.Message.Calls, known, emit)
+		if err != nil {
+			return buddy.Answer{}, err
+		}
+		messages = append(messages, results...)
+		calls += len(response.Message.Calls)
+	}
+}
+
+func (a *Agent) streamResponse(ctx context.Context, messages []ollama.Message, tools []ollama.Tool, content *strings.Builder, emit func(buddy.Event) error) (ollama.Response, error) {
+	answering := false
+	return a.model.Chat(ctx, messages, tools, func(text string) error {
+		if text == "" {
+			return nil
+		}
+		if !answering {
+			if emit != nil {
+				if err := emit(buddy.Event{Type: "state", State: "answering"}); err != nil {
+					return err
 				}
 			}
-			if result.IsError {
-				return buddy.Answer{}, fmt.Errorf("tool %q failed: %s", call.Function.Name, text.String())
-			}
-			messages = append(messages, ollama.Message{Role: "tool", ToolName: call.Function.Name, Content: text.String()})
-			calls++
+			answering = true
 		}
+		content.WriteString(text)
+		if emit != nil {
+			return emit(buddy.Event{Type: "text", Text: text})
+		}
+		return nil
+	})
+}
+
+func (a *Agent) callTools(ctx context.Context, session *sdk.ClientSession, calls []ollama.Call, known map[string]bool, emit func(buddy.Event) error) ([]ollama.Message, error) {
+	messages := make([]ollama.Message, 0, len(calls))
+	for _, call := range calls {
+		if !known[call.Function.Name] {
+			return nil, fmt.Errorf("unknown tool %q", call.Function.Name)
+		}
+		var args map[string]any
+		if err := json.Unmarshal(call.Function.Arguments, &args); err != nil || args == nil {
+			return nil, fmt.Errorf("invalid arguments for tool %q", call.Function.Name)
+		}
+		if emit != nil {
+			if err := emit(buddy.Event{Type: "state", State: "progress", Progress: call.Function.Name}); err != nil {
+				return nil, err
+			}
+		}
+		result, err := session.CallTool(ctx, &sdk.CallToolParams{Name: call.Function.Name, Arguments: args})
+		if err != nil {
+			return nil, fmt.Errorf("call tool %q: %w", call.Function.Name, err)
+		}
+		var text strings.Builder
+		for _, content := range result.Content {
+			if part, ok := content.(*sdk.TextContent); ok {
+				text.WriteString(part.Text)
+			}
+		}
+		if result.IsError {
+			return nil, fmt.Errorf("tool %q failed: %s", call.Function.Name, text.String())
+		}
+		messages = append(messages, ollama.Message{Role: "tool", ToolName: call.Function.Name, Content: text.String()})
 	}
+	return messages, nil
 }
