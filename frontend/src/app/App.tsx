@@ -5,6 +5,7 @@ import { AppLayout } from '@/app/AppLayout';
 import { TraineeRoute } from '@/app/routes';
 import { ChatPage } from '@/pages/chat';
 import { DashboardPage } from '@/pages/dashboard';
+import { TicketsPage } from '@/pages/tickets';
 
 function App() {
   return (
@@ -22,6 +23,8 @@ function App() {
             />
             <Route path="/dashboard" element={<DashboardPage />} />
           </Route>
+          <Route path="/tickets" element={<TicketsPage />} />
+          <Route path="/tickets/:ticketId" element={<TicketsPage />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

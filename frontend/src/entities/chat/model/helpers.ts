@@ -4,6 +4,8 @@ import type {
   MessageStage,
   WikiSourcePayload,
   MentorPayload,
+  TicketDraftPayload,
+  CreatedTicketPayload,
 } from './types';
 
 export function createUserMessage(text: string): ChatMessage {
@@ -82,6 +84,22 @@ export function applySSEEventToMessage(message: ChatMessage, event: SSEEvent): C
         cards.push({
           type: 'mentor_fallback',
           payload: event.payload as MentorPayload,
+        });
+      } else if (event.cardType === 'ticket_draft') {
+        const draftIdx = cards.findIndex((c) => c.type === 'ticket_draft');
+        const draftCard = {
+          type: 'ticket_draft' as const,
+          payload: event.payload as TicketDraftPayload,
+        };
+        if (draftIdx >= 0) {
+          cards[draftIdx] = draftCard;
+        } else {
+          cards.push(draftCard);
+        }
+      } else if (event.cardType === 'ticket_success') {
+        cards.push({
+          type: 'ticket_success',
+          payload: event.payload as CreatedTicketPayload,
         });
       }
       return {

@@ -1,14 +1,18 @@
 import { memo, useState } from 'react';
-import type { ChatMessage, MentorPayload } from '@/entities/chat';
+import type { ChatMessage, MentorPayload, TicketDraftPayload } from '@/entities/chat';
 import { BuddyAvatar } from './BuddyAvatar';
 import { ExecutionStages } from './ExecutionStages';
 import { SourceCard } from './SourceCard';
 import { MentorCard } from './MentorCard';
+import { TicketDraftCard } from './TicketDraftCard';
+import { TicketSuccessCard } from './TicketSuccessCard';
 
 export interface ChatMessageItemProps {
   message: ChatMessage;
   onRetry?: (messageId: string) => void;
   onContactMentor?: (mentor: MentorPayload) => void;
+  onApproveDraft?: (draft: TicketDraftPayload) => void;
+  onUpdateDraft?: (updated: Partial<TicketDraftPayload>) => void;
 }
 
 const COPY_ICON = (
@@ -59,6 +63,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   message,
   onRetry,
   onContactMentor,
+  onApproveDraft,
+  onUpdateDraft,
 }: ChatMessageItemProps) {
   const [copied, setCopied] = useState(false);
 
@@ -93,8 +99,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       <BuddyAvatar className="h-8 w-8 mt-0.5" />
 
       <div className="flex flex-1 flex-col gap-3.5">
-        {hasStages && isInProgress && (
-          <ExecutionStages stages={message.stages!} showSkeleton={!hasText} />
+        {hasStages && (
+          <ExecutionStages
+            stages={message.stages!}
+            showSkeleton={isInProgress && !hasText}
+            isCompleted={message.status === 'completed'}
+          />
         )}
 
         {hasText && (
@@ -117,6 +127,19 @@ export const ChatMessageItem = memo(function ChatMessageItem({
               }
               if (card.type === 'mentor_fallback') {
                 return <MentorCard key={idx} mentor={card.payload} onContact={onContactMentor} />;
+              }
+              if (card.type === 'ticket_draft') {
+                return (
+                  <TicketDraftCard
+                    key={idx}
+                    draft={card.payload}
+                    onApprove={onApproveDraft}
+                    onUpdate={onUpdateDraft}
+                  />
+                );
+              }
+              if (card.type === 'ticket_success') {
+                return <TicketSuccessCard key={idx} ticket={card.payload} />;
               }
               return null;
             })}

@@ -1,13 +1,18 @@
 import { create } from 'zustand';
-import type { ChatMessage, SSEEvent } from './types';
+import type { ChatMessage, SSEEvent, TicketDraftPayload, TicketFlowStep } from './types';
 import { simulateSSEStream } from '../api/chatStream';
+import { createTicket } from '../api/ticketApi';
 import { createUserMessage, createBuddyMessage, updateMessagesWithEvent } from './helpers';
+import { queryClient } from '@/shared/api';
 
 export interface ChatState {
   draft: string;
   isExpanded: boolean;
   messages: ChatMessage[];
   isStreaming: boolean;
+  ticketFlowStep: TicketFlowStep;
+  activeTicketDraft: TicketDraftPayload | null;
+  activeDialogId: string | null;
 }
 
 export interface ChatActions {
@@ -15,10 +20,15 @@ export interface ChatActions {
   setIsExpanded: (expanded: boolean) => void;
   applyPrompt: (promptText: string) => void;
   resetDraft: () => void;
+  setActiveDialogId: (id: string | null) => void;
+  startNewChat: () => void;
   sendMessage: (text: string) => Promise<void>;
   retryMessage: (buddyMessageId?: string) => Promise<void>;
   applySSEEvent: (buddyMessageId: string, event: SSEEvent) => void;
   sendMentorTicket: (payload: { subject: string; message: string; mentorId: string }) => void;
+  approveTicketDraft: (draft?: TicketDraftPayload) => Promise<void>;
+  updateTicketDraft: (updated: Partial<TicketDraftPayload>) => void;
+  cancelTicketDraft: () => void;
   clearMessages: () => void;
   stopStreaming: () => void;
 }
@@ -30,6 +40,9 @@ const initialChatState: ChatState = {
   isExpanded: false,
   messages: [],
   isStreaming: false,
+  ticketFlowStep: 'idle',
+  activeTicketDraft: null,
+  activeDialogId: null,
 };
 
 let activeAbortController: AbortController | null = null;
@@ -47,6 +60,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   setDraft: (draft) => set({ draft }),
   setIsExpanded: (isExpanded) => set({ isExpanded }),
   resetDraft: () => set({ draft: '' }),
+  setActiveDialogId: (activeDialogId) => set({ activeDialogId }),
+
+  startNewChat: () => {
+    abortActiveStream();
+    set({
+      activeDialogId: null,
+      messages: [],
+      draft: '',
+      isStreaming: false,
+      ticketFlowStep: 'idle',
+      activeTicketDraft: null,
+    });
+  },
 
   applyPrompt: (promptText) => {
     set({ draft: promptText, isExpanded: true });
@@ -54,10 +80,26 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   applySSEEvent: (buddyMessageId, event) => {
-    set((state) => ({
-      messages: updateMessagesWithEvent(state.messages, buddyMessageId, event),
-      isStreaming: event.type === 'done' || event.type === 'error' ? false : state.isStreaming,
-    }));
+    set((state) => {
+      let nextFlowStep = state.ticketFlowStep;
+      let nextActiveDraft = state.activeTicketDraft;
+
+      if (event.type === 'flow_step') {
+        nextFlowStep = event.step;
+        if (event.draft !== undefined) {
+          nextActiveDraft = event.draft;
+        } else if (event.step === 'idle') {
+          nextActiveDraft = null;
+        }
+      }
+
+      return {
+        messages: updateMessagesWithEvent(state.messages, buddyMessageId, event),
+        isStreaming: event.type === 'done' || event.type === 'error' ? false : state.isStreaming,
+        ticketFlowStep: nextFlowStep,
+        activeTicketDraft: nextActiveDraft,
+      };
+    });
   },
 
   sendMentorTicket: (payload) => {
@@ -70,7 +112,82 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     };
     set((state) => ({
       messages: [...state.messages, confirmationMsg],
+      ticketFlowStep: 'idle',
+      activeTicketDraft: null,
     }));
+  },
+
+  approveTicketDraft: async (draft) => {
+    const targetDraft = draft || get().activeTicketDraft;
+    if (!targetDraft) return;
+
+    try {
+      const ticket = await createTicket({
+        subject: targetDraft.subject,
+        message: targetDraft.message,
+        mentorId: targetDraft.mentor.id,
+      });
+
+      set((state) => {
+        const updatedMessages = state.messages.map((msg) => {
+          if (!msg.cards) return msg;
+          const nextCards = msg.cards.map((card) => {
+            if (card.type === 'ticket_draft') {
+              return {
+                type: 'ticket_success' as const,
+                payload: ticket,
+              };
+            }
+            return card;
+          });
+          return { ...msg, cards: nextCards };
+        });
+
+        return {
+          messages: updatedMessages,
+          ticketFlowStep: 'idle',
+          activeTicketDraft: null,
+        };
+      });
+    } catch (err) {
+      void err;
+    }
+  },
+
+  updateTicketDraft: (updated) => {
+    set((state) => {
+      if (!state.activeTicketDraft) return state;
+      const nextDraft: TicketDraftPayload = {
+        ...state.activeTicketDraft,
+        ...updated,
+      };
+
+      const updatedMessages = state.messages.map((msg) => {
+        if (!msg.cards) return msg;
+        const nextCards = msg.cards.map((card) => {
+          if (card.type === 'ticket_draft') {
+            return {
+              type: 'ticket_draft' as const,
+              payload: nextDraft,
+            };
+          }
+          return card;
+        });
+        return { ...msg, cards: nextCards };
+      });
+
+      return {
+        activeTicketDraft: nextDraft,
+        messages: updatedMessages,
+      };
+    });
+  },
+
+  cancelTicketDraft: () => {
+    set({
+      ticketFlowStep: 'idle',
+      activeTicketDraft: null,
+    });
   },
 
   sendMessage: async (text) => {
@@ -84,17 +201,28 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const userMessage = createUserMessage(trimmed);
     const buddyMessage = createBuddyMessage();
 
+    const currentFlowStep = get().ticketFlowStep;
+    const currentDraft = get().activeTicketDraft;
+
     set((state) => ({
       messages: [...state.messages, userMessage, buddyMessage],
       draft: '',
       isStreaming: true,
     }));
 
+    // Инвалидируем список диалогов для актуализации сайдбара
+    void queryClient.invalidateQueries({ queryKey: ['dialogs'] });
+
     try {
       await simulateSSEStream(
         trimmed,
         (event) => get().applySSEEvent(buddyMessage.id, event),
         abortController.signal,
+        {
+          flowStep: currentFlowStep,
+          currentDraft,
+          lastUserQuery: trimmed,
+        },
       );
     } catch {
       return;
