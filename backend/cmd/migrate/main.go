@@ -22,16 +22,11 @@ func main() {
 		log.Fatalf("open database: %v", err)
 	}
 	defer func() {
-		if err := db.Close(); err != nil {
-			log.Printf("close database: %v", err)
-		}
+		_ = db.Close()
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	if err := db.PingContext(ctx); err != nil {
-		log.Fatalf("ping database: %v", err)
-	}
 	if err := goose.SetDialect("postgres"); err != nil {
 		log.Fatalf("set migration dialect: %v", err)
 	}

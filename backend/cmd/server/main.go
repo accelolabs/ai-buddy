@@ -26,9 +26,7 @@ func main() {
 		log.Fatalf("open database: %v", err)
 	}
 	defer func() {
-		if err := db.Close(); err != nil {
-			log.Printf("close database: %v", err)
-		}
+		_ = db.Close()
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
