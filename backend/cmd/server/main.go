@@ -55,7 +55,7 @@ func main() {
 	wikiRepository := wikirepository.NewRepository(db)
 	wikiHandler := wikihandler.NewHandler(wikiRepository, cfg.KnowledgeBaseDir)
 	search := rag.NewRAG(wikiRepository, ollama.NewClient(cfg.OllamaURL, cfg.EmbeddingModel), cfg.RAGChunkCount)
-	buddyAgent, err := agent.NewAgent(ollama.NewClient(cfg.OllamaURL, cfg.ChatModel), search, cfg.SystemPromptFile)
+	buddyAgent, err := agent.NewAgent(ollama.NewChatClient(cfg.OllamaURL, cfg.ChatModel, cfg.ChatContextLength), search, cfg.SystemPromptFile, cfg.ChatHistoryLimit)
 	if err != nil {
 		log.Fatal(err)
 	}

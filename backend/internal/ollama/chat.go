@@ -59,7 +59,7 @@ type Response struct {
 func (c *Client) Chat(ctx context.Context, messages []Message, tools []Tool, emit func(string) error) (Response, error) {
 	body, err := json.Marshal(chatRequest{
 		Model: c.model, Messages: messages, Tools: tools, Stream: emit != nil,
-		Think: false, Options: chatOptions{Context: 4096, Predict: 512},
+		Think: false, Options: chatOptions{Context: c.contextLength, Predict: 512},
 	})
 	if err != nil {
 		return Response{}, fmt.Errorf("encode chat request: %w", err)

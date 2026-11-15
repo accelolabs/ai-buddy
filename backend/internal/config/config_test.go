@@ -123,3 +123,33 @@ func TestChatConfig(t *testing.T) {
 		t.Fatalf("configured: %+v, %v", cfg, err)
 	}
 }
+
+func TestChatLimits(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/buddy")
+	for _, key := range []string{"CHAT_CONTEXT_LENGTH", "CHAT_HISTORY_LIMIT"} {
+		t.Setenv(key, "")
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg, err := Load()
+	if err != nil || cfg.ChatContextLength != 16384 || cfg.ChatHistoryLimit != 6 {
+		t.Fatalf("defaults: %+v, %v", cfg, err)
+	}
+	t.Setenv("CHAT_CONTEXT_LENGTH", "32768")
+	t.Setenv("CHAT_HISTORY_LIMIT", "4")
+	cfg, err = Load()
+	if err != nil || cfg.ChatContextLength != 32768 || cfg.ChatHistoryLimit != 4 {
+		t.Fatalf("configured: %+v, %v", cfg, err)
+	}
+	for _, key := range []string{"CHAT_CONTEXT_LENGTH", "CHAT_HISTORY_LIMIT"} {
+		for _, value := range []string{"0", "-1", "invalid"} {
+			t.Run(key+"/"+value, func(t *testing.T) {
+				t.Setenv(key, value)
+				if _, err := Load(); err == nil {
+					t.Fatalf("accepted %s=%s", key, value)
+				}
+			})
+		}
+	}
+}

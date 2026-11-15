@@ -11,9 +11,10 @@ import (
 )
 
 type Client struct {
-	baseURL string
-	model   string
-	http    *http.Client
+	contextLength int
+	baseURL       string
+	model         string
+	http          *http.Client
 }
 
 func NewClient(baseURL, model string) *Client {
@@ -22,6 +23,13 @@ func NewClient(baseURL, model string) *Client {
 		model:   model,
 		http:    &http.Client{Timeout: time.Minute},
 	}
+}
+
+// NewChatClient configures the context window for dialogue requests.
+func NewChatClient(baseURL, model string, contextLength int) *Client {
+	client := NewClient(baseURL, model)
+	client.contextLength = contextLength
+	return client
 }
 
 type embedRequest struct {

@@ -44,7 +44,7 @@ func testAgent(t *testing.T, model *fakeModel, rag *fakeRAG) *Agent {
 	if err := os.WriteFile(path, []byte("Отвечай по-русски"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	agent, err := NewAgent(model, rag, path)
+	agent, err := NewAgent(model, rag, path, 6)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,17 +95,13 @@ func TestGenerate(t *testing.T) {
 }
 
 func TestGenerateFailures(t *testing.T) {
-	for _, name := range []string{"unknown", "arguments", "limit", "model", "progress"} {
+	for _, name := range []string{"limit", "model", "progress"} {
 		t.Run(name, func(t *testing.T) {
 			rag := &fakeRAG{}
 			failure := errors.New("model failed")
 			model := &fakeModel{reply: func(_ []ollama.Message, _ []ollama.Tool) (ollama.Response, error) {
 				call := ollama.Call{Function: ollama.Function{Name: "search_documents", Arguments: []byte(`{}`)}}
 				switch name {
-				case "unknown":
-					call.Function.Name = "unknown"
-				case "arguments":
-					call.Function.Arguments = []byte(`null`)
 				case "model":
 					return ollama.Response{}, failure
 				}
@@ -138,7 +134,7 @@ func TestGenerateFailures(t *testing.T) {
 			}
 		})
 	}
-	if _, err := NewAgent(&fakeModel{}, &fakeRAG{}, filepath.Join(t.TempDir(), "missing")); err == nil {
+	if _, err := NewAgent(&fakeModel{}, &fakeRAG{}, filepath.Join(t.TempDir(), "missing"), 6); err == nil {
 		t.Fatal("missing prompt accepted")
 	}
 }
@@ -287,5 +283,72 @@ func TestGenerateSourceDoesNotLeak(t *testing.T) {
 	second, err := agent.Generate(t.Context(), users.User{ID: "second", Team: "platform"}, nil, nil)
 	if err != nil || second.Source != nil {
 		t.Fatalf("second: %+v %v", second, err)
+	}
+}
+
+func TestGenerateHistoryLimit(t *testing.T) {
+	for _, count := range []int{0, 2, 6, 9} {
+		model := &fakeModel{}
+		history := make([]buddy.Message, count)
+		for i := range history {
+			history[i] = buddy.Message{Role: buddy.RoleUser, Content: strings.Repeat("x", i+1)}
+		}
+		agent := testAgent(t, model, &fakeRAG{})
+		agent.historyLimit = 3
+		model.reply = func(messages []ollama.Message, _ []ollama.Tool) (ollama.Response, error) {
+			want := min(count, 3)
+			if len(messages) != want+1 || messages[0].Role != "system" {
+				t.Fatalf("history count %d: %+v", count, messages)
+			}
+			for i := range want {
+				if messages[i+1].Content != history[count-want+i].Content {
+					t.Fatalf("history order: %+v", messages)
+				}
+			}
+			return ollama.Response{Message: ollama.Message{Content: "Ответ"}}, nil
+		}
+		if _, err := agent.Generate(t.Context(), users.User{}, history, nil); err != nil {
+			t.Fatal(err)
+		}
+		if count > 0 && history[0].Content != "x" {
+			t.Fatal("history modified")
+		}
+	}
+	if _, err := NewAgent(&fakeModel{}, &fakeRAG{}, "unused", 0); err == nil {
+		t.Fatal("accepted zero history limit")
+	}
+}
+
+func TestGenerateToolErrors(t *testing.T) {
+	for _, name := range []string{"unknown", "arguments", "schema", "execution"} {
+		t.Run(name, func(t *testing.T) {
+			model := &fakeModel{}
+			model.reply = func(messages []ollama.Message, _ []ollama.Tool) (ollama.Response, error) {
+				if model.calls == 1 {
+					call := ollama.Call{Function: ollama.Function{Name: "attach_source", Arguments: []byte(`{"document_id":"missing","ordinal":0}`)}}
+					switch name {
+					case "unknown":
+						call.Function.Name = "unknown"
+					case "arguments":
+						call.Function.Arguments = []byte(`null`)
+					case "schema":
+						call.Function.Arguments = []byte(`{"ordinal":"invalid"}`)
+					}
+					return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{call}}}, nil
+				}
+				if model.calls != 2 {
+					t.Fatal("unexpected retry")
+				}
+				last := messages[len(messages)-1]
+				if last.Role != "tool" || !strings.Contains(last.Content, `"error":`) {
+					t.Fatalf("missing tool error: %+v", last)
+				}
+				return ollama.Response{Message: ollama.Message{Content: "Инструмент не может быть вызван."}}, nil
+			}
+			answer, err := testAgent(t, model, &fakeRAG{}).Generate(t.Context(), users.User{}, nil, nil)
+			if err != nil || model.calls != 2 || answer.Content != "Инструмент не может быть вызван." || answer.Source != nil {
+				t.Fatalf("answer: %+v, calls: %d, error: %v", answer, model.calls, err)
+			}
+		})
 	}
 }

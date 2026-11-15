@@ -18,7 +18,7 @@ func TestChat(t *testing.T) {
 				if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 					t.Error(err)
 				}
-				if r.URL.Path != "/api/chat" || request.Model != "qwen3.5:4b" || request.Stream != stream || request.Think || request.Options.Context != 4096 || request.Options.Predict != 512 || len(request.Messages) != 1 || len(request.Tools) != 1 {
+				if r.URL.Path != "/api/chat" || request.Model != "qwen3.5:4b" || request.Stream != stream || request.Think || request.Options.Context != 16384 || request.Options.Predict != 512 || len(request.Messages) != 1 || len(request.Tools) != 1 {
 					t.Errorf("request: %+v", request)
 				}
 				if stream {
@@ -35,7 +35,7 @@ func TestChat(t *testing.T) {
 			if stream {
 				emit = func(part string) error { text += part; return nil }
 			}
-			result, err := NewClient(server.URL, "qwen3.5:4b").Chat(t.Context(), []Message{{Role: "user", Content: "hi"}}, []Tool{{Type: "function"}}, emit)
+			result, err := NewChatClient(server.URL, "qwen3.5:4b", 16384).Chat(t.Context(), []Message{{Role: "user", Content: "hi"}}, []Tool{{Type: "function"}}, emit)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -53,7 +53,7 @@ func TestChat(t *testing.T) {
 func TestChatErrors(t *testing.T) {
 	for _, body := range []string{`broken`, `{"error":"failed"}`, `{"message":{"content":"partial"},"done":false}`} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprintln(w, body) }))
-		_, err := NewClient(server.URL, "model").Chat(t.Context(), nil, nil, func(string) error { return nil })
+		_, err := NewChatClient(server.URL, "model", 8192).Chat(t.Context(), nil, nil, func(string) error { return nil })
 		server.Close()
 		if err == nil {
 			t.Fatalf("accepted %s", body)
@@ -64,13 +64,13 @@ func TestChatErrors(t *testing.T) {
 	}))
 	defer server.Close()
 	failure := errors.New("consumer stopped")
-	_, err := NewClient(server.URL, "model").Chat(t.Context(), nil, nil, func(string) error { return failure })
+	_, err := NewChatClient(server.URL, "model", 8192).Chat(t.Context(), nil, nil, func(string) error { return failure })
 	if !errors.Is(err, failure) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := NewClient(server.URL, "model").Chat(ctx, nil, nil, nil); !errors.Is(err, context.Canceled) {
+	if _, err := NewChatClient(server.URL, "model", 8192).Chat(ctx, nil, nil, nil); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 }
