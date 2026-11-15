@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams, useLocation } from 'react-router';
 import {
   Sidebar,
   SidebarContent,
@@ -22,7 +22,7 @@ import {
   DialogFooter,
   Button,
 } from '@/shared/ui';
-import { SquarePen, RotateCw, Ticket as TicketIcon } from 'lucide-react';
+import { SquarePen, RotateCw, Ticket as TicketIcon, Milestone } from 'lucide-react';
 import chipLogo from '@/assets/chip-logo.svg';
 import { UserCard, useUser, isTrainee } from '@/entities/user';
 import {
@@ -52,6 +52,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const { setOpen } = useSidebar();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeDialogId = useChatStore((s) => s.activeDialogId);
@@ -123,6 +124,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    tooltip="Маршрут стажера"
+                    isActive={location.pathname === '/route' || location.pathname === '/dashboard'}
+                    onClick={() => navigate('/route')}
+                  >
+                    <Milestone className="h-4 w-4 shrink-0 text-cyan-600" />
+                    <span>Маршрут стажера</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     tooltip="Обращения и тикеты"

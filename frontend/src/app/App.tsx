@@ -4,7 +4,7 @@ import { queryClient } from '@/shared/api';
 import { AppLayout } from '@/app/AppLayout';
 import { TraineeRoute } from '@/app/routes';
 import { ChatPage } from '@/pages/chat';
-import { DashboardPage } from '@/pages/dashboard';
+import { RoutePage } from '@/pages/route';
 import { TicketsPage } from '@/pages/tickets';
 
 function App() {
@@ -29,7 +29,8 @@ function App() {
                 </TraineeRoute>
               }
             />
-            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/route" element={<RoutePage />} />
+            <Route path="/dashboard" element={<Navigate to="/route" replace />} />
           </Route>
           <Route path="/tickets" element={<TicketsPage />} />
           <Route path="/tickets/:ticketId" element={<TicketsPage />} />
