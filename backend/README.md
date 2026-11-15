@@ -110,6 +110,19 @@ docker compose run --rm --build seed
 Для пустой таблицы ответ — `[]`. При ошибке БД возвращается HTTP 500
 с текстом `failed to list users`; подробности ошибки записываются в лог.
 
+### Выбранный пользователь
+
+Middleware `users.Middleware(userRepository)(handler)` читает cookie `demo_user`,
+декодирует значение, заданное через `encodeURIComponent(user.id)`, и загружает
+пользователя методом `Get`. В хендлере он доступен через
+`users.UserFromContext(r.Context())`, возвращающий `(User, bool)`.
+
+Отсутствующая или пустая cookie и неизвестный ID дают HTTP 401,
+ошибка percent-кодирования — HTTP 400, ошибка репозитория — HTTP 500.
+`GET /api/users` остаётся доступным без cookie для выбора пользователя.
+Middleware пока не подключён к маршрутам: первым маршрутом, которому нужен
+выбранный пользователь, будет список wiki.
+
 ## Wiki и индексация
 
 `internal/wiki.Document` содержит `ID`, `Path`, `Team`, `Title` без JSON-тегов.
