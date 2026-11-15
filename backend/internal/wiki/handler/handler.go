@@ -23,14 +23,14 @@ type Handler struct {
 	root       string
 }
 
-func NewHandler(repository documentReader, root string) *Handler {
-	return &Handler{repository: repository, root: root}
-}
-
 type documentResponse struct {
 	ID    string `json:"id"`
 	Team  string `json:"team"`
 	Title string `json:"title"`
+}
+
+func NewHandler(repository documentReader, root string) *Handler {
+	return &Handler{repository: repository, root: root}
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {

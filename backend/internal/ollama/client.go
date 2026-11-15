@@ -24,12 +24,19 @@ func NewClient(baseURL, model string) *Client {
 	}
 }
 
+type embedRequest struct {
+	Model    string `json:"model"`
+	Input    string `json:"input"`
+	Truncate bool   `json:"truncate"`
+}
+
+type embedResponse struct {
+	Embeddings [][]float64 `json:"embeddings"`
+	Error      string      `json:"error"`
+}
+
 func (c *Client) Embed(ctx context.Context, input string) ([]float64, error) {
-	body, err := json.Marshal(struct {
-		Model    string `json:"model"`
-		Input    string `json:"input"`
-		Truncate bool   `json:"truncate"`
-	}{Model: c.model, Input: input, Truncate: false})
+	body, err := json.Marshal(embedRequest{Model: c.model, Input: input, Truncate: false})
 	if err != nil {
 		return nil, fmt.Errorf("encode embedding request: %w", err)
 	}
@@ -46,10 +53,7 @@ func (c *Client) Embed(ctx context.Context, input string) ([]float64, error) {
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("ollama embedding: HTTP %d", response.StatusCode)
 	}
-	var result struct {
-		Embeddings [][]float64 `json:"embeddings"`
-		Error      string      `json:"error"`
-	}
+	var result embedResponse
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode embedding: %w", err)
 	}

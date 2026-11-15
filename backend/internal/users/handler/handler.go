@@ -16,15 +16,15 @@ type Handler struct {
 	repository userLister
 }
 
-func NewHandler(repository userLister) *Handler {
-	return &Handler{repository: repository}
-}
-
 type userResponse struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Role string `json:"role"`
 	Team string `json:"team"`
+}
+
+func NewHandler(repository userLister) *Handler {
+	return &Handler{repository: repository}
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
