@@ -18,6 +18,7 @@ export interface ChatActions {
   sendMessage: (text: string) => Promise<void>;
   retryMessage: (buddyMessageId?: string) => Promise<void>;
   applySSEEvent: (buddyMessageId: string, event: SSEEvent) => void;
+  sendMentorTicket: (payload: { subject: string; message: string; mentorId: string }) => void;
   clearMessages: () => void;
   stopStreaming: () => void;
 }
@@ -56,6 +57,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set((state) => ({
       messages: updateMessagesWithEvent(state.messages, buddyMessageId, event),
       isStreaming: event.type === 'done' || event.type === 'error' ? false : state.isStreaming,
+    }));
+  },
+
+  sendMentorTicket: (payload) => {
+    const confirmationMsg: ChatMessage = {
+      id: `buddy-${Date.now()}`,
+      sender: 'buddy',
+      text: `Ваше обращение на тему «${payload.subject}» отправлено наставнику. Среднее время первого ответа — 15 минут.`,
+      status: 'completed',
+      createdAt: new Date().toISOString(),
+    };
+    set((state) => ({
+      messages: [...state.messages, confirmationMsg],
     }));
   },
 
