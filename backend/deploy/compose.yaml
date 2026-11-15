@@ -9,11 +9,13 @@ services:
       DATABASE_URL: postgres://buddy:${POSTGRES_PASSWORD:-buddy}@postgres:5432/buddy?sslmode=disable
       HTTP_ADDR: :8080
       OLLAMA_URL: http://ollama:11434
+      SYSTEM_PROMPT_FILE: /prompts/system.ru.txt
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Moscow}
       KNOWLEDGE_BASE_DIR: /knowledge-base
       WIKI_MIN_SIMILARITY: ${WIKI_MIN_SIMILARITY:-0.35}
     volumes:
       - ../../knowledge-base:/knowledge-base:ro
+      - ../prompts:/prompts:ro
     depends_on:
       postgres:
         condition: service_healthy

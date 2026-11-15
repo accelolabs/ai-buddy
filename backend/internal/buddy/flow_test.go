@@ -218,7 +218,7 @@ func testFlow(t *testing.T) {
 		model = &scripted{tool: tool, args: args}
 		s := &buddy.Service{
 			Repo:     repo,
-			Runner:   buddy.NewAgent(repo, tools, model),
+			Runner:   buddy.NewAgent(repo, tools, model, "Тестовый системный промпт."),
 			Executor: tools,
 			Context:  ctx,
 		}

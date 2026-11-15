@@ -15,6 +15,17 @@ import (
 	"testing"
 )
 
+func TestNewRequiresSystemPrompt(t *testing.T) {
+	for _, path := range []string{"", t.TempDir()} {
+		_, err := New(context.Background(), nil, config.Config{
+			Buddy: config.Buddy{SystemPromptFile: path},
+		})
+		if err == nil || !strings.Contains(err.Error(), "SYSTEM_PROMPT_FILE") {
+			t.Fatalf("expected prompt error before accessing DB, got %v", err)
+		}
+	}
+}
+
 func TestUnifiedAPI(t *testing.T) {
 	db := testutil.Database(t)
 
@@ -47,6 +58,7 @@ func TestUnifiedAPI(t *testing.T) {
 	c := config.Config{
 		Tracker: config.Tracker{Timezone: "Europe/Moscow"},
 		Ollama:  config.Ollama{URL: "http://127.0.0.1:1"},
+		Buddy:   config.Buddy{SystemPromptFile: "../../prompts/system.ru.txt"},
 	}
 
 	a, err := New(ctx, db, c)

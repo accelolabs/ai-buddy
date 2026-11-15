@@ -22,6 +22,9 @@ type Database struct {
 type Ollama struct {
 	URL string `env:"OLLAMA_URL" env-default:"http://localhost:11434"`
 }
+type Buddy struct {
+	SystemPromptFile string `env:"SYSTEM_PROMPT_FILE"`
+}
 type Tracker struct {
 	Timezone string `env:"APP_TIMEZONE" env-default:"Europe/Moscow"`
 }
@@ -33,6 +36,7 @@ type Config struct {
 	HTTP     HTTP
 	Database Database
 	Ollama   Ollama
+	Buddy    Buddy
 	Tracker  Tracker
 	Wiki     Wiki
 }

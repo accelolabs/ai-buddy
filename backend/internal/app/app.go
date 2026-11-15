@@ -23,6 +23,11 @@ type App struct {
 }
 
 func New(ctx context.Context, db *sql.DB, c config.Config) (*App, error) {
+	systemPrompt, err := c.Buddy.LoadSystemPrompt()
+	if err != nil {
+		return nil, err
+	}
+
 	loc, err := time.LoadLocation(c.Tracker.Timezone)
 	if err != nil {
 		return nil, err
@@ -61,7 +66,7 @@ func New(ctx context.Context, db *sql.DB, c config.Config) (*App, error) {
 	worker, stop := context.WithCancel(ctx)
 	service := &buddy.Service{
 		Repo:     repo,
-		Runner:   buddy.NewAgent(repo, tools, model),
+		Runner:   buddy.NewAgent(repo, tools, model, systemPrompt),
 		Executor: tools,
 		Context:  worker,
 	}

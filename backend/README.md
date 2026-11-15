@@ -37,6 +37,7 @@ Docker volume. Не удаляйте этот volume при переходе и�
 ## Локальный бинарник и конфигурация
 
 Нужны Go из `go.mod`, PostgreSQL с pgvector и переменная `DATABASE_URL`.
+Для сервера также обязателен `SYSTEM_PROMPT_FILE` — путь к текстовому файлу промпта.
 Compose не публикует PostgreSQL на хост; для локального бинарника используйте отдельно
 подготовленную БД. Один пример переменных: [deploy/.env.example](deploy/.env.example).
 Приложение читает переменные окружения; `.env` автоматически не загружается.
@@ -44,6 +45,7 @@ Compose не публикует PostgreSQL на хост; для локальн�
 ```sh
 go build -o /tmp/ai-buddy-server ./cmd/server
 export DATABASE_URL='postgres://buddy:buddy@localhost:5432/buddy?sslmode=disable'
+export SYSTEM_PROMPT_FILE='./prompts/system.ru.txt'
 /tmp/ai-buddy-server                  # serve по умолчанию
 /tmp/ai-buddy-server serve
 /tmp/ai-buddy-server migrate up
@@ -59,9 +61,17 @@ export DATABASE_URL='postgres://buddy:buddy@localhost:5432/buddy?sslmode=disable
 | `DATABASE_URL` | обязательная |
 | `HTTP_ADDR` | `:8080` |
 | `OLLAMA_URL` | `http://localhost:11434` (Compose: `http://ollama:11434`) |
+| `SYSTEM_PROMPT_FILE` | обязательная для сервера (Compose: `/prompts/system.ru.txt`) |
 | `APP_TIMEZONE` | `Europe/Moscow` |
 | `KNOWLEDGE_BASE_DIR` | `../knowledge-base` |
 | `WIKI_MIN_SIMILARITY` | `0.35` |
+
+Системный промпт на русском находится в `prompts/system.ru.txt`. Compose монтирует
+каталог `prompts/` только для чтения и передаёт путь к файлу через ENV.
+Сервер читает файл один раз при запуске; после редактирования перезапустите приложение.
+Без пути, при ошибке чтения или пустом файле сервер завершится с ошибкой.
+Относительный путь отсчитывается от рабочей директории процесса.
+Команды `migrate`, `seed` и `index` не требуют файла промпта.
 
 Миграции находятся в `internal/migrations`. Старая схема не поддерживается:
 переход выполняется на пустую БД. Перед переходом остановите старые Compose-проекты

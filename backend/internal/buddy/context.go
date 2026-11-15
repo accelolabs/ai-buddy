@@ -18,7 +18,7 @@ func (a *Agent) context(
 
 	var request string
 
-	messages := []ollama.Message{{Role: "system", Content: system}}
+	messages := []ollama.Message{{Role: "system", Content: a.systemPrompt}}
 	// Include only completed exchanges; retries use the same original user message.
 
 	byID := map[string]Message{}

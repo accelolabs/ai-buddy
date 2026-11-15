@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -82,6 +83,53 @@ type model struct {
 	err     error
 	block   chan struct{}
 	entered chan struct{}
+}
+
+type promptModel struct {
+	t      *testing.T
+	prompt string
+	calls  int
+}
+
+func (m *promptModel) Chat(
+	_ context.Context,
+	messages []ollama.Message,
+	_ []ollama.Tool,
+	emit func(string) error,
+) (ollama.Response, error) {
+	m.calls++
+	if len(messages) == 0 || messages[0].Role != "system" || messages[0].Content != m.prompt {
+		m.t.Fatalf("system prompt was lost on call %d: %v", m.calls, messages)
+	}
+
+	if emit != nil {
+		return ollama.Response{Done: true}, emit("Ответ на русском.")
+	}
+
+	return ollama.Response{}, nil
+}
+
+func TestConfiguredPromptReachesBothModelStages(t *testing.T) {
+	data, err := os.ReadFile("../../prompts/system.ru.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := &agentRepo{}
+	m := &promptModel{t: t, prompt: string(data)}
+
+	a := NewAgent(r, &Tools{Repo: r}, m, m.prompt)
+	if err := a.Generate(
+		context.Background(),
+		users.User{ID: "alice"},
+		Run{ID: "run", MessageID: "user"},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if m.calls != 2 || r.text != "Ответ на русском." {
+		t.Fatal(m.calls, r.text)
+	}
 }
 
 func (m *model) Chat(
@@ -162,7 +210,12 @@ func TestGenerationAndFailures(t *testing.T) {
 			r := &agentRepo{failKind: v.kind}
 			p := agentProgress{}
 			m := &model{t: t, name: v.name, args: v.args, many: v.many}
-			a := NewAgent(r, &Tools{Repo: r, Tracker: p}, m)
+			a := NewAgent(
+				r,
+				&Tools{Repo: r, Tracker: p},
+				m,
+				"Тестовый системный промпт.",
+			)
 
 			err := a.Generate(
 				context.Background(),
@@ -181,7 +234,7 @@ func TestGenerationAndFailures(t *testing.T) {
 
 	r := &agentRepo{err: errors.New("DB history")}
 
-	a := NewAgent(r, &Tools{Repo: r}, &model{t: t})
+	a := NewAgent(r, &Tools{Repo: r}, &model{t: t}, "Тестовый системный промпт.")
 	if e := a.Generate(context.Background(), users.User{}, Run{}); e == nil {
 		t.Fatal("history")
 	}
@@ -242,7 +295,12 @@ func TestSingleModelSlot(t *testing.T) {
 	r := &agentRepo{}
 	block := make(chan struct{})
 	entered := make(chan struct{}, 1)
-	a := NewAgent(r, &Tools{Repo: r}, &model{t: t, block: block, entered: entered})
+	a := NewAgent(
+		r,
+		&Tools{Repo: r},
+		&model{t: t, block: block, entered: entered},
+		"Тестовый системный промпт.",
+	)
 	done := make(chan error, 1)
 
 	go func() { done <- a.Generate(context.Background(), users.User{}, Run{MessageID: "user"}) }()
@@ -309,7 +367,12 @@ func TestSixToolCallsStillProduceFinalAnswer(t *testing.T) {
 	r := &agentRepo{}
 	model := &repeatingModel{}
 
-	a := NewAgent(r, &Tools{Repo: r, Tracker: agentProgress{}}, model)
+	a := NewAgent(
+		r,
+		&Tools{Repo: r, Tracker: agentProgress{}},
+		model,
+		"Тестовый системный промпт.",
+	)
 	if e := a.Generate(
 		context.Background(),
 		users.User{ID: "alice"},

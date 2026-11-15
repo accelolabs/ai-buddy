@@ -40,6 +40,8 @@ func TestCommands(t *testing.T) {
 	dsn.RawQuery = query.Encode()
 	t.Setenv("DATABASE_URL", dsn.String())
 	t.Setenv("HTTP_ADDR", "127.0.0.1:0")
+	// Administrative commands do not require a system prompt file.
+	t.Setenv("SYSTEM_PROMPT_FILE", "")
 
 	root := t.TempDir()
 	if err = os.Mkdir(filepath.Join(root, "common"), 0o755); err != nil {
