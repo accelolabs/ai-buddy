@@ -2,7 +2,6 @@ package dialog
 
 import (
 	"backend/internal/buddy"
-	"backend/internal/ollama"
 	"backend/internal/users"
 	"context"
 	"database/sql"
@@ -50,22 +49,23 @@ func (r *fakeRepository) ListMessages(context.Context, string) ([]buddy.Message,
 }
 
 type fakeAgent struct {
-	history []ollama.Message
+	source  *buddy.Source
+	history []buddy.Message
 	err     error
 	user    users.User
 }
 
-func (a *fakeAgent) Generate(_ context.Context, user users.User, history []ollama.Message, emit func(buddy.Event) error) (string, error) {
+func (a *fakeAgent) Generate(_ context.Context, user users.User, history []buddy.Message, emit func(buddy.Event) error) (buddy.Answer, error) {
 	a.history, a.user = history, user
 	if a.err != nil {
-		return "", a.err
+		return buddy.Answer{}, a.err
 	}
 	if emit != nil {
 		if err := emit(buddy.Event{Type: "text", Text: "Ответ"}); err != nil {
-			return "", err
+			return buddy.Answer{}, err
 		}
 	}
-	return "Ответ", nil
+	return buddy.Answer{Content: "Ответ", Source: a.source}, nil
 }
 
 func TestDialog(t *testing.T) {
@@ -130,13 +130,13 @@ func TestDialogFailures(t *testing.T) {
 
 type blockingAgent struct{ started, release chan struct{} }
 
-func (a *blockingAgent) Generate(ctx context.Context, _ users.User, _ []ollama.Message, _ func(buddy.Event) error) (string, error) {
+func (a *blockingAgent) Generate(ctx context.Context, _ users.User, _ []buddy.Message, _ func(buddy.Event) error) (buddy.Answer, error) {
 	close(a.started)
 	select {
 	case <-a.release:
-		return "Ответ", nil
+		return buddy.Answer{Content: "Ответ"}, nil
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return buddy.Answer{}, ctx.Err()
 	}
 }
 
@@ -158,5 +158,57 @@ func TestConcurrentSend(t *testing.T) {
 	service.agent = &fakeAgent{}
 	if _, err := service.Send(t.Context(), user, "chat", "next", nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSourceAfterSave(t *testing.T) {
+	for _, stage := range []string{"success", "none", "agent", "assistant", "source-write"} {
+		t.Run(stage, func(t *testing.T) {
+			source := &buddy.Source{DocumentID: "doc", Ordinal: 2, Title: "Title", Anchor: "экватор", Quote: "Full quote"}
+			repo := &fakeRepository{chat: buddy.Chat{ID: "chat", UserID: "user"}, fail: stage}
+			agent := &fakeAgent{source: source}
+			if stage == "none" {
+				agent.source = nil
+			}
+			if stage == "agent" {
+				agent.err = errFailure
+			}
+			var events []string
+			reply, err := NewService(repo, agent).Send(t.Context(), users.User{ID: "user"}, "chat", "question", func(e buddy.Event) error {
+				events = append(events, e.Type)
+				if e.Type == "source" {
+					if len(repo.messages) != 2 || repo.messages[1].Source != e.Source || *e.Source != *source {
+						t.Fatal("source emitted before storage or differs")
+					}
+					if stage == "source-write" {
+						return errFailure
+					}
+				}
+				return nil
+			})
+			switch stage {
+			case "success":
+				if err != nil || reply.Source != source || len(events) != 2 || events[0] != "text" || events[1] != "source" {
+					t.Fatalf("%+v %v %v", reply, err, events)
+				}
+			case "none":
+				if err != nil || reply.Source != nil || len(events) != 1 {
+					t.Fatalf("%+v %v %v", reply, err, events)
+				}
+			case "source-write":
+				if !errors.Is(err, errFailure) || len(repo.messages) != 2 || repo.messages[1].Source != source {
+					t.Fatal("saved answer lost on stream failure")
+				}
+			default:
+				if err == nil || len(repo.messages) != 1 {
+					t.Fatal(err, repo.messages)
+				}
+				for _, event := range events {
+					if event == "source" {
+						t.Fatal("source emitted on failure")
+					}
+				}
+			}
+		})
 	}
 }

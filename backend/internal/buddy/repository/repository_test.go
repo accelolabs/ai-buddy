@@ -2,11 +2,14 @@ package repository
 
 import (
 	"backend/internal/buddy"
+	"backend/internal/wiki"
+	wikirepository "backend/internal/wiki/repository"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -112,5 +115,181 @@ func TestChatAndMessages(t *testing.T) {
 		if _, err := repo.AddMessage(ctx, message); err == nil {
 			t.Fatal("invalid message accepted")
 		}
+	}
+}
+
+func TestSourceSnapshot(t *testing.T) {
+	repo, ctx := testRepository(t)
+	if _, err := repo.db.ExecContext(ctx, `INSERT INTO users (id,name,role,team) VALUES ('user','User','intern','backend')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.AddChat(ctx, buddy.Chat{ID: "chat", UserID: "user"}); err != nil {
+		t.Fatal(err)
+	}
+	wikiRepo := wikirepository.NewRepository(repo.db)
+	document := wiki.Document{ID: "doc", Title: "Old title", Path: "doc.md"}
+	chunk := wiki.Chunk{DocumentID: "doc", Ordinal: 2, Anchor: "экватор", Text: "Full quote\nSecond line"}
+	if err := wikiRepo.Sync(ctx, []wiki.Document{document}, []wiki.Chunk{chunk}); err != nil {
+		t.Fatal(err)
+	}
+	source := &buddy.Source{DocumentID: document.ID, Ordinal: chunk.Ordinal, Title: document.Title, Anchor: chunk.Anchor, Quote: chunk.Text}
+	saved, err := repo.AddMessage(ctx, buddy.Message{ChatID: "chat", Role: buddy.RoleAssistant, Content: "Answer", Source: source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.AddMessage(ctx, buddy.Message{ChatID: "chat", Role: "invalid", Content: "Failed", Source: source}); err == nil {
+		t.Fatal("invalid insert accepted")
+	}
+	if err := wikiRepo.Sync(ctx, []wiki.Document{{ID: "doc", Title: "New title", Path: "doc.md"}}, []wiki.Chunk{{DocumentID: "doc", Ordinal: 2, Text: "New quote"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, deleteDocument := range []bool{false, true} {
+		if deleteDocument {
+			if err := wikiRepo.Sync(ctx, nil, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		history, err := repo.ListMessages(ctx, "chat")
+		if err != nil || len(history) != 1 || !reflect.DeepEqual(history[0], saved) {
+			t.Fatalf("snapshot changed: %+v %v", history, err)
+		}
+	}
+	if _, err := repo.AddMessage(ctx, buddy.Message{ChatID: "chat", Role: buddy.RoleUser, Content: "No source"}); err != nil {
+		t.Fatal(err)
+	}
+	history, err := repo.ListMessages(ctx, "chat")
+	if err != nil || len(history) != 2 || history[1].Source != nil {
+		t.Fatalf("null source: %+v %v", history, err)
+	}
+	var attachment bool
+	if err := repo.db.QueryRowContext(ctx, `SELECT attachment FROM messages WHERE id=$1`, history[1].ID).Scan(&attachment); err != nil || attachment {
+		t.Fatal("message without attachments must have attachment=false", err)
+	}
+}
+
+func TestMessageAttachmentTransaction(t *testing.T) {
+	repo, ctx := testRepository(t)
+	if _, err := repo.db.ExecContext(ctx, `INSERT INTO users (id,name,role,team) VALUES ('user','User','intern','backend')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.AddChat(ctx, buddy.Chat{ID: "chat", UserID: "user"}); err != nil {
+		t.Fatal(err)
+	}
+	// Force failure after the message has been inserted, while writing its source.
+	if _, err := repo.db.ExecContext(ctx, `ALTER TABLE message_sources ADD CHECK (quote <> 'Rejected')`); err != nil {
+		t.Fatal(err)
+	}
+	source := &buddy.Source{DocumentID: "doc", Ordinal: 2, Title: "Title", Anchor: "", Quote: "Rejected"}
+	if _, err := repo.AddMessage(ctx, buddy.Message{ChatID: "chat", Role: buddy.RoleAssistant, Content: "Answer", Source: source}); err == nil {
+		t.Fatal("source failure accepted")
+	}
+	for _, query := range []string{`SELECT count(*) FROM messages`, `SELECT count(*) FROM message_sources`} {
+		var count int
+		if err := repo.db.QueryRowContext(ctx, query).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("partial message saved: %d %v", count, err)
+		}
+	}
+	source.Quote = "Full quote"
+	saved, err := repo.AddMessage(ctx, buddy.Message{ChatID: "chat", Role: buddy.RoleAssistant, Content: "Answer", Source: source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var attachment bool
+	if err := repo.db.QueryRowContext(ctx, `SELECT attachment FROM messages WHERE id=$1`, saved.ID).Scan(&attachment); err != nil || !attachment {
+		t.Fatal("source must set attachment=true", err)
+	}
+	if _, err := repo.db.ExecContext(ctx, `INSERT INTO message_sources SELECT * FROM message_sources WHERE message_id=$1`, saved.ID); err == nil {
+		t.Fatal("second source accepted")
+	}
+	if _, err := repo.db.ExecContext(ctx, `INSERT INTO message_sources (message_id,document_id,ordinal,title,anchor,quote) VALUES (-1,'doc',0,'Title','','Quote')`); err == nil {
+		t.Fatal("orphan source accepted")
+	}
+	if _, err := repo.db.ExecContext(ctx, `DELETE FROM messages WHERE id=$1`, saved.ID); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := repo.db.QueryRowContext(ctx, `SELECT count(*) FROM message_sources`).Scan(&count); err != nil || count != 0 {
+		t.Fatal("source not deleted with message", err)
+	}
+}
+
+func TestAttachmentHistory(t *testing.T) {
+	repo, ctx := testRepository(t)
+	if _, err := repo.db.ExecContext(ctx, `INSERT INTO users (id,name,role,team) VALUES ('user','User','intern','backend')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"chat", "other"} {
+		if _, err := repo.AddChat(ctx, buddy.Chat{ID: id, UserID: "user"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var expected []buddy.Message
+	for _, message := range []buddy.Message{
+		{ChatID: "chat", Role: buddy.RoleUser, Content: "Question"},
+		{ChatID: "chat", Role: buddy.RoleAssistant, Content: "First", Source: &buddy.Source{DocumentID: "doc", Ordinal: 0, Title: "First", Anchor: "экватор", Quote: "First quote"}},
+		{ChatID: "chat", Role: buddy.RoleAssistant, Content: "Second", Source: &buddy.Source{DocumentID: "doc", Ordinal: 1, Title: "Second", Anchor: "", Quote: "Second quote"}},
+		{ChatID: "other", Role: buddy.RoleAssistant, Content: "Other", Source: &buddy.Source{DocumentID: "other", Title: "Other", Quote: "Other quote"}},
+	} {
+		saved, err := repo.AddMessage(ctx, message)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if message.ChatID == "chat" {
+			expected = append(expected, saved)
+		}
+	}
+	// The flag can represent a future attachment kind without a source.
+	if _, err := repo.db.ExecContext(ctx, `UPDATE messages SET attachment=true WHERE id=$1`, expected[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	history, err := repo.ListMessages(ctx, "chat")
+	if err != nil || !reflect.DeepEqual(history, expected) {
+		t.Fatalf("history: %+v %v", history, err)
+	}
+	// A source is only loaded for messages marked as having attachments.
+	if _, err := repo.db.ExecContext(ctx, `UPDATE messages SET attachment=false WHERE id=$1`, expected[1].ID); err != nil {
+		t.Fatal(err)
+	}
+	expected[1].Source = nil
+	history, err = repo.ListMessages(ctx, "chat")
+	if err != nil || !reflect.DeepEqual(history, expected) {
+		t.Fatalf("attachment flag ignored: %+v %v", history, err)
+	}
+}
+
+func TestChatMigration(t *testing.T) {
+	repo, ctx := testRepository(t)
+	if _, err := repo.db.ExecContext(ctx, `INSERT INTO users (id,name,role,team) VALUES ('user','User','intern','backend')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.AddChat(ctx, buddy.Chat{ID: "chat", UserID: "user"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.AddMessage(ctx, buddy.Message{ChatID: "chat", Role: buddy.RoleAssistant, Content: "Answer", Source: &buddy.Source{DocumentID: "doc", Quote: "Quote"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := goose.DownContext(ctx, repo.db, "../../../migrations"); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"chats", "messages", "message_sources"} {
+		var absent bool
+		if err := repo.db.QueryRowContext(ctx, `SELECT to_regclass($1) IS NULL`, table).Scan(&absent); err != nil || !absent {
+			t.Fatalf("rollback left %s: %v", table, err)
+		}
+	}
+	if err := goose.UpContext(ctx, repo.db, "../../../migrations"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.AddChat(ctx, buddy.Chat{ID: "chat", UserID: "user"}); err != nil {
+		t.Fatal(err)
+	}
+	source := &buddy.Source{DocumentID: "doc", Ordinal: 2, Title: "Title", Quote: "Quote"}
+	saved, err := repo.AddMessage(ctx, buddy.Message{ChatID: "chat", Role: buddy.RoleAssistant, Content: "Answer", Source: source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := repo.ListMessages(ctx, "chat")
+	if err != nil || !reflect.DeepEqual(history, []buddy.Message{saved}) {
+		t.Fatalf("reapplied migration: %+v %v", history, err)
 	}
 }

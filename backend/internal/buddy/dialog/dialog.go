@@ -2,7 +2,6 @@ package dialog
 
 import (
 	"backend/internal/buddy"
-	"backend/internal/ollama"
 	"backend/internal/users"
 	"context"
 	"crypto/rand"
@@ -26,7 +25,7 @@ type repository interface {
 }
 
 type agent interface {
-	Generate(context.Context, users.User, []ollama.Message, func(buddy.Event) error) (string, error)
+	Generate(context.Context, users.User, []buddy.Message, func(buddy.Event) error) (buddy.Answer, error)
 }
 
 type Service struct {
@@ -71,17 +70,18 @@ func (s *Service) Send(ctx context.Context, user users.User, chatID, text string
 	if err != nil {
 		return buddy.Message{}, fmt.Errorf("load dialog history: %w", err)
 	}
-	messages := make([]ollama.Message, 0, len(history))
-	for _, message := range history {
-		messages = append(messages, ollama.Message{Role: message.Role, Content: message.Content})
-	}
-	answer, err := s.agent.Generate(ctx, user, messages, emit)
+	answer, err := s.agent.Generate(ctx, user, history, emit)
 	if err != nil {
 		return buddy.Message{}, fmt.Errorf("generate dialog answer: %w", err)
 	}
-	message, err := s.repository.AddMessage(ctx, buddy.Message{ChatID: chatID, Role: buddy.RoleAssistant, Content: answer})
+	message, err := s.repository.AddMessage(ctx, buddy.Message{ChatID: chatID, Role: buddy.RoleAssistant, Content: answer.Content, Source: answer.Source})
 	if err != nil {
 		return buddy.Message{}, fmt.Errorf("save assistant message: %w", err)
+	}
+	if message.Source != nil && emit != nil {
+		if err := emit(buddy.Event{Type: "source", Source: message.Source}); err != nil {
+			return buddy.Message{}, fmt.Errorf("emit source: %w", err)
+		}
 	}
 	return message, nil
 }

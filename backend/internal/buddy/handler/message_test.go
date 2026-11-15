@@ -6,6 +6,7 @@ import (
 	"backend/internal/users"
 	"backend/internal/users/middleware"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -108,7 +109,46 @@ func TestSendErrors(t *testing.T) {
 		return buddy.Message{}, errors.New("internal secret")
 	}}
 	w := request(t, service, `{"content":"q"}`, true)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "event: error") || strings.Contains(w.Body.String(), "event: done") || strings.Contains(w.Body.String(), "secret") {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "event: error") || strings.Contains(w.Body.String(), "event: done") || strings.Contains(w.Body.String(), "event: source") || strings.Contains(w.Body.String(), "secret") {
 		t.Fatal(w.Body.String())
+	}
+}
+
+func TestSourceStream(t *testing.T) {
+	source := &buddy.Source{DocumentID: "doc", Ordinal: 2, Title: "Памятка", Anchor: "экватор", Quote: "Full quote\nSecond line"}
+	for _, attached := range []bool{false, true} {
+		service := &fakeDialog{send: func(_ context.Context, _ users.User, id, _ string, emit func(buddy.Event) error) (buddy.Message, error) {
+			if err := emit(buddy.Event{Type: "text", Text: "Answer"}); err != nil {
+				return buddy.Message{}, err
+			}
+			var selected *buddy.Source
+			if attached {
+				selected = source
+				if err := emit(buddy.Event{Type: "source", Source: selected}); err != nil {
+					return buddy.Message{}, err
+				}
+			}
+			return buddy.Message{ID: 42, ChatID: id, Role: buddy.RoleAssistant, Content: "Answer", Source: selected}, nil
+		}}
+		body := request(t, service, `{"content":"q"}`, true).Body.String()
+		parts := strings.Split(strings.TrimSpace(body), "\n\n")
+		if attached {
+			if len(parts) != 3 || !strings.HasPrefix(parts[0], "event: text\n") || !strings.HasPrefix(parts[1], "event: source\n") || !strings.HasPrefix(parts[2], "event: done\n") {
+				t.Fatal(body)
+			}
+			var card sourceResponse
+			var reply messageResponse
+			if err := json.Unmarshal([]byte(strings.TrimPrefix(parts[1], "event: source\ndata: ")), &card); err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal([]byte(strings.TrimPrefix(parts[2], "event: done\ndata: ")), &reply); err != nil {
+				t.Fatal(err)
+			}
+			if reply.Source == nil || card != *reply.Source || card != *sourceView(source) {
+				t.Fatal(body)
+			}
+		} else if len(parts) != 2 || strings.Contains(body, "event: source") || !strings.Contains(body, `"source":null`) {
+			t.Fatal(body)
+		}
 	}
 }

@@ -40,13 +40,29 @@ type (
 		Error string `json:"error"`
 	}
 	messageResponse struct {
-		ID        int64     `json:"id"`
-		ChatID    string    `json:"chat_id"`
-		Role      string    `json:"role"`
-		Content   string    `json:"content"`
-		CreatedAt time.Time `json:"created_at"`
+		ID        int64           `json:"id"`
+		ChatID    string          `json:"chat_id"`
+		Role      string          `json:"role"`
+		Content   string          `json:"content"`
+		CreatedAt time.Time       `json:"created_at"`
+		Source    *sourceResponse `json:"source"`
 	}
 )
+
+type sourceResponse struct {
+	DocumentID string `json:"document_id"`
+	Ordinal    int    `json:"ordinal"`
+	Title      string `json:"title"`
+	Anchor     string `json:"anchor"`
+	Quote      string `json:"quote"`
+}
+
+func sourceView(source *buddy.Source) *sourceResponse {
+	if source == nil {
+		return nil
+	}
+	return &sourceResponse{DocumentID: source.DocumentID, Ordinal: source.Ordinal, Title: source.Title, Anchor: source.Anchor, Quote: source.Quote}
+}
 
 func NewHandler(dialog dialogService) *Handler { return &Handler{dialog: dialog} }
 
@@ -92,6 +108,8 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 		switch event.Type {
 		case "state":
 			return send("state", stateResponse{State: event.State, Progress: event.Progress})
+		case "source":
+			return send("source", sourceView(event.Source))
 		case "text":
 			return send("text", textResponse{Text: event.Text})
 		default:
@@ -116,7 +134,7 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if err := send("done", messageResponse{ID: reply.ID, ChatID: reply.ChatID, Role: reply.Role, Content: reply.Content, CreatedAt: reply.CreatedAt}); err != nil {
+	if err := send("done", messageResponse{ID: reply.ID, ChatID: reply.ChatID, Role: reply.Role, Content: reply.Content, CreatedAt: reply.CreatedAt, Source: sourceView(reply.Source)}); err != nil {
 		log.Printf("write dialog reply: %v", err)
 	}
 }

@@ -22,11 +22,16 @@ type RAG struct {
 	chunkCount int
 }
 
+type Match struct {
+	Document wiki.Document
+	Chunk    wiki.Chunk
+}
+
 func NewRAG(repository repository, embedder embedder, chunkCount int) *RAG {
 	return &RAG{repository: repository, embedder: embedder, chunkCount: chunkCount}
 }
 
-func (r *RAG) Search(ctx context.Context, query, team string) ([]wiki.Chunk, error) {
+func (r *RAG) Search(ctx context.Context, query, team string) ([]Match, error) {
 	if r.chunkCount <= 0 {
 		return nil, fmt.Errorf("rag chunk count must be positive")
 	}
@@ -38,13 +43,15 @@ func (r *RAG) Search(ctx context.Context, query, team string) ([]wiki.Chunk, err
 		return nil, fmt.Errorf("list rag documents: %w", err)
 	}
 	ids := make([]string, 0, len(documents))
+	byID := make(map[string]wiki.Document, len(documents))
 	for _, document := range documents {
 		if document.Team == "" || document.Team == team {
 			ids = append(ids, document.ID)
+			byID[document.ID] = document
 		}
 	}
 	if len(ids) == 0 {
-		return []wiki.Chunk{}, nil
+		return []Match{}, nil
 	}
 	embedding, err := r.embedder.Embed(ctx, query)
 	if err != nil {
@@ -54,5 +61,9 @@ func (r *RAG) Search(ctx context.Context, query, team string) ([]wiki.Chunk, err
 	if err != nil {
 		return nil, fmt.Errorf("search rag chunks: %w", err)
 	}
-	return chunks, nil
+	matches := make([]Match, 0, len(chunks))
+	for _, chunk := range chunks {
+		matches = append(matches, Match{Document: byID[chunk.DocumentID], Chunk: chunk})
+	}
+	return matches, nil
 }

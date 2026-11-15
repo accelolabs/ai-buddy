@@ -1,17 +1,15 @@
-package agent
+package mcp
 
 import (
-	"backend/internal/users"
-	wikimcp "backend/internal/wiki/mcp"
 	"context"
 	"fmt"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func (a *Agent) openSession(ctx context.Context, user users.User) (*sdk.ClientSession, func(), error) {
+func (h *Handler) OpenSession(ctx context.Context) (*sdk.ClientSession, func(), error) {
 	server := sdk.NewServer(&sdk.Implementation{Name: "buddy", Version: "1"}, nil)
-	wikimcp.NewHandler(a.rag, user.Team).Register(server)
+	h.Register(server)
 	clientTransport, serverTransport := sdk.NewInMemoryTransports()
 	serverSession, err := server.Connect(ctx, serverTransport, nil)
 	if err != nil {

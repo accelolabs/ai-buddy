@@ -40,12 +40,12 @@ func (f *fakeEmbedder) Embed(_ context.Context, query string) ([]float64, error)
 func TestSearch(t *testing.T) {
 	for _, count := range []int{1, 3, 5} {
 		repo := &fakeRepository{
-			documents: []wiki.Document{{ID: "common"}, {ID: "own", Team: "backend"}, {ID: "foreign", Team: "platform"}},
+			documents: []wiki.Document{{ID: "common"}, {ID: "own", Title: "Title", Team: "backend"}, {ID: "foreign", Team: "platform"}},
 			chunks:    []wiki.Chunk{{DocumentID: "own", Ordinal: 2, Anchor: "setup", Text: "Setup"}},
 		}
 		embed := &fakeEmbedder{}
 		got, err := NewRAG(repo, embed, count).Search(t.Context(), "Как начать?", "backend")
-		if err != nil || !reflect.DeepEqual(got, repo.chunks) {
+		if err != nil || !reflect.DeepEqual(got, []Match{{Document: repo.documents[1], Chunk: repo.chunks[0]}}) {
 			t.Fatalf("Search = %v, %v", got, err)
 		}
 		if !reflect.DeepEqual(repo.ids, []string{"common", "own"}) || repo.limit != count || !reflect.DeepEqual(repo.embedding, []float64{1, 2}) || embed.query != "Как начать?" {
