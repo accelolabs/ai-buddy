@@ -4,4 +4,5 @@ export const dialogKeys = {
   list: (filters?: Record<string, unknown>) => [...dialogKeys.lists(), { filters }] as const,
   details: () => [...dialogKeys.all, 'detail'] as const,
   detail: (id: string) => [...dialogKeys.details(), id] as const,
+  messages: (id: string) => [...dialogKeys.detail(id), 'messages'] as const,
 };

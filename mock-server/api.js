@@ -6,6 +6,23 @@ export async function getDialogs() {
   return data.dialogs || data;
 }
 
+export async function createDialog(payload) {
+  const dialogs = await getDialogs();
+  const newDialog = {
+    id: `dlg-${Date.now().toString().slice(-4)}`,
+    title: payload?.title || 'Новый диалог',
+    topic: payload?.topic || 'chat',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  return newDialog;
+}
+
+export async function deleteDialog(id) {
+  const dialogs = await getDialogs();
+  return { success: true, id };
+}
+
 export async function getUser() {
   const filePath = new URL('./user.json', import.meta.url);
   const data = JSON.parse(await readFile(filePath, { encoding: 'utf-8' }));

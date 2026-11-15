@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/shared/api';
 import { AppLayout } from '@/app/AppLayout';
@@ -21,10 +21,19 @@ function App() {
                 </TraineeRoute>
               }
             />
+            <Route
+              path="/chat"
+              element={
+                <TraineeRoute>
+                  <ChatPage />
+                </TraineeRoute>
+              }
+            />
             <Route path="/dashboard" element={<DashboardPage />} />
           </Route>
           <Route path="/tickets" element={<TicketsPage />} />
           <Route path="/tickets/:ticketId" element={<TicketsPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>
