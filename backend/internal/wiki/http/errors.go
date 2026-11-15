@@ -15,9 +15,5 @@ func fail(w http.ResponseWriter, err error) {
 		code = 404
 		message = "not found"
 	}
-	if errors.Is(err, wiki.ErrQuery) {
-		code = 400
-		message = err.Error()
-	}
 	httpx.JSON(w, code, map[string]string{"error": message})
 }

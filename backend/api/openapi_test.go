@@ -43,26 +43,54 @@ func TestOpenAPI(t *testing.T) {
 			}
 		}
 	}
-	if operations != 24 {
+	if operations != 22 {
 		t.Fatal("operations", operations)
 	}
+	if _, exists := paths["/api/search"]; exists {
+		t.Fatal("obsolete search path")
+	}
+	if _, exists := paths["/api/tasks"].(map[string]any)["get"]; exists {
+		t.Fatal("obsolete task list")
+	}
+	for _, path := range []string{"/api/tasks", "/api/tasks/{taskID}/complete", "/api/tickets"} {
+		if _, exists := paths[path].(map[string]any)["post"]; !exists {
+			t.Fatal("missing intern write", path)
+		}
+	}
+	components := doc["components"].(map[string]any)
+	reached := map[string]bool{}
 	var walk func(any)
+	follow := func(ref string) {
+		if reached[ref] {
+			return
+		}
+		if !strings.HasPrefix(ref, "#/components/") {
+			t.Fatal("unexpected reference", ref)
+		}
+		var target any = doc
+		for _, part := range strings.Split(strings.TrimPrefix(ref, "#/"), "/") {
+			m, ok := target.(map[string]any)
+			if !ok {
+				t.Fatal("invalid reference", ref)
+			}
+			target, ok = m[part]
+			if !ok {
+				t.Fatal("missing reference", ref)
+			}
+		}
+		reached[ref] = true
+		walk(target)
+	}
 	walk = func(v any) {
 		switch x := v.(type) {
 		case map[string]any:
 			if ref, ok := x["$ref"].(string); ok {
-				if !strings.HasPrefix(ref, "#/") {
-					t.Fatal("unexpected external reference", ref)
-				}
-				var target any = doc
-				for _, part := range strings.Split(strings.TrimPrefix(ref, "#/"), "/") {
-					m, ok := target.(map[string]any)
-					if !ok {
-						t.Fatal("invalid reference", ref)
-					}
-					target, ok = m[part]
-					if !ok {
-						t.Fatal("missing reference", ref)
+				follow(ref)
+			}
+			if security, ok := x["security"].([]any); ok {
+				for _, requirement := range security {
+					for scheme := range requirement.(map[string]any) {
+						follow("#/components/securitySchemes/" + scheme)
 					}
 				}
 			}
@@ -75,5 +103,26 @@ func TestOpenAPI(t *testing.T) {
 			}
 		}
 	}
-	walk(doc)
+	// Traverse references from public roots, including x-event-payloads; scanning
+	// components themselves would incorrectly count unreachable definitions as used.
+	roots := map[string]any{}
+	for key, value := range doc {
+		if key != "components" {
+			roots[key] = value
+		}
+	}
+	walk(roots)
+	for kind, entries := range components {
+		for name := range entries.(map[string]any) {
+			if !reached["#/components/"+kind+"/"+name] {
+				t.Errorf("unused component: %s/%s", kind, name)
+			}
+		}
+	}
+	events := paths["/api/runs/{id}/events"].(map[string]any)["get"].(map[string]any)["x-event-payloads"].(map[string]any)
+	for _, kind := range []string{"stage", "text", "source", "action", "result", "usage", "done", "error"} {
+		if _, ok := events[kind]; !ok {
+			t.Error("missing SSE payload", kind)
+		}
+	}
 }

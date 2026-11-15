@@ -10,7 +10,7 @@ func Register(mux *http.ServeMux, login *users.Selector, h *Handler) {
 		pattern, role string
 		handler       http.HandlerFunc
 	}{
-		{"GET /api/tasks", "intern", h.ListTasks}, {"POST /api/tasks", "intern", h.Create},
+		{"POST /api/tasks", "intern", h.Create},
 		{"POST /api/tasks/{taskID}/complete", "intern", h.Complete}, {"GET /api/progress", "intern", h.Progress},
 		{"GET /api/interns", "mentor", h.ListInterns}, {"GET /api/interns/{id}/progress", "mentor", h.MentorProgress},
 	} {

@@ -22,12 +22,6 @@ type tasksStub struct {
 	calls           int
 }
 
-func (s *tasksStub) Tasks(_ context.Context, id string) ([]tasks.Task, error) {
-	s.id = id
-	s.calls++
-	return []tasks.Task{{ID: "task", InternID: id}}, s.err
-}
-
 func (s *tasksStub) Create(_ context.Context, id, key string, input tasks.CreateInput) (tasks.Task, bool, error) {
 	s.id = id
 	s.key = key
@@ -62,13 +56,8 @@ func request(handler http.HandlerFunc, body string) *httptest.ResponseRecorder {
 func TestTasksHandlers(t *testing.T) {
 	service := &tasksStub{created: true}
 	h := New(service, nil, nil)
-	w := request(h.ListTasks, "")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"tasks":[`) || service.id != "i" {
-		t.Fatal(w, service)
-	}
-
 	input := `{"title":"Task","description":"Details","deadline":"2026-12-01"}`
-	w = request(h.Create, input)
+	w := request(h.Create, input)
 	var task tasks.Task
 	err := json.Unmarshal(w.Body.Bytes(), &task)
 	if err != nil ||
@@ -105,7 +94,7 @@ func TestTasksHandlers(t *testing.T) {
 		{errors.New("SQL secret"), 500},
 	} {
 		service.err = tc.err
-		for _, handler := range []http.HandlerFunc{h.ListTasks, h.Create, h.Complete} {
+		for _, handler := range []http.HandlerFunc{h.Create, h.Complete} {
 			w = request(handler, input)
 			if w.Code != tc.code ||
 				!strings.Contains(w.Header().Get("Content-Type"), "application/json") ||

@@ -70,7 +70,7 @@ func New(ctx context.Context, db *sql.DB, c config.Config) (*App, error) {
 		w.WriteHeader(204)
 	})
 	httpx.Fallbacks(mux, map[string][]string{
-		"/api/users": {"GET"}, "/api/me": {"GET"}, "/api/tasks": {"GET", "POST"}, "/api/tasks/{taskID}/complete": {"POST"}, "/api/progress": {"GET"}, "/api/interns": {"GET"}, "/api/interns/{id}/progress": {"GET"}, "/api/tickets": {"GET", "POST"}, "/api/tickets/incoming": {"GET"}, "/api/search": {"POST"}, "/api/documents": {"GET"}, "/api/documents/{id}": {"GET"}, "/api/chats": {"GET", "POST"}, "/api/chats/{id}": {"GET"}, "/api/chats/{id}/messages": {"POST"}, "/api/runs/{id}/events": {"GET"}, "/api/runs/{id}/retry": {"POST"}, "/api/actions/{id}/confirm": {"POST"}, "/api/actions/{id}/cancel": {"POST"},
+		"/api/users": {"GET"}, "/api/me": {"GET"}, "/api/tasks": {"POST"}, "/api/tasks/{taskID}/complete": {"POST"}, "/api/progress": {"GET"}, "/api/interns": {"GET"}, "/api/interns/{id}/progress": {"GET"}, "/api/tickets": {"GET", "POST"}, "/api/tickets/incoming": {"GET"}, "/api/documents": {"GET"}, "/api/documents/{id}": {"GET"}, "/api/chats": {"GET", "POST"}, "/api/chats/{id}": {"GET"}, "/api/chats/{id}/messages": {"POST"}, "/api/runs/{id}/events": {"GET"}, "/api/runs/{id}/retry": {"POST"}, "/api/actions/{id}/confirm": {"POST"}, "/api/actions/{id}/cancel": {"POST"},
 	})
 	return &App{Handler: mux, Buddy: service, stop: stop}, nil
 }

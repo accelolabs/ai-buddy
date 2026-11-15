@@ -74,11 +74,11 @@ func TestUnifiedAPI(t *testing.T) {
 		status                 int
 	}{
 		{"GET", "/health/ready", "", "", 204}, {"GET", "/api/me", "", "", 400}, {"GET", "/api/me", "unknown", "", 400},
-		{"GET", "/api/me", "intern.backend.1", "", 200}, {"GET", "/api/tasks", "intern.backend.1", "", 200},
-		{"GET", "/api/tasks", "mentor.backend", "", 403}, {"GET", "/api/interns", "intern.backend.1", "", 403},
+		{"GET", "/api/me", "intern.backend.1", "", 200}, {"GET", "/api/tasks", "intern.backend.1", "", 405},
+		{"GET", "/api/tasks", "mentor.backend", "", 405}, {"GET", "/api/interns", "intern.backend.1", "", 403},
 		{"GET", "/api/interns", "mentor.backend", "", 200}, {"GET", "/api/interns/intern.platform.1/progress", "mentor.backend", "", 404},
 		{"GET", "/api/progress", "intern.platform.2", "", 200}, {"GET", "/api/tickets/incoming", "mentor.backend", "", 200},
-		{"GET", "/api/documents", "intern.backend.1", "", 200}, {"POST", "/api/search", "intern.backend.1", `{"query":"test"}`, 503},
+		{"GET", "/api/documents", "intern.backend.1", "", 200}, {"POST", "/api/search", "intern.backend.1", `{"query":"test"}`, 404},
 		{"POST", "/api/chats", "mentor.backend", `{}`, 403}, {"GET", "/api/auth/me", "intern.backend.1", "", 404},
 		{"GET", "/internal/interns/intern.backend.1/progress", "intern.backend.1", "", 404},
 		{"POST", "/api/tickets", "intern.platform.2", `{"question":"q","description":"d"}`, 422},
@@ -88,6 +88,43 @@ func TestUnifiedAPI(t *testing.T) {
 			t.Fatalf("%s %s as %s: %d %s", tc.method, tc.path, tc.id, w.Code, w.Body)
 		}
 	}
+	for _, id := range []string{"", "intern.backend.1", "mentor.backend"} {
+		w = call("GET", "/api/tasks", id, "")
+		if w.Code != 405 || w.Header().Get("Allow") != "POST" || !strings.Contains(w.Header().Get("Content-Type"), "application/json") {
+			t.Fatal(w)
+		}
+		for _, method := range []string{"GET", "POST"} {
+			w = call(method, "/api/search", id, `{"query":"test"}`)
+			if w.Code != 404 || !strings.Contains(w.Header().Get("Content-Type"), "application/json") {
+				t.Fatal(w)
+			}
+		}
+	}
+	w = call("POST", "/api/tasks", "intern.backend.1", `{"title":"HTTP task","description":"kept","deadline":"2026-12-01"}`)
+	var task struct {
+		ID string `json:"id"`
+	}
+	if err = json.Unmarshal(w.Body.Bytes(), &task); err != nil || w.Code != 201 || task.ID == "" {
+		t.Fatal(w, err)
+	}
+	w = call("POST", "/api/tasks/"+task.ID+"/complete", "intern.backend.1", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"completed"`) {
+		t.Fatal(w)
+	}
+	w = call("GET", "/api/progress", "intern.backend.1", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), task.ID) {
+		t.Fatal("progress must include tasks", w)
+	}
+	w = call("POST", "/api/tickets", "intern.backend.1", `{"question":"HTTP ticket","description":"kept"}`)
+	if w.Code != 201 {
+		t.Fatal(w)
+	}
+	for _, path := range []string{"/api/tasks", "/api/tasks/" + task.ID + "/complete", "/api/tickets"} {
+		if w = call("POST", path, "mentor.backend", `{}`); w.Code != 403 {
+			t.Fatal(w)
+		}
+	}
+
 	w = call("GET", "/api/me", "intern.backend.1", "")
 	if !strings.Contains(w.Body.String(), `"goals":"keep me"`) {
 		t.Fatal("seed overwrote state", w)

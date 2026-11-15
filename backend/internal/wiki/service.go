@@ -1,11 +1,6 @@
 package wiki
 
-import (
-	"context"
-	"errors"
-)
-
-var ErrQuery = errors.New("query must contain 1 to 4000 characters")
+import "context"
 
 type Store interface {
 	List(context.Context, string) ([]Document, error)
