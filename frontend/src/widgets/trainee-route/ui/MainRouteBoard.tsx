@@ -76,9 +76,14 @@ export const MainRouteBoard = memo(function MainRouteBoard() {
       </div>
 
       {/* 3. Progress Bar */}
-      <div className="mb-8">
+      <div className="w-full">
         <RouteProgressBar />
       </div>
+
+      {/* Connecting Wire from Progress Bar to First Task Card */}
+      <RouteWireSegment
+        variant={tasks[0]?.completed ? 'green' : 'gray'}
+      />
 
       {/* 4. Connected Task Cards List */}
       <div className="flex flex-col items-center w-full">
@@ -112,12 +117,6 @@ export const MainRouteBoard = memo(function MainRouteBoard() {
             </div>
           );
         })}
-      </div>
-
-      {/* 5. Bottom Exiting Wire Lines from Main Board (route.svg) */}
-      <div className="pointer-events-none mt-6 flex justify-around select-none">
-        <div className="h-4 w-0.5 bg-[#CBD5E1]" />
-        <div className="h-4 w-0.5 bg-[#CBD5E1]" />
       </div>
     </div>
   );

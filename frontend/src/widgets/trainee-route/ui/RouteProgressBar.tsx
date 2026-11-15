@@ -60,50 +60,9 @@ export const RouteProgressBar = memo(function RouteProgressBar() {
           </svg>
         </div>
 
-        {/* Right Chip Plug Connector (route.svg elements 18-21) */}
-        <div className="hidden sm:flex shrink-0 items-center pl-2">
-          <svg
-            width="42"
-            height="28"
-            viewBox="0 0 42 28"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="overflow-visible"
-          >
-            {/* Plug bracket on progress bar */}
-            <path
-              d="M0 6H6C8.2 6 10 7.8 10 10V18C10 20.2 8.2 22 6 22H0"
-              fill="#CBD5E1"
-            />
-            {/* Socket terminal */}
-            <rect
-              x="11"
-              y="9"
-              width="8"
-              height="10"
-              rx="2"
-              fill="#F8FAFC"
-              stroke="#94A3B8"
-              strokeWidth="1.2"
-            />
-            {/* Outgoing circuit trace going down and right */}
-            <path
-              d="M19 14H28C31 14 33 16 33 19V25"
-              stroke="#CBD5E1"
-              strokeWidth="1.5"
-            />
-            {/* Terminal contact pad */}
-            <rect
-              x="29"
-              y="23"
-              width="8"
-              height="4"
-              rx="1"
-              fill="#F0F9FF"
-              stroke="#7DD3FC"
-              strokeWidth="1"
-            />
-          </svg>
+        {/* Bottom Center Contact Terminal to wire leading to Card 1 */}
+        <div className="pointer-events-none absolute -bottom-1.5 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center">
+          <div className="h-1.5 w-5 rounded-xs border border-[#CBD5E1] bg-[#F1F5F9]" />
         </div>
       </div>
     </div>
