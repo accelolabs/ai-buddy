@@ -86,3 +86,28 @@ func (r *Repository) ListMessages(ctx context.Context, chatID string) ([]buddy.M
 	}
 	return messages, nil
 }
+
+// ListRecentMessages returns the last limit messages in chronological order, without sources.
+func (r *Repository) ListRecentMessages(ctx context.Context, chatID string, limit int) ([]buddy.Message, error) {
+	rows, err := r.db.QueryContext(ctx, `
+  SELECT id, chat_id, role, content, created_at FROM (
+    SELECT id, chat_id, role, content, created_at FROM messages
+    WHERE chat_id = $1 ORDER BY id DESC LIMIT $2
+  ) AS recent ORDER BY id`, chatID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list recent messages: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	messages := make([]buddy.Message, 0)
+	for rows.Next() {
+		var message buddy.Message
+		if err := rows.Scan(&message.ID, &message.ChatID, &message.Role, &message.Content, &message.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan recent message: %w", err)
+		}
+		messages = append(messages, message)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read recent messages: %w", err)
+	}
+	return messages, nil
+}

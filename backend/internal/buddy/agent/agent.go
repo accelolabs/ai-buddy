@@ -26,21 +26,17 @@ type searcher interface {
 }
 
 type Agent struct {
-	historyLimit int
 	rag          searcher
 	model        model
 	systemPrompt string
 }
 
-func NewAgent(model model, rag searcher, promptFile string, historyLimit int) (*Agent, error) {
-	if historyLimit <= 0 {
-		return nil, fmt.Errorf("history limit must be positive")
-	}
+func NewAgent(model model, rag searcher, promptFile string) (*Agent, error) {
 	prompt, err := os.ReadFile(promptFile)
 	if err != nil {
 		return nil, fmt.Errorf("read system prompt: %w", err)
 	}
-	return &Agent{model: model, rag: rag, systemPrompt: string(prompt), historyLimit: historyLimit}, nil
+	return &Agent{model: model, rag: rag, systemPrompt: string(prompt)}, nil
 }
 
 // Generate creates and closes an MCP session bound to the trusted current user.
@@ -52,9 +48,6 @@ func (a *Agent) Generate(ctx context.Context, user users.User, history []buddy.M
 	}
 	defer closeSession()
 
-	if len(history) > a.historyLimit {
-		history = history[len(history)-a.historyLimit:]
-	}
 	messages := make([]ollama.Message, 0, len(history)+1)
 	messages = append(messages, ollama.Message{Role: "system", Content: a.systemPrompt})
 	for _, message := range history {

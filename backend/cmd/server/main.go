@@ -55,11 +55,11 @@ func main() {
 	wikiRepository := wikirepository.NewRepository(db)
 	wikiHandler := wikihandler.NewHandler(wikiRepository, cfg.KnowledgeBaseDir)
 	search := rag.NewRAG(wikiRepository, ollama.NewClient(cfg.OllamaURL, cfg.EmbeddingModel), cfg.RAGChunkCount)
-	buddyAgent, err := agent.NewAgent(ollama.NewChatClient(cfg.OllamaURL, cfg.ChatModel, cfg.ChatContextLength), search, cfg.SystemPromptFile, cfg.ChatHistoryLimit)
+	buddyAgent, err := agent.NewAgent(ollama.NewChatClient(cfg.OllamaURL, cfg.ChatModel, cfg.ChatContextLength), search, cfg.SystemPromptFile)
 	if err != nil {
 		log.Fatal(err)
 	}
-	dialogHandler := buddyhandler.NewHandler(dialog.NewService(buddyrepository.NewRepository(db), buddyAgent))
+	dialogHandler := buddyhandler.NewHandler(dialog.NewService(buddyrepository.NewRepository(db), buddyAgent, cfg.ChatHistoryLimit))
 	selectedUser := middleware.Middleware(userRepository)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/users", userHandler.List)

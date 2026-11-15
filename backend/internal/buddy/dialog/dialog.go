@@ -23,6 +23,7 @@ type repository interface {
 	GetChat(context.Context, string) (buddy.Chat, error)
 	AddMessage(context.Context, buddy.Message) (buddy.Message, error)
 	ListMessages(context.Context, string) ([]buddy.Message, error)
+	ListRecentMessages(context.Context, string, int) ([]buddy.Message, error)
 }
 
 type agent interface {
@@ -30,17 +31,28 @@ type agent interface {
 }
 
 type Service struct {
-	active     sync.Map
-	repository repository
-	agent      agent
+	active       sync.Map
+	repository   repository
+	agent        agent
+	historyLimit int
 }
 
-func NewService(repository repository, agent agent) *Service {
-	return &Service{repository: repository, agent: agent}
+func NewService(repository repository, agent agent, historyLimit int) *Service {
+	return &Service{repository: repository, agent: agent, historyLimit: historyLimit}
 }
 
-func (s *Service) CreateChat(ctx context.Context, userID, title string) (buddy.Chat, error) {
-	return s.repository.AddChat(ctx, buddy.Chat{ID: rand.Text(), UserID: userID, Title: title})
+func (s *Service) ownedChat(ctx context.Context, user users.User, id string) (buddy.Chat, error) {
+	chat, err := s.repository.GetChat(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return buddy.Chat{}, ErrNotFound
+	}
+	if err != nil {
+		return buddy.Chat{}, fmt.Errorf("get dialog chat: %w", err)
+	}
+	if chat.UserID != user.ID {
+		return buddy.Chat{}, ErrNotFound
+	}
+	return chat, nil
 }
 
 // ListChats returns only chats owned by the trusted current user.
@@ -50,15 +62,9 @@ func (s *Service) ListChats(ctx context.Context, user users.User) ([]buddy.Chat,
 
 // GetChat returns the owned chat and its complete persisted history.
 func (s *Service) GetChat(ctx context.Context, user users.User, id string) (buddy.Chat, []buddy.Message, error) {
-	chat, err := s.repository.GetChat(ctx, id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return buddy.Chat{}, nil, ErrNotFound
-	}
+	chat, err := s.ownedChat(ctx, user, id)
 	if err != nil {
-		return buddy.Chat{}, nil, fmt.Errorf("get dialog chat: %w", err)
-	}
-	if chat.UserID != user.ID {
-		return buddy.Chat{}, nil, ErrNotFound
+		return buddy.Chat{}, nil, err
 	}
 	messages, err := s.repository.ListMessages(ctx, id)
 	if err != nil {
@@ -78,21 +84,15 @@ func (s *Service) Send(ctx context.Context, user users.User, chatID, text string
 	var err error
 	if newChat {
 		title := []rune(strings.Join(strings.Fields(text), " "))
-		chat, err = s.CreateChat(ctx, user.ID, string(title[:min(len(title), 80)]))
+		chat, err = s.repository.AddChat(ctx, buddy.Chat{ID: rand.Text(), UserID: user.ID, Title: string(title[:min(len(title), 80)])})
 		if err != nil {
 			return buddy.Message{}, fmt.Errorf("create dialog chat: %w", err)
 		}
 		chatID = chat.ID
 	} else {
-		chat, err = s.repository.GetChat(ctx, chatID)
-		if errors.Is(err, sql.ErrNoRows) {
-			return buddy.Message{}, ErrNotFound
-		}
+		chat, err = s.ownedChat(ctx, user, chatID)
 		if err != nil {
-			return buddy.Message{}, fmt.Errorf("get dialog chat: %w", err)
-		}
-		if chat.UserID != user.ID {
-			return buddy.Message{}, ErrNotFound
+			return buddy.Message{}, err
 		}
 	}
 	if _, busy := s.active.LoadOrStore(chatID, struct{}{}); busy {
@@ -108,7 +108,7 @@ func (s *Service) Send(ctx context.Context, user users.User, chatID, text string
 			return buddy.Message{}, fmt.Errorf("emit new chat: %w", err)
 		}
 	}
-	history, err := s.repository.ListMessages(ctx, chatID)
+	history, err := s.repository.ListRecentMessages(ctx, chatID, s.historyLimit)
 	if err != nil {
 		return buddy.Message{}, fmt.Errorf("load dialog history: %w", err)
 	}

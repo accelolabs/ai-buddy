@@ -16,6 +16,8 @@ type fakeRepository struct {
 	fail         string
 	listedUser   string
 	historyCalls int
+	recentCalls  int
+	recentLimit  int
 }
 
 var errFailure = errors.New("errFailure")
@@ -63,6 +65,19 @@ func (r *fakeRepository) ListMessages(context.Context, string) ([]buddy.Message,
 	return r.messages, nil
 }
 
+func (r *fakeRepository) ListRecentMessages(_ context.Context, _ string, limit int) ([]buddy.Message, error) {
+	r.recentLimit = limit
+	r.recentCalls++
+	if r.fail == "history" {
+		return nil, errFailure
+	}
+	messages := append([]buddy.Message(nil), r.messages[max(0, len(r.messages)-limit):]...)
+	for i := range messages {
+		messages[i].Source = nil
+	}
+	return messages, nil
+}
+
 type fakeAgent struct {
 	source  *buddy.Source
 	history []buddy.Message
@@ -84,13 +99,10 @@ func (a *fakeAgent) Generate(_ context.Context, user users.User, history []buddy
 }
 
 func TestDialog(t *testing.T) {
-	repo := &fakeRepository{}
+	chat := buddy.Chat{ID: "chat", UserID: "user", Title: "Title"}
+	repo := &fakeRepository{chat: chat}
 	agent := &fakeAgent{}
-	service := NewService(repo, agent)
-	chat, err := service.CreateChat(t.Context(), "user", "Title")
-	if err != nil || chat.ID == "" || chat.UserID != "user" || chat.Title != "Title" {
-		t.Fatalf("chat: %+v, %v", chat, err)
-	}
+	service := NewService(repo, agent, 6)
 	user := users.User{ID: "user", Team: "backend"}
 	for range 2 {
 		var text string
@@ -123,7 +135,7 @@ func TestDialogFailures(t *testing.T) {
 			if stage == "emit" {
 				emit = func(buddy.Event) error { return errFailure }
 			}
-			_, err := NewService(repo, agent).Send(t.Context(), users.User{ID: "user", Team: "backend"}, "chat", text, emit)
+			_, err := NewService(repo, agent, 6).Send(t.Context(), users.User{ID: "user", Team: "backend"}, "chat", text, emit)
 			if err == nil {
 				t.Fatal("expected error")
 			}
@@ -158,7 +170,7 @@ func (a *blockingAgent) Generate(ctx context.Context, _ users.User, _ []buddy.Me
 func TestConcurrentSend(t *testing.T) {
 	repo := &fakeRepository{chat: buddy.Chat{ID: "chat", UserID: "user"}}
 	agent := &blockingAgent{started: make(chan struct{}), release: make(chan struct{})}
-	service := NewService(repo, agent)
+	service := NewService(repo, agent, 6)
 	user := users.User{ID: "user"}
 	done := make(chan error, 1)
 	go func() { _, err := service.Send(t.Context(), user, "chat", "first", nil); done <- err }()
@@ -189,7 +201,7 @@ func TestSourceAfterSave(t *testing.T) {
 				agent.err = errFailure
 			}
 			var events []string
-			reply, err := NewService(repo, agent).Send(t.Context(), users.User{ID: "user"}, "chat", "question", func(e buddy.Event) error {
+			reply, err := NewService(repo, agent, 6).Send(t.Context(), users.User{ID: "user"}, "chat", "question", func(e buddy.Event) error {
 				events = append(events, e.Type)
 				if e.Type == "source" {
 					if len(repo.messages) != 2 || repo.messages[1].Source != e.Source || *e.Source != *source {
@@ -238,14 +250,14 @@ func TestReadChats(t *testing.T) {
 			if stage == "foreign" {
 				repo.chat.UserID = "other"
 			}
-			service := NewService(repo, nil)
+			service := NewService(repo, nil, 6)
 			chat, messages, err := service.GetChat(t.Context(), users.User{ID: "user"}, "chat")
 			if stage == "success" {
 				if err != nil || chat != repo.chat || len(messages) != 2 || messages[1].Source != repo.messages[1].Source {
 					t.Fatalf("chat: %+v messages: %+v error: %v", chat, messages, err)
 				}
 			} else if stage == "foreign" || stage == "missing" {
-				if !errors.Is(err, ErrNotFound) || repo.historyCalls != 0 {
+				if !errors.Is(err, ErrNotFound) || (repo.historyCalls != 0 || repo.recentCalls != 0) {
 					t.Fatalf("access: %v, history calls %d", err, repo.historyCalls)
 				}
 			} else if !errors.Is(err, errFailure) {
@@ -255,7 +267,7 @@ func TestReadChats(t *testing.T) {
 	}
 	for _, failure := range []string{"", "list"} {
 		repo := &fakeRepository{chat: buddy.Chat{ID: "chat", UserID: "user"}, fail: failure}
-		chats, err := NewService(repo, nil).ListChats(t.Context(), users.User{ID: "user"})
+		chats, err := NewService(repo, nil, 6).ListChats(t.Context(), users.User{ID: "user"})
 		if repo.listedUser != "user" || (failure == "" && (err != nil || len(chats) != 1)) || (failure == "list" && !errors.Is(err, errFailure)) {
 			t.Fatalf("list: %+v, %v, user %s", chats, err, repo.listedUser)
 		}
@@ -270,7 +282,7 @@ func TestFirstMessageCreatesChat(t *testing.T) {
 	} {
 		repo := &fakeRepository{}
 		agent := &fakeAgent{}
-		service := NewService(repo, agent)
+		service := NewService(repo, agent, 6)
 		var events []string
 		reply, err := service.Send(t.Context(), users.User{ID: "user"}, "", tc.text, func(event buddy.Event) error {
 			events = append(events, event.Type)
@@ -309,7 +321,7 @@ func TestFirstMessageFailures(t *testing.T) {
 				text = " \n\t"
 			}
 			var events []string
-			service := NewService(repo, agent)
+			service := NewService(repo, agent, 6)
 			_, err := service.Send(t.Context(), users.User{ID: "user"}, "", text, func(event buddy.Event) error {
 				events = append(events, event.Type)
 				if stage == "emit" {
@@ -341,7 +353,7 @@ func TestFirstMessageFailures(t *testing.T) {
 func TestFirstMessageLocksChat(t *testing.T) {
 	repo := &fakeRepository{}
 	agent := &blockingAgent{started: make(chan struct{}), release: make(chan struct{})}
-	service := NewService(repo, agent)
+	service := NewService(repo, agent, 6)
 	user := users.User{ID: "user"}
 	done := make(chan error, 1)
 	go func() { _, err := service.Send(t.Context(), user, "", "Первый вопрос", nil); done <- err }()
@@ -351,5 +363,51 @@ func TestFirstMessageLocksChat(t *testing.T) {
 	firstErr := <-done
 	if !errors.Is(err, ErrBusy) || firstErr != nil || len(repo.messages) != 2 {
 		t.Fatalf("concurrent first message: %v, %v, %+v", err, firstErr, repo.messages)
+	}
+}
+
+func TestSendRecentHistoryAndReadFullHistory(t *testing.T) {
+	source := &buddy.Source{Title: "Saved source"}
+	repo := &fakeRepository{
+		chat: buddy.Chat{ID: "chat", UserID: "user"},
+		messages: []buddy.Message{
+			{Role: buddy.RoleUser, Content: "old question"},
+			{Role: buddy.RoleAssistant, Content: "old answer", Source: source},
+		},
+	}
+	agent := &fakeAgent{}
+	service := NewService(repo, agent, 2)
+	user := users.User{ID: "user"}
+	if _, err := service.Send(t.Context(), user, "chat", "current question", nil); err != nil {
+		t.Fatal(err)
+	}
+	if repo.historyCalls != 0 || repo.recentCalls != 1 || repo.recentLimit != 2 || len(agent.history) != 2 || agent.history[0].Content != "old answer" || agent.history[1].Content != "current question" || agent.history[0].Source != nil {
+		t.Fatalf("generation history: %+v, repository: %+v", agent.history, repo)
+	}
+	_, messages, err := service.GetChat(t.Context(), user, "chat")
+	if err != nil || len(messages) != 4 || messages[1].Source != source || repo.historyCalls != 1 {
+		t.Fatalf("full history: %+v, %v", messages, err)
+	}
+}
+
+func TestSendCancellation(t *testing.T) {
+	repo := &fakeRepository{chat: buddy.Chat{ID: "chat", UserID: "user"}}
+	agent := &blockingAgent{started: make(chan struct{}), release: make(chan struct{})}
+	service := NewService(repo, agent, 6)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.Send(ctx, users.User{ID: "user"}, "chat", "question", nil)
+		done <- err
+	}()
+	<-agent.started
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) || len(repo.messages) != 1 {
+		t.Fatalf("cancellation: %v, %+v", err, repo.messages)
+	}
+	service.agent = &fakeAgent{}
+	if _, err := service.Send(t.Context(), users.User{ID: "user"}, "chat", "next", nil); err != nil {
+		t.Fatal("slot not released after cancellation", err)
 	}
 }

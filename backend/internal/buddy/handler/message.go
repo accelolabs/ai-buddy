@@ -89,36 +89,20 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "streaming unavailable", http.StatusInternalServerError)
 		return
 	}
-	started := false
-	send := func(event string, data any) error {
-		body, err := json.Marshal(data)
-		if err != nil {
-			return err
-		}
-		if !started {
-			w.Header().Set("Content-Type", "text/event-stream")
-			w.Header().Set("Cache-Control", "no-cache")
-			w.Header().Set("X-Accel-Buffering", "no")
-			started = true
-		}
-		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, body); err != nil {
-			return err
-		}
-		return http.NewResponseController(w).Flush()
-	}
+	stream := sseWriter{w: w}
 	reply, err := h.dialog.Send(r.Context(), user, r.PathValue("id"), input.Content, func(event buddy.Event) error {
 		switch event.Type {
 		case "chat":
 			if event.Chat == nil {
 				return fmt.Errorf("missing chat in event")
 			}
-			return send("chat", chatResponse(*event.Chat))
+			return stream.send("chat", chatResponse(*event.Chat))
 		case "state":
-			return send("state", stateResponse{State: event.State, Progress: event.Progress})
+			return stream.send("state", stateResponse{State: event.State, Progress: event.Progress})
 		case "source":
-			return send("source", sourceView(event.Source))
+			return stream.send("source", sourceView(event.Source))
 		case "text":
-			return send("text", textResponse{Text: event.Text})
+			return stream.send("text", textResponse{Text: event.Text})
 		default:
 			return fmt.Errorf("unknown agent event %q", event.Type)
 		}
@@ -128,8 +112,8 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 		if r.Context().Err() != nil {
 			return
 		}
-		if started {
-			if err := send("error", errorResponse{Error: "failed to generate reply"}); err != nil {
+		if stream.started {
+			if err := stream.send("error", errorResponse{Error: "failed to generate reply"}); err != nil {
 				log.Printf("write dialog error: %v", err)
 			}
 		} else if errors.Is(err, dialog.ErrNotFound) {
@@ -141,7 +125,7 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if err := send("done", messageView(reply)); err != nil {
+	if err := stream.send("done", messageView(reply)); err != nil {
 		log.Printf("write dialog reply: %v", err)
 	}
 }

@@ -44,7 +44,7 @@ func testAgent(t *testing.T, model *fakeModel, rag *fakeRAG) *Agent {
 	if err := os.WriteFile(path, []byte("Отвечай по-русски"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	agent, err := NewAgent(model, rag, path, 6)
+	agent, err := NewAgent(model, rag, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestGenerateFailures(t *testing.T) {
 			}
 		})
 	}
-	if _, err := NewAgent(&fakeModel{}, &fakeRAG{}, filepath.Join(t.TempDir(), "missing"), 6); err == nil {
+	if _, err := NewAgent(&fakeModel{}, &fakeRAG{}, filepath.Join(t.TempDir(), "missing")); err == nil {
 		t.Fatal("missing prompt accepted")
 	}
 }
@@ -286,7 +286,7 @@ func TestGenerateSourceDoesNotLeak(t *testing.T) {
 	}
 }
 
-func TestGenerateHistoryLimit(t *testing.T) {
+func TestGeneratePreparedHistory(t *testing.T) {
 	for _, count := range []int{0, 2, 6, 9} {
 		model := &fakeModel{}
 		history := make([]buddy.Message, count)
@@ -294,9 +294,8 @@ func TestGenerateHistoryLimit(t *testing.T) {
 			history[i] = buddy.Message{Role: buddy.RoleUser, Content: strings.Repeat("x", i+1)}
 		}
 		agent := testAgent(t, model, &fakeRAG{})
-		agent.historyLimit = 3
 		model.reply = func(messages []ollama.Message, _ []ollama.Tool) (ollama.Response, error) {
-			want := min(count, 3)
+			want := count
 			if len(messages) != want+1 || messages[0].Role != "system" {
 				t.Fatalf("history count %d: %+v", count, messages)
 			}
@@ -313,9 +312,6 @@ func TestGenerateHistoryLimit(t *testing.T) {
 		if count > 0 && history[0].Content != "x" {
 			t.Fatal("history modified")
 		}
-	}
-	if _, err := NewAgent(&fakeModel{}, &fakeRAG{}, "unused", 0); err == nil {
-		t.Fatal("accepted zero history limit")
 	}
 }
 

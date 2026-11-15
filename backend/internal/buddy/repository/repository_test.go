@@ -318,3 +318,44 @@ func TestListChats(t *testing.T) {
 		}
 	}
 }
+
+func TestListRecentMessages(t *testing.T) {
+	repo, ctx := testRepository(t)
+	if _, err := repo.db.ExecContext(ctx, `INSERT INTO users (id,name,role,team) VALUES ('user','User','intern','backend')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"chat", "other", "empty"} {
+		if _, err := repo.AddChat(ctx, buddy.Chat{ID: id, UserID: "user"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var expected []buddy.Message
+	for i := range 5 {
+		for _, id := range []string{"chat", "other"} {
+			message, err := repo.AddMessage(ctx, buddy.Message{ChatID: id, Role: buddy.RoleAssistant, Content: fmt.Sprint(i), Source: &buddy.Source{DocumentID: "doc", Title: "Title", Quote: "Quote"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if id == "chat" {
+				message.Source = nil
+				expected = append(expected, message)
+			}
+		}
+	}
+	for _, limit := range []int{1, 3, 5, 8} {
+		messages, err := repo.ListRecentMessages(ctx, "chat", limit)
+		if err != nil || !reflect.DeepEqual(messages, expected[max(0, len(expected)-limit):]) {
+			t.Fatalf("limit %d: %+v, %v", limit, messages, err)
+		}
+	}
+	for _, id := range []string{"empty", "missing"} {
+		messages, err := repo.ListRecentMessages(ctx, id, 3)
+		if err != nil || messages == nil || len(messages) != 0 {
+			t.Fatalf("empty history %s: %+v, %v", id, messages, err)
+		}
+	}
+	full, err := repo.ListMessages(ctx, "chat")
+	if err != nil || len(full) != 5 || full[0].Source == nil || full[4].Source == nil {
+		t.Fatalf("full history: %+v, %v", full, err)
+	}
+}
