@@ -18,7 +18,7 @@ export function TraineeRoute({ children }: TraineeRouteProps) {
   }
 
   if (isMentor(user)) {
-    return <Navigate to="/route" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;

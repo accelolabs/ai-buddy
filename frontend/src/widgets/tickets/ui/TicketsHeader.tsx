@@ -1,5 +1,6 @@
 import { ArrowLeft, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router';
+import { clearUserIdCookie } from '@/entities/user';
 
 export interface TicketsHeaderProps {
   onBack?: () => void;
@@ -21,6 +22,7 @@ export function TicketsHeader({ onBack, onLogout }: TicketsHeaderProps) {
     if (onLogout) {
       onLogout();
     } else {
+      clearUserIdCookie();
       navigate('/login');
     }
   };
