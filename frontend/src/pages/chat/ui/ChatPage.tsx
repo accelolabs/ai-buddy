@@ -1,9 +1,35 @@
+import { useEffect } from 'react';
+import { useSearchParams, Navigate } from 'react-router';
 import { useUser, isMentor } from '@/entities/user';
-import { Navigate } from 'react-router';
 import { BuddyChat, ChatBackground } from '@/widgets/ai-buddy-chat';
+import { useDialogMessages } from '@/entities/dialog';
+import { useChatStore } from '@/entities/chat';
 
 export function ChatPage() {
   const { data: user, isLoading } = useUser();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const dialogId = searchParams.get('dialogId');
+
+  const { data: loadedMessages, isSuccess } = useDialogMessages(dialogId);
+  const loadDialog = useChatStore((s) => s.loadDialog);
+  const startNewChat = useChatStore((s) => s.startNewChat);
+  const activeDialogId = useChatStore((s) => s.activeDialogId);
+
+  useEffect(() => {
+    if (dialogId) {
+      if (dialogId !== activeDialogId && isSuccess && loadedMessages) {
+        loadDialog(dialogId, loadedMessages);
+      }
+    } else if (activeDialogId !== null) {
+      startNewChat();
+    }
+  }, [dialogId, activeDialogId, isSuccess, loadedMessages, loadDialog, startNewChat]);
+
+  useEffect(() => {
+    if (activeDialogId && !dialogId) {
+      setSearchParams({ dialogId: activeDialogId }, { replace: true });
+    }
+  }, [activeDialogId, dialogId, setSearchParams]);
 
   if (isLoading) {
     return (

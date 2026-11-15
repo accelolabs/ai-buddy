@@ -1,3 +1,5 @@
+import type { ChatMessage } from '@/entities/chat/model/types';
+
 export type DialogTopic = 'docs' | 'code' | 'chat' | 'other';
 
 export interface Dialog {
@@ -15,4 +17,9 @@ export interface DialogsListResponse {
 export interface CreateDialogPayload {
   title?: string;
   topic?: DialogTopic | string;
+}
+
+export interface DialogMessagesResponse {
+  dialogId: string;
+  messages: ChatMessage[];
 }

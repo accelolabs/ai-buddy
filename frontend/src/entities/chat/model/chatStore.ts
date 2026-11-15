@@ -4,6 +4,11 @@ import { simulateSSEStream } from '../api/chatStream';
 import { createTicket } from '../api/ticketApi';
 import { createUserMessage, createBuddyMessage, updateMessagesWithEvent } from './helpers';
 import { queryClient } from '@/shared/api';
+import {
+  createDialogApi,
+  saveMockDialogMessages,
+  type Dialog,
+} from '@/entities/dialog';
 
 export interface ChatState {
   draft: string;
@@ -21,6 +26,8 @@ export interface ChatActions {
   applyPrompt: (promptText: string) => void;
   resetDraft: () => void;
   setActiveDialogId: (id: string | null) => void;
+  setMessages: (messages: ChatMessage[]) => void;
+  loadDialog: (dialogId: string, messages?: ChatMessage[]) => void;
   startNewChat: () => void;
   sendMessage: (text: string) => Promise<void>;
   retryMessage: (buddyMessageId?: string) => Promise<void>;
@@ -54,6 +61,40 @@ function abortActiveStream() {
   }
 }
 
+function generateDialogTitle(text: string): string {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length <= 40) return clean;
+  return clean.slice(0, 40).trim() + '...';
+}
+
+function detectTopic(text: string): 'docs' | 'code' | 'chat' {
+  const lower = text.toLowerCase();
+  if (
+    lower.includes('документ') ||
+    lower.includes('вики') ||
+    lower.includes('wiki') ||
+    lower.includes('регламент') ||
+    lower.includes('чек-лист') ||
+    lower.includes('памятк')
+  ) {
+    return 'docs';
+  }
+  if (
+    lower.includes('docker') ||
+    lower.includes('докер') ||
+    lower.includes('код') ||
+    lower.includes('порт') ||
+    lower.includes('ошибк') ||
+    lower.includes('баг') ||
+    lower.includes('компил') ||
+    lower.includes('сборк') ||
+    lower.includes('тест')
+  ) {
+    return 'code';
+  }
+  return 'chat';
+}
+
 export const useChatStore = create<ChatStore>((set, get) => ({
   ...initialChatState,
 
@@ -61,6 +102,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   setIsExpanded: (isExpanded) => set({ isExpanded }),
   resetDraft: () => set({ draft: '' }),
   setActiveDialogId: (activeDialogId) => set({ activeDialogId }),
+  setMessages: (messages) => set({ messages }),
+
+  loadDialog: (dialogId, messages = []) => {
+    abortActiveStream();
+    set({
+      activeDialogId: dialogId,
+      messages,
+      draft: '',
+      isStreaming: false,
+      ticketFlowStep: 'idle',
+      activeTicketDraft: null,
+    });
+  },
 
   startNewChat: () => {
     abortActiveStream();
@@ -68,6 +122,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       activeDialogId: null,
       messages: [],
       draft: '',
+      isExpanded: false,
       isStreaming: false,
       ticketFlowStep: 'idle',
       activeTicketDraft: null,
@@ -93,8 +148,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
       }
 
+      const nextMessages = updateMessagesWithEvent(state.messages, buddyMessageId, event);
+
+      if (state.activeDialogId) {
+        saveMockDialogMessages(state.activeDialogId, nextMessages);
+      }
+
       return {
-        messages: updateMessagesWithEvent(state.messages, buddyMessageId, event),
+        messages: nextMessages,
         isStreaming: event.type === 'done' || event.type === 'error' ? false : state.isStreaming,
         ticketFlowStep: nextFlowStep,
         activeTicketDraft: nextActiveDraft,
@@ -110,11 +171,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       status: 'completed',
       createdAt: new Date().toISOString(),
     };
-    set((state) => ({
-      messages: [...state.messages, confirmationMsg],
-      ticketFlowStep: 'idle',
-      activeTicketDraft: null,
-    }));
+    set((state) => {
+      const nextMessages = [...state.messages, confirmationMsg];
+      if (state.activeDialogId) {
+        saveMockDialogMessages(state.activeDialogId, nextMessages);
+      }
+      return {
+        messages: nextMessages,
+        ticketFlowStep: 'idle',
+        activeTicketDraft: null,
+      };
+    });
   },
 
   approveTicketDraft: async (draft) => {
@@ -142,6 +209,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           });
           return { ...msg, cards: nextCards };
         });
+
+        if (state.activeDialogId) {
+          saveMockDialogMessages(state.activeDialogId, updatedMessages);
+        }
 
         return {
           messages: updatedMessages,
@@ -176,6 +247,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         return { ...msg, cards: nextCards };
       });
 
+      if (state.activeDialogId) {
+        saveMockDialogMessages(state.activeDialogId, updatedMessages);
+      }
+
       return {
         activeTicketDraft: nextDraft,
         messages: updatedMessages,
@@ -198,17 +273,41 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const abortController = new AbortController();
     activeAbortController = abortController;
 
+    let activeId = get().activeDialogId;
+    if (!activeId) {
+      try {
+        const newDialog = await createDialogApi({
+          title: generateDialogTitle(trimmed),
+          topic: detectTopic(trimmed),
+        });
+        activeId = newDialog.id;
+        set({ activeDialogId: activeId });
+
+        queryClient.setQueryData<Dialog[]>(['dialogs', 'list'], (old) => {
+          return old ? [newDialog, ...old] : [newDialog];
+        });
+        queryClient.invalidateQueries({ queryKey: ['dialogs'] });
+      } catch (err) {
+        console.error('Failed to auto-create dialog for new message:', err);
+      }
+    }
+
     const userMessage = createUserMessage(trimmed);
     const buddyMessage = createBuddyMessage();
 
     const currentFlowStep = get().ticketFlowStep;
     const currentDraft = get().activeTicketDraft;
 
-    set((state) => ({
-      messages: [...state.messages, userMessage, buddyMessage],
+    const nextMessages = [...get().messages, userMessage, buddyMessage];
+    if (activeId) {
+      saveMockDialogMessages(activeId, nextMessages);
+    }
+
+    set({
+      messages: nextMessages,
       draft: '',
       isStreaming: true,
-    }));
+    });
 
     void queryClient.invalidateQueries({ queryKey: ['dialogs'] });
 
@@ -248,9 +347,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     const previousUserMsg = messages[index - 1];
     if (previousUserMsg && previousUserMsg.sender === 'user') {
-      set((state) => ({
-        messages: state.messages.filter((m) => m.id !== buddyMessageId),
-      }));
+      const filtered = messages.filter((m) => m.id !== buddyMessageId);
+      if (get().activeDialogId) {
+        saveMockDialogMessages(get().activeDialogId!, filtered);
+      }
+      set({ messages: filtered });
       await sendMessage(previousUserMsg.text);
     }
   },
