@@ -1,11 +1,17 @@
 package main
 
 import (
+	"backend/internal/buddy/agent"
+	"backend/internal/buddy/dialog"
+	buddyhandler "backend/internal/buddy/handler"
+	buddyrepository "backend/internal/buddy/repository"
 	"backend/internal/config"
+	"backend/internal/ollama"
 	usershandler "backend/internal/users/handler"
 	"backend/internal/users/middleware"
 	usersrepository "backend/internal/users/repository"
 	wikihandler "backend/internal/wiki/handler"
+	"backend/internal/wiki/rag"
 	wikirepository "backend/internal/wiki/repository"
 	"context"
 	"database/sql"
@@ -46,10 +52,18 @@ func main() {
 
 	userRepository := usersrepository.NewRepository(db)
 	userHandler := usershandler.NewHandler(userRepository)
-	wikiHandler := wikihandler.NewHandler(wikirepository.NewRepository(db), cfg.KnowledgeBaseDir)
+	wikiRepository := wikirepository.NewRepository(db)
+	wikiHandler := wikihandler.NewHandler(wikiRepository, cfg.KnowledgeBaseDir)
+	search := rag.NewRAG(wikiRepository, ollama.NewClient(cfg.OllamaURL, cfg.EmbeddingModel), cfg.RAGChunkCount)
+	buddyAgent, err := agent.NewAgent(ollama.NewClient(cfg.OllamaURL, cfg.ChatModel), search, cfg.SystemPromptFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	dialogHandler := buddyhandler.NewHandler(dialog.NewService(buddyrepository.NewRepository(db), buddyAgent))
 	selectedUser := middleware.Middleware(userRepository)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/users", userHandler.List)
+	mux.Handle("POST /api/chats/{id}/messages", selectedUser(http.HandlerFunc(dialogHandler.Send)))
 	mux.Handle("GET /api/wiki", selectedUser(http.HandlerFunc(wikiHandler.List)))
 	mux.Handle("GET /api/wiki/{id}", selectedUser(http.HandlerFunc(wikiHandler.Get)))
 

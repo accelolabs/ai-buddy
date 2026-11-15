@@ -13,6 +13,7 @@ RUN apk add --no-cache ca-certificates && addgroup -S app && adduser -S -G app a
 WORKDIR /app
 COPY --from=build /out/server /out/migrate /out/seed /out/index ./
 COPY migrations ./migrations
+COPY prompts ./prompts
 USER app
 EXPOSE 8080
 CMD ["./server"]

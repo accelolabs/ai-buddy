@@ -102,3 +102,24 @@ func TestRAGChunkCount(t *testing.T) {
 		}
 	}
 }
+
+func TestChatConfig(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/buddy")
+	t.Setenv("CHAT_MODEL", "")
+	t.Setenv("SYSTEM_PROMPT_FILE", "")
+	for _, key := range []string{"CHAT_MODEL", "SYSTEM_PROMPT_FILE"} {
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg, err := Load()
+	if err != nil || cfg.ChatModel != "qwen3.5:4b" || cfg.SystemPromptFile != "prompts/buddy.md" {
+		t.Fatalf("defaults: %+v, %v", cfg, err)
+	}
+	t.Setenv("CHAT_MODEL", "custom")
+	t.Setenv("SYSTEM_PROMPT_FILE", "/tmp/prompt.md")
+	cfg, err = Load()
+	if err != nil || cfg.ChatModel != "custom" || cfg.SystemPromptFile != "/tmp/prompt.md" {
+		t.Fatalf("configured: %+v, %v", cfg, err)
+	}
+}

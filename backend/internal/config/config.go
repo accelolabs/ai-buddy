@@ -7,6 +7,8 @@ import (
 )
 
 type Config struct {
+	ChatModel        string `env:"CHAT_MODEL" env-default:"qwen3.5:4b"`
+	SystemPromptFile string `env:"SYSTEM_PROMPT_FILE" env-default:"prompts/buddy.md"`
 	RAGChunkCount    int    `env:"RAG_CHUNK_COUNT" env-default:"3"`
 	Addr             string `env:"ADDR" env-default:":8080"`
 	DatabaseURL      string `env:"DATABASE_URL" env-required:"true"`
