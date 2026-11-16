@@ -12,6 +12,7 @@ import (
 
 	// Project packages.
 	"backend/internal/buddy"
+	"backend/internal/tracker"
 	"backend/internal/users"
 	"backend/internal/users/middleware"
 	"backend/internal/users/service"
@@ -134,8 +135,10 @@ func TestContextAndSSE(t *testing.T) {
 		}
 
 		return buddy.Answer{
-			Content: "reply",
-			Source:  &buddy.Source{DocumentID: "doc"},
+			Content:        "reply",
+			Source:         &buddy.Source{DocumentID: "doc"},
+			TaskCompletion: &tracker.Task{ID: "to-complete", UserID: "intern", Status: "pending"},
+			Tasks:          []tracker.Task{{ID: "saved", UserID: "intern", Description: "Сохранённая задача", Status: "pending"}},
 			Task: &buddy.Task{
 				Description: "Задача",
 				Deadline: time.Date(
@@ -172,7 +175,7 @@ func TestContextAndSSE(t *testing.T) {
 
 	last := -1
 
-	for _, event := range []string{"state", "text", "source", "ticket", "task", "done"} {
+	for _, event := range []string{"state", "text", "source", "ticket", "task", "tasks", "task_completion", "done"} {
 		pos := strings.Index(body, "event: "+event+"\n")
 		if pos <= last {
 			t.Fatalf("event order: %s", body)
@@ -192,7 +195,7 @@ func TestContextAndSSE(t *testing.T) {
 		t.Fatal(body)
 	}
 
-	for _, field := range []string{`"status"`, `"ticket_id"`, `"chat_id"`, `"created_at"`, "event: chat"} {
+	for _, field := range []string{`"ticket_id"`, `"chat_id"`, "event: chat"} {
 		if strings.Contains(body, field) {
 			t.Fatalf("legacy field %s: %s", field, body)
 		}
@@ -235,9 +238,11 @@ func TestStreamErrors(t *testing.T) {
 				}
 
 				return buddy.Answer{
-					Source: &buddy.Source{},
-					Ticket: &buddy.Ticket{},
-					Task:   &buddy.Task{},
+					Source:         &buddy.Source{},
+					Ticket:         &buddy.Ticket{},
+					Task:           &buddy.Task{},
+					Tasks:          []tracker.Task{{ID: "hidden"}},
+					TaskCompletion: &tracker.Task{ID: "hidden-completion"},
 				}, errors.New("private details")
 			}}
 			r := httptest.NewRequest(
@@ -261,7 +266,7 @@ func TestStreamErrors(t *testing.T) {
 			middleware.Middleware(userRepository{})(http.HandlerFunc(NewHandler(a, 6).Send)).ServeHTTP(w, r)
 			body := w.Body.String()
 
-			for _, event := range []string{"source", "ticket", "task", "done"} {
+			for _, event := range []string{"source", "ticket", "task", "tasks", "task_completion", "done"} {
 				if strings.Contains(body, "event: "+event) {
 					t.Fatal(body)
 				}
@@ -303,8 +308,28 @@ func TestNoAttachmentsOrHistory(t *testing.T) {
 	for range 2 {
 		w := send(NewHandler(a, 6), `{"messages":[{"role":"user","content":"new"}]}`, "intern")
 		if w.Body.String() != "event: done\ndata: {\"content\":\"answer\","+
-			"\"source\":null,\"ticket\":null,\"task\":null}\n\n" {
+			"\"source\":null,\"ticket\":null,\"task\":null,\"tasks\":null,\"task_completion\":null}\n\n" {
 			t.Fatal(w.Body)
 		}
+	}
+}
+
+func TestEmptyTasksCard(t *testing.T) {
+	a := &fakeAgent{generate: func(
+		_ context.Context,
+		_ users.User,
+		_ []buddy.Message,
+		_ func(buddy.Event) error,
+	) (buddy.Answer, error) {
+		return buddy.Answer{
+			Content: "Задач пока нет",
+			Tasks:   []tracker.Task{},
+		}, nil
+	}}
+	w := send(NewHandler(a, 6), `{"messages":[{"role":"user","content":"Мои задачи"}]}`, "intern")
+	body := w.Body.String()
+	if w.Code != 200 || !strings.Contains(body, "event: tasks\ndata: []\n\n") ||
+		!strings.Contains(body, `"tasks":[]`) || strings.Index(body, "event: tasks") > strings.Index(body, "event: done") {
+		t.Fatalf("empty card: %d %s", w.Code, body)
 	}
 }

@@ -39,7 +39,7 @@ func TestSearch(t *testing.T) {
 			},
 		}},
 	}
-	h := NewHandler(source, users.User{Team: "backend"}, nil)
+	h := NewHandler(source, users.User{Team: "backend"}, nil, nil)
 	_, found, err := h.Search(ctx, nil, SearchArgs{Query: "question"})
 	if err != nil || len(found.Chunks) != 1 || source.query != "question" || source.team != "backend" {
 		t.Fatalf("search: %+v, %v", found, err)
@@ -86,6 +86,7 @@ func TestMCPTools(t *testing.T) {
 		users.User{
 			Team: "backend",
 		},
+		nil,
 		nil,
 	).Register(server)
 	ct, st := sdk.NewInMemoryTransports()
@@ -177,7 +178,7 @@ func TestAttachSessionResults(t *testing.T) {
 			},
 		}},
 	}
-	h := NewHandler(search, users.User{Team: "backend"}, nil)
+	h := NewHandler(search, users.User{Team: "backend"}, nil, nil)
 	attach := func(id string, ordinal int, wantError bool) {
 		t.Helper()
 		_, result, err := h.Attach(ctx, nil, AttachArgs{
@@ -230,7 +231,7 @@ func TestAttachSessionResults(t *testing.T) {
 	}
 
 	attach("hidden", 0, true)
-	other := NewHandler(search, users.User{Team: "platform"}, nil)
+	other := NewHandler(search, users.User{Team: "platform"}, nil, nil)
 	if _, _, err := other.Attach(ctx, nil, AttachArgs{DocumentID: "b"}); err == nil || other.Source() != nil {
 		t.Fatal("results leaked across runs")
 	}

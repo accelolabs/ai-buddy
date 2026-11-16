@@ -6,6 +6,7 @@ import (
 
 	// Project packages.
 	"backend/internal/buddy"
+	"backend/internal/tracker"
 	"backend/internal/users"
 	"backend/internal/wiki/rag"
 
@@ -16,21 +17,28 @@ type mentorService interface {
 	GetMentor(context.Context, string) (users.User, error)
 }
 
+type taskService interface {
+	List(context.Context, users.User) ([]tracker.Task, error)
+}
+
 type searcher interface {
 	Search(context.Context, string, string) ([]rag.Match, error)
 }
 
 // Handler binds tools and attachments to one run for a trusted user.
 type Handler struct {
-	user  users.User
-	users mentorService
-	rag   searcher
+	user    users.User
+	users   mentorService
+	rag     searcher
+	tracker taskService
 
-	mu       sync.Mutex
-	ticket   *buddy.Ticket
-	task     *buddy.Task
-	found    map[key]buddy.Source
-	selected *key
+	mu             sync.Mutex
+	ticket         *buddy.Ticket
+	task           *buddy.Task
+	tasks          []tracker.Task
+	taskCompletion *tracker.Task
+	found          map[key]buddy.Source
+	selected       *key
 }
 
 type SearchArgs struct {
@@ -49,17 +57,30 @@ type Chunk struct {
 	Text       string `json:"text"`
 }
 
-func NewHandler(rag searcher, user users.User, users mentorService) *Handler {
+func NewHandler(rag searcher, user users.User, users mentorService, tracker taskService) *Handler {
 	return &Handler{
-		rag:   rag,
-		user:  user,
-		users: users,
-		found: make(map[key]buddy.Source),
+		rag:     rag,
+		user:    user,
+		users:   users,
+		tracker: tracker,
+		found:   make(map[key]buddy.Source),
 	}
 }
 
 func (h *Handler) Register(server *sdk.Server) {
 	if h.user.Role == users.RoleIntern {
+		sdk.AddTool(server, &sdk.Tool{
+			Name: "prepare_task_completion",
+			Description: "Подготовить карточку подтверждения выполнения своей задачи по task_id." +
+				" Само завершение требует нажатия пользователем кнопки.",
+		}, h.PrepareTaskCompletion)
+
+		sdk.AddTool(server, &sdk.Tool{
+			Name: "list_tasks",
+			Description: "Показать карточку со списком всех задач текущего стажёра:" +
+				" описания, дедлайны и статусы. Используй для вопросов о моих задачах.",
+		}, h.ListTasks)
+
 		sdk.AddTool(
 			server,
 			&sdk.Tool{

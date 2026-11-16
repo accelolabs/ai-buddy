@@ -12,7 +12,7 @@ import (
 )
 
 func TestPrepareTask(t *testing.T) {
-	h := NewHandler(nil, users.User{Role: users.RoleIntern}, nil)
+	h := NewHandler(nil, users.User{Role: users.RoleIntern}, nil, nil)
 	session, closeSession, err := h.OpenSession(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -32,7 +32,7 @@ func TestPrepareTask(t *testing.T) {
 	}
 
 	encoded, err := json.Marshal(names)
-	if err != nil || string(encoded) != `["attach_source","prepare_task","prepare_ticket","search_documents"]` {
+	if err != nil || string(encoded) != `["attach_source","list_tasks","prepare_task","prepare_task_completion","prepare_ticket","search_documents"]` {
 		t.Fatalf("tools: %s %v", encoded, err)
 	}
 
@@ -111,12 +111,12 @@ func TestPrepareTask(t *testing.T) {
 		t.Fatal("mutable draft")
 	}
 
-	if NewHandler(nil, users.User{Role: users.RoleIntern}, nil).Task() != nil {
+	if NewHandler(nil, users.User{Role: users.RoleIntern}, nil, nil).Task() != nil {
 		t.Fatal("draft leaked")
 	}
 
 	for _, role := range []string{users.RoleMentor, ""} {
-		other := NewHandler(nil, users.User{Role: role}, nil)
+		other := NewHandler(nil, users.User{Role: role}, nil, nil)
 		if _, _, err := other.PrepareTask(t.Context(), nil, TaskArgs{
 			Description: "x",
 			Deadline:    "2030-01-01T00:00:00Z",

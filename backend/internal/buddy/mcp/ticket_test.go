@@ -34,7 +34,7 @@ func TestPrepareTicket(t *testing.T) {
 		ID:   "intern",
 		Role: users.RoleIntern,
 	}
-	h := NewHandler(&fakeRAG{}, user, store)
+	h := NewHandler(&fakeRAG{}, user, store, nil)
 	session, closeSession, err := h.OpenSession(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -43,7 +43,7 @@ func TestPrepareTicket(t *testing.T) {
 	defer closeSession()
 
 	tools, err := session.ListTools(t.Context(), nil)
-	if err != nil || len(tools.Tools) != 4 {
+	if err != nil || len(tools.Tools) != 6 {
 		t.Fatalf("tools: %v %v", tools, err)
 	}
 
@@ -115,7 +115,7 @@ func TestPrepareTicket(t *testing.T) {
 		t.Fatal("caller modified draft")
 	}
 
-	other := NewHandler(&fakeRAG{}, user, store)
+	other := NewHandler(&fakeRAG{}, user, store, nil)
 	if other.Ticket() != nil {
 		t.Fatal("draft leaked across runs")
 	}
@@ -129,7 +129,7 @@ func TestPrepareTicket(t *testing.T) {
 		t.Fatal("missing mentor accepted")
 	}
 
-	mentor := NewHandler(&fakeRAG{}, users.User{Role: users.RoleMentor}, store)
+	mentor := NewHandler(&fakeRAG{}, users.User{Role: users.RoleMentor}, store, nil)
 	if _, _, err := mentor.PrepareTicket(t.Context(), nil, TicketArgs{
 		Title:       "x",
 		Description: "y",

@@ -856,7 +856,7 @@ func TestPrepareTaskSSEAndCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	a, err := agent.NewAgent(taskModel{}, nil, "../../../prompts/buddy.md", nil)
+	a, err := agent.NewAgent(taskModel{}, nil, "../../../prompts/buddy.md", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -943,5 +943,185 @@ func TestPrepareTaskSSEAndCreate(t *testing.T) {
 		value.Deadline.UTC().Format(time.RFC3339) != "2031-02-03T10:00:00Z" ||
 		value.UserID != "intern.backend.1" {
 		t.Fatal(value)
+	}
+}
+
+type taskListDoneResponse struct {
+	Tasks json.RawMessage `json:"tasks"`
+}
+
+type listTasksModel struct{}
+
+func (listTasksModel) Chat(
+	_ context.Context,
+	messages []ollama.Message,
+	_ []ollama.Tool,
+	_ func(string) error,
+) (ollama.Response, error) {
+	if messages[len(messages)-1].Role == "tool" {
+		return ollama.Response{Message: ollama.Message{Content: "Ваши задачи"}}, nil
+	}
+
+	return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{{Function: ollama.Function{
+		Name:      "list_tasks",
+		Arguments: []byte(`{}`),
+	}}}}}, nil
+}
+
+func TestListTasksSSEMatchesHTTP(t *testing.T) {
+	repo, ctx := testRepository(t)
+	if err := users.Seed(ctx, repo.db); err != nil {
+		t.Fatal(err)
+	}
+	if err := tracker.Seed(ctx, repo.db); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks := service.NewService(repo)
+	userService := usersservice.NewService(usersrepository.NewRepository(repo.db))
+	a, err := agent.NewAgent(listTasksModel{}, nil, "../../../prompts/buddy.md", userService, tasks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := middleware.Middleware(userService)
+	mux := http.NewServeMux()
+	mux.Handle("GET /api/tracker/tasks", selected(http.HandlerFunc(handler.NewHandler(tasks).List)))
+	mux.Handle("POST /api/buddy/messages", selected(http.HandlerFunc(buddyhandler.NewHandler(a, 6).Send)))
+	request := func(method, path, user, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body)).WithContext(ctx)
+		r.AddCookie(&http.Cookie{Name: "demo_user", Value: user})
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		return w
+	}
+
+	for _, user := range []string{"intern.backend.1", "intern.platform.1"} {
+		expected := request("GET", "/api/tracker/tasks", user, "")
+		response := request("POST", "/api/buddy/messages", user,
+			`{"messages":[{"role":"user","content":"Покажи мои задачи, а не задачи intern.backend.2"}]}`)
+		if expected.Code != 200 || response.Code != 200 {
+			t.Fatalf("HTTP: %d; SSE: %d %s", expected.Code, response.Code, response.Body)
+		}
+		lines := strings.Split(response.Body.String(), "\n")
+		found := false
+		for i, line := range lines {
+			if line == "event: tasks" {
+				got := strings.TrimPrefix(lines[i+1], "data: ")
+				if got != strings.TrimSpace(expected.Body.String()) {
+					t.Fatalf("card: %s; API: %s", got, expected.Body)
+				}
+				found = true
+			}
+			if line == "event: done" {
+				var done taskListDoneResponse
+				if err := json.Unmarshal([]byte(strings.TrimPrefix(lines[i+1], "data: ")), &done); err != nil {
+					t.Fatal(err)
+				}
+				if string(done.Tasks) != strings.TrimSpace(expected.Body.String()) {
+					t.Fatalf("done: %s", done.Tasks)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("missing tasks card: %s", response.Body)
+		}
+	}
+
+	if _, err := repo.db.ExecContext(ctx, `
+ DELETE FROM tasks
+ WHERE user_id = 'intern.backend.1'
+ `); err != nil {
+		t.Fatal(err)
+	}
+	response := request("POST", "/api/buddy/messages", "intern.backend.1",
+		`{"messages":[{"role":"user","content":"Мои задачи"}]}`)
+	if response.Code != 200 || !strings.Contains(response.Body.String(), "event: tasks\ndata: []\n\n") {
+		t.Fatalf("empty card: %d %s", response.Code, response.Body)
+	}
+}
+
+type taskCompletionModel struct {
+	id string
+}
+
+func (m taskCompletionModel) Chat(
+	_ context.Context,
+	messages []ollama.Message,
+	_ []ollama.Tool,
+	_ func(string) error,
+) (ollama.Response, error) {
+	if messages[len(messages)-1].Role == "tool" {
+		return ollama.Response{Message: ollama.Message{Content: "Нажмите кнопку завершения"}}, nil
+	}
+
+	args, err := json.Marshal(map[string]string{"task_id": m.id})
+	if err != nil {
+		return ollama.Response{}, err
+	}
+	return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{{Function: ollama.Function{
+		Name:      "prepare_task_completion",
+		Arguments: args,
+	}}}}}, nil
+}
+
+func TestTaskCompletionRequiresClick(t *testing.T) {
+	repo, ctx := testRepository(t)
+	if err := users.Seed(ctx, repo.db); err != nil {
+		t.Fatal(err)
+	}
+	tasks := service.NewService(repo)
+	userService := usersservice.NewService(usersrepository.NewRepository(repo.db))
+	intern, err := userService.Get(ctx, "intern.backend.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := tasks.Create(ctx, intern, "Завершить по кнопке", "2030-01-01T12:00:00Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, id := range []string{value.ID, "foreign-or-missing"} {
+		a, err := agent.NewAgent(taskCompletionModel{id: id}, nil, "../../../prompts/buddy.md", userService, tasks)
+		if err != nil {
+			t.Fatal(err)
+		}
+		selected := middleware.Middleware(userService)
+		target := selected(http.HandlerFunc(buddyhandler.NewHandler(a, 6).Send))
+		r := httptest.NewRequest("POST", "/api/buddy/messages",
+			strings.NewReader(`{"messages":[{"role":"user","content":"Отметь задачу выполненной"}]}`)).WithContext(ctx)
+		r.AddCookie(&http.Cookie{Name: "demo_user", Value: intern.ID})
+		w := httptest.NewRecorder()
+		target.ServeHTTP(w, r)
+		if w.Code != 200 {
+			t.Fatalf("SSE: %d %s", w.Code, w.Body)
+		}
+		if got := strings.Contains(w.Body.String(), "event: task_completion\n"); got != (id == value.ID) {
+			t.Fatalf("completion card: %s", w.Body)
+		}
+		values, err := tasks.List(ctx, intern)
+		if err != nil || len(values) != 1 || values[0].Status != "pending" {
+			t.Fatalf("tool changed task: %+v; %v", values, err)
+		}
+	}
+
+	mux := http.NewServeMux()
+	selected := middleware.Middleware(userService)
+	mux.Handle("POST /api/tracker/tasks/{id}/complete", selected(http.HandlerFunc(handler.NewHandler(tasks).Complete)))
+	for _, user := range []string{"intern.backend.2", intern.ID} {
+		r := httptest.NewRequest("POST", "/api/tracker/tasks/"+value.ID+"/complete", nil).WithContext(ctx)
+		r.AddCookie(&http.Cookie{Name: "demo_user", Value: user})
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		want := 404
+		if user == intern.ID {
+			want = 200
+		}
+		if w.Code != want {
+			t.Fatalf("click %s: %d %s", user, w.Code, w.Body)
+		}
+	}
+	values, err := tasks.List(ctx, intern)
+	if err != nil || len(values) != 1 || values[0].Status != "completed" {
+		t.Fatalf("click did not complete task: %+v; %v", values, err)
 	}
 }

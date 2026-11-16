@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	// Project packages.
 	"backend/internal/buddy"
 	"backend/internal/ollama"
+	"backend/internal/tracker"
 	"backend/internal/users"
 	"backend/internal/wiki"
 	"backend/internal/wiki/rag"
@@ -64,7 +66,7 @@ func testAgent(t *testing.T, model *fakeModel, rag *fakeRAG) *Agent {
 		t.Fatal(err)
 	}
 
-	agent, err := NewAgent(model, rag, path, nil)
+	agent, err := NewAgent(model, rag, path, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +199,7 @@ func TestGenerateFailures(t *testing.T) {
 		})
 	}
 
-	if _, err := NewAgent(&fakeModel{}, &fakeRAG{}, filepath.Join(t.TempDir(), "missing"), nil); err == nil {
+	if _, err := NewAgent(&fakeModel{}, &fakeRAG{}, filepath.Join(t.TempDir(), "missing"), nil, nil); err == nil {
 		t.Fatal("missing prompt accepted")
 	}
 }
@@ -571,7 +573,7 @@ func TestTicketGeneration(t *testing.T) {
 	model := &fakeModel{}
 	model.reply = func(messages []ollama.Message, tools []ollama.Tool) (ollama.Response, error) {
 		if model.calls == 1 {
-			if len(tools) != 4 {
+			if len(tools) != 6 {
 				t.Fatalf("tools: %v", tools)
 			}
 
@@ -792,5 +794,81 @@ func TestTaskGenerationAndSharedLimit(t *testing.T) {
 				}
 			},
 		)
+	}
+}
+
+type taskStore struct {
+	values []tracker.Task
+	user   users.User
+}
+
+func (s *taskStore) List(_ context.Context, user users.User) ([]tracker.Task, error) {
+	s.user = user
+	return s.values, nil
+}
+
+func TestTasksGeneration(t *testing.T) {
+	model := &fakeModel{}
+	model.reply = func(messages []ollama.Message, _ []ollama.Tool) (ollama.Response, error) {
+		if model.calls == 1 {
+			return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{{Function: ollama.Function{
+				Name: "list_tasks", Arguments: []byte(`{}`),
+			}}}}}, nil
+		}
+		if model.calls == 2 {
+			last := messages[len(messages)-1]
+			if last.Role != "tool" || last.ToolName != "list_tasks" ||
+				!strings.Contains(last.Content, `"id":"saved"`) || !strings.Contains(last.Content, `"status":"overdue"`) {
+				t.Fatalf("model did not receive tasks: %+v", last)
+			}
+		}
+		return ollama.Response{Message: ollama.Message{Content: "Вот ваши задачи"}}, nil
+	}
+	a := testAgent(t, model, &fakeRAG{})
+	store := &taskStore{values: []tracker.Task{{ID: "saved", Status: "overdue"}}}
+	a.tracker = store
+	user := users.User{ID: "trusted", Role: users.RoleIntern}
+	var progress []string
+	answer, err := a.Generate(t.Context(), user, nil, func(event buddy.Event) error {
+		if event.Progress != "" {
+			progress = append(progress, event.Progress)
+		}
+		return nil
+	})
+	if err != nil || !reflect.DeepEqual(answer.Tasks, store.values) || store.user != user ||
+		!reflect.DeepEqual(progress, []string{"list_tasks"}) {
+		t.Fatalf("answer: %+v; progress: %v; %v", answer, progress, err)
+	}
+	answer, err = a.Generate(t.Context(), user, nil, nil)
+	if err != nil || answer.Tasks != nil {
+		t.Fatalf("tasks leaked: %+v; %v", answer, err)
+	}
+}
+
+func TestTaskCompletionGeneration(t *testing.T) {
+	model := &fakeModel{}
+	model.reply = func(messages []ollama.Message, _ []ollama.Tool) (ollama.Response, error) {
+		if model.calls == 1 {
+			return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{{Function: ollama.Function{
+				Name: "prepare_task_completion", Arguments: []byte(`{"task_id":"saved"}`),
+			}}}}}, nil
+		}
+		if model.calls == 2 && !strings.Contains(messages[len(messages)-1].Content, `"prepared":true`) {
+			t.Fatal("completion preparation result missing")
+		}
+		return ollama.Response{Message: ollama.Message{Content: "Подтвердите завершение кнопкой"}}, nil
+	}
+	a := testAgent(t, model, &fakeRAG{})
+	store := &taskStore{values: []tracker.Task{{ID: "saved", Status: "pending"}}}
+	a.tracker = store
+	user := users.User{ID: "trusted", Role: users.RoleIntern}
+	answer, err := a.Generate(t.Context(), user, nil, nil)
+	if err != nil || answer.TaskCompletion == nil || answer.TaskCompletion.ID != "saved" ||
+		answer.TaskCompletion.Status != "pending" || store.user != user || store.values[0].Status != "pending" {
+		t.Fatalf("completion: %+v; %v", answer, err)
+	}
+	answer, err = a.Generate(t.Context(), user, nil, nil)
+	if err != nil || answer.TaskCompletion != nil {
+		t.Fatalf("card leaked: %+v; %v", answer, err)
 	}
 }

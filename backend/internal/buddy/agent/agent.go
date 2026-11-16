@@ -11,6 +11,7 @@ import (
 	"backend/internal/buddy"
 	buddymcp "backend/internal/buddy/mcp"
 	"backend/internal/ollama"
+	"backend/internal/tracker"
 	"backend/internal/users"
 	"backend/internal/wiki/rag"
 
@@ -31,14 +32,19 @@ type mentorService interface {
 	GetMentor(context.Context, string) (users.User, error)
 }
 
+type taskService interface {
+	List(context.Context, users.User) ([]tracker.Task, error)
+}
+
 type Agent struct {
+	tracker      taskService
 	users        mentorService
 	rag          searcher
 	model        model
 	systemPrompt string
 }
 
-func NewAgent(model model, rag searcher, promptFile string, users mentorService) (*Agent, error) {
+func NewAgent(model model, rag searcher, promptFile string, users mentorService, tracker taskService) (*Agent, error) {
 	prompt, err := os.ReadFile(promptFile)
 	if err != nil {
 		return nil, fmt.Errorf("read system prompt: %w", err)
@@ -46,6 +52,7 @@ func NewAgent(model model, rag searcher, promptFile string, users mentorService)
 
 	return &Agent{
 		users:        users,
+		tracker:      tracker,
 		model:        model,
 		rag:          rag,
 		systemPrompt: string(prompt),
@@ -59,7 +66,7 @@ func (a *Agent) Generate(
 	history []buddy.Message,
 	emit func(buddy.Event) error,
 ) (buddy.Answer, error) {
-	handler := buddymcp.NewHandler(a.rag, user, a.users)
+	handler := buddymcp.NewHandler(a.rag, user, a.users, a.tracker)
 	session, closeSession, err := handler.OpenSession(ctx)
 	if err != nil {
 		return buddy.Answer{}, err
@@ -132,10 +139,12 @@ func (a *Agent) Generate(
 
 		if len(response.Message.Calls) == 0 {
 			return buddy.Answer{
-				Content: content.String(),
-				Source:  handler.Source(),
-				Ticket:  handler.Ticket(),
-				Task:    handler.Task(),
+				Content:        content.String(),
+				Source:         handler.Source(),
+				Ticket:         handler.Ticket(),
+				Task:           handler.Task(),
+				Tasks:          handler.Tasks(),
+				TaskCompletion: handler.TaskCompletion(),
 			}, nil
 		}
 

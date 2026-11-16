@@ -47,10 +47,12 @@ type errorResponse struct {
 }
 
 type messageResponse struct {
-	Content string          `json:"content"`
-	Source  *sourceResponse `json:"source"`
-	Ticket  *ticketResponse `json:"ticket"`
-	Task    *taskResponse   `json:"task"`
+	Content        string               `json:"content"`
+	Source         *sourceResponse      `json:"source"`
+	Ticket         *ticketResponse      `json:"ticket"`
+	Task           *taskResponse        `json:"task"`
+	Tasks          []listedTaskResponse `json:"tasks"`
+	TaskCompletion *listedTaskResponse  `json:"task_completion"`
 }
 
 type sourceResponse struct {
@@ -194,13 +196,31 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if reply.Tasks != nil {
+		if err := stream.send("tasks", tasksView(reply.Tasks)); err != nil {
+			log.Printf("write tasks: %v", err)
+
+			return
+		}
+	}
+
+	if reply.TaskCompletion != nil {
+		if err := stream.send("task_completion", taskCompletionView(reply.TaskCompletion)); err != nil {
+			log.Printf("write task completion: %v", err)
+
+			return
+		}
+	}
+
 	if err := stream.send(
 		"done",
 		messageResponse{
-			Content: reply.Content,
-			Source:  sourceView(reply.Source),
-			Ticket:  ticketView(reply.Ticket),
-			Task:    taskView(reply.Task),
+			Content:        reply.Content,
+			Source:         sourceView(reply.Source),
+			Ticket:         ticketView(reply.Ticket),
+			Task:           taskView(reply.Task),
+			Tasks:          tasksView(reply.Tasks),
+			TaskCompletion: taskCompletionView(reply.TaskCompletion),
 		},
 	); err != nil {
 		log.Printf("write buddy reply: %v", err)

@@ -65,11 +65,13 @@ func main() {
 	wikiRepository := wikirepository.NewRepository(db)
 	wikiHandler := wikihandler.NewHandler(wikiservice.NewService(wikiRepository, cfg.KnowledgeBaseDir))
 	search := rag.NewRAG(wikiRepository, ollama.NewClient(cfg.OllamaURL, cfg.EmbeddingModel), cfg.RAGChunkCount)
+	trackerService := trackerservice.NewService(trackerrepository.NewRepository(db))
 	buddyAgent, err := agent.NewAgent(
 		ollama.NewChatClient(cfg.OllamaURL, cfg.ChatModel, cfg.ChatContextLength),
 		search,
 		cfg.SystemPromptFile,
 		userService,
+		trackerService,
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -77,7 +79,7 @@ func main() {
 
 	buddyHandler := buddyhandler.NewHandler(buddyAgent, cfg.ChatHistoryLimit)
 	ticketHandler := tickethandler.NewHandler(ticketservice.NewService(ticketrepository.NewRepository(db)))
-	trackerHandler := trackerhandler.NewHandler(trackerservice.NewService(trackerrepository.NewRepository(db)))
+	trackerHandler := trackerhandler.NewHandler(trackerService)
 	selectedUser := middleware.Middleware(userService)
 
 	mux := http.NewServeMux()
