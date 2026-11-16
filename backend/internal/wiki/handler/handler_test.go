@@ -114,6 +114,7 @@ func TestList(t *testing.T) {
 				documents: tc.documents,
 				err:       tc.err,
 			}
+
 			w := request(t, stub, t.TempDir(), "/api/wiki", users.RoleIntern, true)
 			if w.Code != tc.status || w.Body.String() != tc.body {
 				t.Fatalf("response %d %q", w.Code, w.Body.String())
@@ -198,6 +199,7 @@ func TestGetErrors(t *testing.T) {
 				document: wiki.Document{Path: tc.path},
 				err:      tc.err,
 			}
+
 			w := request(t, stub, root, "/api/wiki/article", users.RoleIntern, true)
 			if w.Code != tc.status || strings.Contains(w.Body.String(), "secret") ||
 				strings.Contains(
@@ -231,12 +233,14 @@ func TestAccessByTeam(t *testing.T) {
 		Path:  "article.md",
 		Title: "Общая",
 	}
+
 	own := wiki.Document{
 		ID:    "own",
 		Path:  "article.md",
 		Team:  "backend",
 		Title: "Своя",
 	}
+
 	foreign := wiki.Document{
 		ID:    "foreign",
 		Path:  "article.md",
@@ -266,6 +270,7 @@ func TestAccessByTeam(t *testing.T) {
 					Title: own.Title,
 				},
 			}
+
 			if w.Code != 200 || !reflect.DeepEqual(got, want) {
 				t.Fatalf("list response %d %s", w.Code, w.Body.String())
 			}
@@ -288,6 +293,7 @@ func TestAccessByTeam(t *testing.T) {
 					t.Fatalf("Get(%q): %d, want %d", doc.ID, w.Code, wantStatus)
 				}
 			}
+
 			// The root does not exist: denial must happen before any file access.
 			stub = &readerStub{document: foreign}
 			w = request(t, stub, filepath.Join(root, "absent"), "/api/wiki/foreign", role, true)
@@ -295,5 +301,18 @@ func TestAccessByTeam(t *testing.T) {
 				t.Fatalf("foreign article accessed files: status %d", w.Code)
 			}
 		})
+	}
+}
+
+func TestMissingTrustedContext(t *testing.T) {
+	stub := &readerStub{}
+	h := NewHandler(service.NewService(stub, t.TempDir()))
+
+	for _, f := range []http.HandlerFunc{h.List, h.Get} {
+		w := httptest.NewRecorder()
+		f(w, httptest.NewRequest("GET", "/", nil))
+		if w.Code != 401 || stub.calls != 0 {
+			t.Fatalf("%d; calls %d", w.Code, stub.calls)
+		}
 	}
 }

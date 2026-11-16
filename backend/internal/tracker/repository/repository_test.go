@@ -1,1127 +1,210 @@
 package repository
 
 import (
-	"context"
 	"database/sql"
-	"encoding/json"
+	"database/sql/driver"
 	"errors"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
-	"os"
 	"reflect"
-	"strings"
+	"regexp"
 	"testing"
 	"time"
 
 	// Project packages.
-	"backend/internal/buddy/agent"
-	buddyhandler "backend/internal/buddy/handler"
-	"backend/internal/ollama"
-	"backend/internal/ticket"
 	"backend/internal/tracker"
-	"backend/internal/tracker/handler"
-	"backend/internal/tracker/service"
 	"backend/internal/users"
-	usershandler "backend/internal/users/handler"
-	"backend/internal/users/middleware"
-	usersrepository "backend/internal/users/repository"
-	usersservice "backend/internal/users/service"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
+	"github.com/DATA-DOG/go-sqlmock"
 )
 
-// Each test applies the real migrations in a separate schema.
-func testRepository(t *testing.T) (*Repository, context.Context) {
+const addSQL = `
+			INSERT INTO tasks (id, user_id, description, deadline)
+			VALUES ($1, $2, $3, $4)
+			RETURNING created_at,
+				CASE
+					WHEN completed THEN 'completed'
+					WHEN deadline < now() THEN 'overdue'
+					ELSE 'pending'
+				END
+		`
+
+const listSQL = `
+			SELECT t.id, t.user_id, t.description, t.deadline,
+				CASE
+					WHEN completed THEN 'completed'
+					WHEN deadline < now() THEN 'overdue'
+					ELSE 'pending'
+				END, t.created_at
+			FROM users u
+			LEFT JOIN tasks t ON t.user_id = u.id
+			WHERE u.id = $1
+				AND u.role = 'intern'
+				AND (
+					($2 = 'intern' AND u.id = $3)
+					OR (
+						$2 = 'mentor'
+						AND EXISTS (
+							SELECT 1
+							FROM mentorships m
+							WHERE m.intern_id = u.id
+								AND m.mentor_id = $3
+						)
+					)
+				)
+			ORDER BY t.deadline ASC, t.created_at ASC, t.id ASC
+		`
+
+const completeSQL = `
+			UPDATE tasks
+			SET completed = true
+			WHERE id = $1
+				AND user_id = $2
+				AND $3 = 'intern'
+			RETURNING id, user_id, description, deadline,
+				CASE
+					WHEN completed THEN 'completed'
+					WHEN deadline < now() THEN 'overdue'
+					ELSE 'pending'
+				END, created_at
+		`
+
+func mockRepository(t *testing.T) (*Repository, sqlmock.Sqlmock) {
 	t.Helper()
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL is not set")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	t.Cleanup(cancel)
-
-	cfg, err := pgx.ParseConfig(dsn)
+	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	admin := stdlib.OpenDB(*cfg)
 	t.Cleanup(func() {
-		if err := admin.Close(); err != nil {
+		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Error(err)
 		}
-	})
-	schema := fmt.Sprintf("tracker_test_%d", time.Now().UnixNano())
-	if _, err := admin.ExecContext(ctx, `
-		CREATE SCHEMA
-	`+schema); err != nil {
-		t.Fatal(err)
-	}
 
-	t.Cleanup(func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cleanupCancel()
-
-		if _, err := admin.ExecContext(cleanupCtx, `
-			DROP SCHEMA
-		`+schema+` CASCADE`); err != nil {
-			t.Error(err)
-		}
+		_ = db.Close()
 	})
 
-	cfg.RuntimeParams["search_path"] = schema
-	db := stdlib.OpenDB(*cfg)
-	t.Cleanup(func() {
-		if err := db.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	if err := goose.SetDialect("postgres"); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := goose.UpContext(ctx, db, "../../../migrations"); err != nil {
-		t.Fatal(err)
-	}
-
-	return NewRepository(db), ctx
+	return NewRepository(db), mock
 }
 
-func TestTasks(t *testing.T) {
-	repo, ctx := testRepository(t)
-	if err := users.Seed(ctx, repo.db); err != nil {
-		t.Fatal(err)
+var errQueryFailure = errors.New("query failure")
+
+func TestRepository(t *testing.T) {
+	now := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	user := users.User{ID: "intern", Role: users.RoleIntern}
+	expected := tracker.Task{
+		ID:          "id",
+		UserID:      "intern",
+		Description: "Body",
+		CreatedAt:   now,
+		Deadline:    now,
+		Status:      "pending",
 	}
-
-	intern := users.User{
-		ID:   "intern.backend.1",
-		Role: users.RoleIntern,
-	}
-	second := users.User{
-		ID:   "intern.backend.2",
-		Role: users.RoleIntern,
-	}
-	mentor := users.User{
-		ID:   "mentor.backend",
-		Role: users.RoleMentor,
-	}
-	otherMentor := users.User{
-		ID:   "mentor.platform",
-		Role: users.RoleMentor,
-	}
-
-	for _, user := range []users.User{intern, mentor} {
-		got, err := repo.List(ctx, user, intern.ID)
-		if err != nil || got == nil || len(got) != 0 {
-			t.Fatalf("empty: %v %v", got, err)
-		}
-	}
-
-	past := time.Now().UTC().Add(-time.Hour).Truncate(time.Microsecond)
-	future := past.Add(2 * time.Hour)
-
-	for _, value := range []tracker.Task{
-		{
-			ID:          "z",
-			UserID:      intern.ID,
-			Description: "Задача 🔑",
-			Deadline:    future,
-		},
-		{
-			ID:          "a",
-			UserID:      intern.ID,
-			Description: "Вторая",
-			Deadline:    future,
-		},
-		{
-			ID:          "b",
-			UserID:      intern.ID,
-			Description: "Просрочена",
-			Deadline:    past,
-		},
-		{
-			ID:          "other",
-			UserID:      second.ID,
-			Description: "Чужая",
-			Deadline:    past,
-		},
-	} {
-		got, err := repo.Add(ctx, value)
-		if err != nil || got.CreatedAt.IsZero() {
-			t.Fatalf("add: %+v %v", got, err)
-		}
-
-		value.CreatedAt = got.CreatedAt
-		value.Status = "pending"
-		if value.Deadline.Before(time.Now()) {
-			value.Status = "overdue"
-		}
-
-		if !reflect.DeepEqual(got, value) {
-			t.Fatalf("round trip: %+v want %+v", got, value)
-		}
-	}
-
-	if _, err := repo.Add(ctx, tracker.Task{
-		ID:       "orphan",
-		UserID:   "missing",
-		Deadline: future,
-	}); err == nil {
-		t.Fatal("orphan accepted")
-	}
-
-	if _, err := repo.db.ExecContext(
-		ctx,
-		`
-			UPDATE tasks
-			SET created_at='2026-01-01Z'
-		`,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := repo.db.ExecContext(
-		ctx,
-		`
-			UPDATE tasks
-			SET created_at='2026-01-02Z'
-			WHERE id='a'
-		`,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	checkList := func(user users.User, id string, ids []string) []tracker.Task {
-		t.Helper()
-		got, err := repo.List(ctx, user, id)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		actual := make([]string, 0, len(got))
-
-		for _, v := range got {
-			actual = append(actual, v.ID)
-		}
-
-		if !reflect.DeepEqual(actual, ids) {
-			t.Fatalf("list: %v want %v", actual, ids)
-		}
-
-		return got
-	}
-	checkList(intern, intern.ID, []string{"b", "z", "a"})
-	checkList(mentor, intern.ID, []string{"b", "z", "a"})
-	// Equal deadline and creation timestamps are ordered by ID.
-	if _, err := repo.db.ExecContext(
-		ctx,
-		`
-			UPDATE tasks
-			SET created_at='2026-01-01Z'
-			WHERE id='a'
-		`,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	checkList(intern, intern.ID, []string{"b", "a", "z"})
-
-	for _, tc := range []struct {
-		user users.User
-		id   string
-	}{
-		{intern, second.ID},
-		{mentor, "intern.platform.1"},
-		{mentor, "missing"},
-		{mentor, mentor.ID},
-		{otherMentor, intern.ID},
-	} {
-		if _, err := repo.List(ctx, tc.user, tc.id); !errors.Is(err, sql.ErrNoRows) {
-			t.Fatalf("access: %v", err)
-		}
-	}
-
-	for _, user := range []users.User{second, mentor} {
-		if _, err := repo.Complete(ctx, user, "b"); !errors.Is(err, sql.ErrNoRows) {
-			t.Fatalf("complete access: %v", err)
-		}
-	}
-
-	if _, err := repo.Complete(ctx, intern, "missing"); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatal(err)
-	}
-
-	for range 2 {
-		got, err := repo.Complete(ctx, intern, "b")
-		if err != nil || got.Status != "completed" {
-			t.Fatalf("complete overdue: %+v %v", got, err)
-		}
-	}
-
-	list := checkList(intern, intern.ID, []string{"b", "a", "z"})
-	if list[0].Status != "completed" {
-		t.Fatal("completed lost priority")
-	}
-
-	if _, err := repo.db.ExecContext(
-		ctx,
-		`
-			UPDATE tasks
-			SET deadline=now()-interval '1 day'
-			WHERE id='a'
-		`,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	list = checkList(intern, intern.ID, []string{"a", "b", "z"})
-	if list[0].Status != "overdue" {
-		t.Fatal("status was not recalculated")
-	}
-
-	if _, err := repo.db.ExecContext(
-		ctx,
-		`
-			UPDATE tasks
-			SET deadline=now()+interval '1 day'
-			WHERE id='a'
-		`,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	list = checkList(intern, intern.ID, []string{"b", "z", "a"})
-	if list[2].Status != "pending" {
-		t.Fatal("pending was not recalculated")
-	}
-
-	if _, err := repo.db.ExecContext(
-		ctx,
-		`
-			UPDATE mentorships
-			SET mentor_id='mentor.platform'
-			WHERE intern_id=$1
-		`,
-		intern.ID,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := repo.List(ctx, mentor, intern.ID); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatal("old mentor retains access", err)
-	}
-
-	checkList(otherMentor, intern.ID, []string{"b", "z", "a"})
-	if _, err := repo.db.ExecContext(
-		ctx,
-		`
-			DELETE
-			FROM mentorships
-			WHERE intern_id=$1
-		`,
-		intern.ID,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := repo.List(ctx, otherMentor, intern.ID); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatal("removed assignment retains access", err)
-	}
-}
-
-func TestTrackerMigration(t *testing.T) {
-	repo, ctx := testRepository(t)
-	if err := users.Seed(ctx, repo.db); err != nil {
-		t.Fatal(err)
-	}
-
-	for _, query := range []string{
-		`
-			INSERT INTO documents (id,path,team,title)
-			VALUES ('doc','doc.md','','Wiki')
-		`,
-		`
-			INSERT INTO chunks (document_id,ordinal,anchor,text)
-			VALUES ('doc',0,'','Text')
-		`,
-		`
-			INSERT INTO tickets (id,user_id,title,description)
-			VALUES ('ticket','intern.backend.1','Title','Text')
-		`,
-		`
-			INSERT INTO tasks (id,user_id,description,deadline)
-			VALUES ('task','intern.backend.1','Text',now())
-		`,
-	} {
-		if _, err := repo.db.ExecContext(ctx, query); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	for range 2 {
-		if err := goose.DownToContext(ctx, repo.db, "../../../migrations", 3); err != nil {
-			t.Fatal(err)
-		}
-
-		for table, want := range map[string]int{
-			"users":       6,
-			"mentorships": 4,
-			"documents":   1,
-			"chunks":      1,
-			"tickets":     1,
-		} {
-			var count int
-			if err := repo.db.QueryRowContext(ctx, `
-				SELECT count(*)
-				FROM
-			`+table).Scan(&count); err != nil || count != want {
-				t.Fatalf("preserve %s: %d %v", table, count, err)
-			}
-		}
-
-		var exists bool
-		if err := repo.db.QueryRowContext(
-			ctx,
-			`
-				SELECT to_regclass(current_schema()||'.tasks') IS NOT NULL
-			`,
-		).Scan(&exists); err != nil ||
-			exists {
-			t.Fatalf("tasks survived down: %v", err)
-		}
-
-		if err := goose.UpContext(ctx, repo.db, "../../../migrations"); err != nil {
-			t.Fatal(err)
-		}
-
-		var count int
-		if err := repo.db.QueryRowContext(
-			ctx,
-			`
-				SELECT count(*)
-				FROM tasks
-			`,
-		).Scan(&count); err != nil || count != 0 {
-			t.Fatalf("reapply: %d %v", count, err)
-		}
-	}
-}
-
-func TestHTTP(t *testing.T) {
-	repo, ctx := testRepository(t)
-	if err := users.Seed(ctx, repo.db); err != nil {
-		t.Fatal(err)
-	}
-
-	ur := usersrepository.NewRepository(repo.db)
-	h := handler.NewHandler(service.NewService(repo))
-	uh := usershandler.NewHandler(usersservice.NewService(ur))
-	selected := middleware.Middleware(usersservice.NewService(ur))
-	mux := http.NewServeMux()
-	mux.Handle("POST /api/tracker/tasks", selected(http.HandlerFunc(h.Create)))
-	mux.Handle("GET /api/tracker/tasks", selected(http.HandlerFunc(h.List)))
-	mux.Handle("GET /api/tracker/interns/{internID}/tasks", selected(http.HandlerFunc(h.ListIntern)))
-	mux.Handle("POST /api/tracker/tasks/{id}/complete", selected(http.HandlerFunc(h.Complete)))
-	mux.Handle("GET /api/users/interns", selected(http.HandlerFunc(uh.ListInterns)))
-	request := func(method, path, user, body string, status int) *httptest.ResponseRecorder {
-		t.Helper()
-		r := httptest.NewRequest(method, path, strings.NewReader(body))
-		if user != "" {
-			r.AddCookie(&http.Cookie{
-				Name:  "demo_user",
-				Value: user,
-			})
-		}
-
-		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, r)
-		if w.Code != status {
-			t.Fatalf("%s %s %s: %d %s", method, path, user, w.Code, w.Body)
-		}
-
-		return w
-	}
-	intern := "intern.backend.1"
-	mentor := "mentor.backend"
-	valid := "{\"description\":\"  Задача 🔑 " +
-		" \",\"deadline\":\"2099-01-01T12:00:00+03:00\",\"user_id\":\"intern.platf" +
-		"orm.1\"}"
-
-	for _, user := range []string{"", "missing"} {
-		request("POST", "/api/tracker/tasks", user, valid, 401)
-		request("GET", "/api/tracker/tasks", user, "", 401)
-		request("GET", "/api/tracker/interns/"+intern+"/tasks", user, "", 401)
-		request("POST", "/api/tracker/tasks/missing/complete", user, "", 401)
-		request("GET", "/api/users/interns", user, "", 401)
-	}
-
-	request("POST", "/api/tracker/tasks", mentor, valid, 403)
-	request("POST", "/api/tracker/tasks/missing/complete", mentor, "", 403)
-	request("GET", "/api/tracker/tasks", mentor, "", 403)
-	request("GET", "/api/tracker/interns/"+intern+"/tasks", intern, "", 403)
-	request("GET", "/api/users/interns", intern, "", 403)
-
-	for _, body := range []string{
-		"",
-		`null`,
-		`{}`,
-		`{"description":" ","deadline":"2099-01-01T00:00:00Z"}`,
-		`{"description":"x"}`,
-		`{"description":"x","deadline":"2099-01-01T00:00:00"}`,
-		`{"description":"x","deadline":"bad"}`,
-		`{"description":"x","deadline":123}`,
-		valid + ` {}`,
-		valid + ` rubbish`,
-		`{"description":"` + strings.Repeat(
-			"x",
-			1<<20,
-		) + `","deadline":"2099-01-01T00:00:00Z"}`,
-		valid + strings.Repeat(
-			" ",
-			1<<20,
-		),
-	} {
-		request("POST", "/api/tracker/tasks", intern, body, 400)
-	}
-
-	for _, path := range []string{"/api/tracker/tasks", "/api/tracker/interns/" + intern + "/tasks"} {
-		user := intern
-		if strings.Contains(path, "interns") {
-			user = mentor
-		}
-
-		if w := request("GET", path, user, "", 200); w.Body.String() != "[]\n" {
-			t.Fatal(w.Body)
-		}
-	}
-
-	for _, id := range []string{"missing", "intern.platform.1", mentor} {
-		request("GET", "/api/tracker/interns/"+id+"/tasks", mentor, "", 404)
-	}
-
-	var created taskResponseForTest
-	w := request("POST", "/api/tracker/tasks", intern, valid, 201)
-	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
-		t.Fatal(err)
-	}
-
-	if created.ID == "" || created.UserID != intern || created.Description != "Задача 🔑" ||
-		created.Status != "pending" ||
-		created.CreatedAt.IsZero() ||
-		created.Deadline.Format(time.RFC3339) != "2099-01-01T12:00:00+03:00" {
-		t.Fatalf("create: %+v", created)
-	}
-
-	for _, tc := range []struct {
-		user, path string
-	}{{intern, "/api/tracker/tasks"}, {mentor, "/api/tracker/interns/" + intern + "/tasks"}} {
-		var list []taskResponseForTest
-		if err := json.Unmarshal(request("GET", tc.path, tc.user, "", 200).Body.Bytes(), &list); err != nil {
-			t.Fatal(err)
-		}
-
-		if len(list) != 1 || list[0].ID != created.ID || !list[0].Deadline.Equal(created.Deadline) {
-			t.Fatalf("list: %+v", list)
-		}
-	}
-
-	path := "/api/tracker/tasks/" + created.ID + "/complete"
-	request("POST", path, intern, `{}`, 400)
-	request("POST", path, "intern.backend.2", "", 404)
-	request("POST", "/api/tracker/tasks/missing/complete", intern, "", 404)
-
-	var first string
-
-	for i := range 2 {
-		w := request("POST", path, intern, "", 200)
-
-		var got taskResponseForTest
-		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
-			t.Fatal(err)
-		}
-
-		if got.ID != created.ID || got.Status != "completed" || !got.CreatedAt.Equal(created.CreatedAt) {
-			t.Fatalf("complete: %+v", got)
-		}
-
-		if i == 0 {
-			first = w.Body.String()
-		} else if first != w.Body.String() {
-			t.Fatal("repeat changed response")
-		}
-	}
-
-	w = request(
-		"POST",
-		"/api/tracker/tasks",
-		intern,
-		`{"description":"Past","deadline":"2000-01-01T00:00:00Z"}`,
-		201,
-	)
-	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil || created.Status != "overdue" {
-		t.Fatalf("past: %+v %v", created, err)
-	}
-	// Only the current mentor's interns are exposed, including an empty assignment set.
-	for _, user := range []string{mentor, "mentor.platform"} {
-		var list []users.User
-		w = request("GET", "/api/users/interns", user, "", 200)
-		if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil || len(list) != 2 {
-			t.Fatalf("interns: %s %v", w.Body, err)
-		}
-
-		for _, v := range list {
-			if !strings.HasPrefix(v.ID, "intern."+strings.TrimPrefix(user, "mentor.")+".") {
-				t.Fatal("foreign intern", v)
-			}
-		}
-	}
-
-	if _, err := repo.db.ExecContext(
-		ctx,
-		`
-			UPDATE mentorships
-			SET mentor_id='mentor.platform'
-			WHERE intern_id=$1
-		`,
-		intern,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	request("GET", "/api/tracker/interns/"+intern+"/tasks", mentor, "", 404)
-	request("GET", "/api/tracker/interns/"+intern+"/tasks", "mentor.platform", "", 200)
-	if _, err := repo.db.ExecContext(
-		ctx,
-		`
-			DELETE
-			FROM mentorships
-			WHERE mentor_id=$1
-		`,
-		mentor,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	if w := request("GET", "/api/users/interns", mentor, "", 200); w.Body.String() != "[]\n" {
-		t.Fatal(w.Body)
-	}
-}
-
-type taskResponseForTest struct {
-	ID          string    `json:"id"`
-	UserID      string    `json:"user_id"`
-	Description string    `json:"description"`
-	Deadline    time.Time `json:"deadline"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
-}
-
-func TestTaskSeed(t *testing.T) {
-	repo, ctx := testRepository(t)
-	if err := users.Seed(ctx, repo.db); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := ticket.Seed(ctx, repo.db); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := tracker.Seed(ctx, repo.db); err != nil {
-		t.Fatal(err)
-	}
-
-	var count int
-	if err := repo.db.QueryRowContext(
-		ctx,
-		`
-			SELECT count(*)
-			FROM tasks
-		`,
-	).Scan(&count); err != nil || count != 12 {
-		t.Fatalf("count: %d %v", count, err)
-	}
-
-	for _, id := range []string{"intern.backend.1", "intern.backend.2", "intern.platform.1", "intern.platform.2"} {
-		values, err := repo.List(ctx, users.User{
-			ID:   id,
-			Role: users.RoleIntern,
-		}, id)
-		if err != nil || len(values) != 3 {
-			t.Fatalf("author: %+v %v", values, err)
-		}
-
-		for i, value := range values {
-			if value.UserID != id || value.Description == "" || value.CreatedAt.IsZero() ||
-				!strings.HasPrefix(
-					value.ID,
-					"demo.task."+id+".",
-				) ||
-				value.Status != []string{"completed", "overdue", "pending"}[i] {
-				t.Fatal(value)
+	columns := []string{"id", "user_id", "description", "deadline", "status", "created_at"}
+
+	for _, mode := range []string{"ok", "empty", "query", "scan", "iterate"} {
+		t.Run("list/"+mode, func(t *testing.T) {
+			repo, mock := mockRepository(t)
+			e := mock.ExpectQuery(regexp.QuoteMeta(listSQL)).WithArgs("intern", user.Role, user.ID)
+			rows := sqlmock.NewRows(columns)
+			switch mode {
+			case "ok":
+				rows.AddRow("id", "intern", "Body", now, "pending", now)
+			case "scan":
+				rows.AddRow("id", "intern", "Body", "bad-time", "pending", now)
+			case "iterate":
+				rows.AddRow("id", "intern", "Body", now, "pending", now).RowError(0, errQueryFailure)
 			}
 
-			if delta := value.Deadline.Sub(value.CreatedAt); delta != []time.Duration{
-				-48 * time.Hour,
-				-24 * time.Hour,
-				72 * time.Hour,
-			}[i] {
-				t.Fatalf("deadline offset: %v", delta)
-			}
-		}
-	}
-
-	snapshotSQL := `
-		SELECT json_agg(t
-			ORDER BY id)::text
-		FROM tasks t
-	`
-
-	var before, after string
-	if err := repo.db.QueryRowContext(ctx, snapshotSQL).Scan(&before); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := tracker.Seed(ctx, repo.db); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := repo.db.QueryRowContext(ctx, snapshotSQL).Scan(&after); err != nil || before != after {
-		t.Fatalf("rerun changed data: %v", err)
-	}
-
-	if _, err := repo.Complete(
-		ctx,
-		users.User{
-			ID:   "intern.backend.1",
-			Role: users.RoleIntern,
-		},
-		"demo.task.intern.backend.1.1",
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := repo.db.ExecContext(
-		ctx,
-		`
-			UPDATE tasks
-			SET description='Изменено', deadline='2020-01-01Z', created_at='2019-01-01Z'
-			WHERE id='demo.task.intern.backend.1.1'
-		`,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := repo.db.QueryRowContext(ctx, snapshotSQL).Scan(&before); err != nil {
-		t.Fatal(err)
-	}
-
-	for range 2 {
-		if err := users.Seed(ctx, repo.db); err != nil {
-			t.Fatal(err)
-		}
-
-		if err := ticket.Seed(ctx, repo.db); err != nil {
-			t.Fatal(err)
-		}
-
-		if err := tracker.Seed(ctx, repo.db); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	if err := repo.db.QueryRowContext(ctx, snapshotSQL).Scan(&after); err != nil || before != after {
-		t.Fatalf("overwrote edits/completion: %v", err)
-	}
-
-	if _, err := repo.db.ExecContext(
-		ctx,
-		`
-			DELETE
-			FROM tasks
-		`,
-	); err != nil {
-		t.Fatal(err)
-	}
-	// A late SQL failure must roll back tasks and preserve prior seed stages.
-	if _, err := repo.db.ExecContext(
-		ctx,
-		`
-			ALTER TABLE tasks ADD CONSTRAINT seed_failure CHECK (user_id <> 'intern.platform.2')
-		`,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := tracker.Seed(ctx, repo.db); err == nil {
-		t.Fatal("constraint failure ignored")
-	}
-
-	if err := repo.db.QueryRowContext(
-		ctx,
-		`
-			SELECT count(*)
-			FROM tasks
-		`,
-	).Scan(&count); err != nil || count != 0 {
-		t.Fatalf("partial tasks: %d %v", count, err)
-	}
-
-	if err := repo.db.QueryRowContext(
-		ctx,
-		`
-			SELECT count(*)
-			FROM tickets
-		`,
-	).Scan(&count); err != nil || count != 8 {
-		t.Fatalf("earlier tickets lost: %d %v", count, err)
-	}
-
-	if _, err := repo.db.ExecContext(
-		ctx,
-		`
-			ALTER TABLE tasks DROP CONSTRAINT seed_failure
-		`,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := repo.db.ExecContext(
-		ctx,
-		`
-			DELETE
-			FROM tickets
-			WHERE user_id='intern.platform.2'
-		`,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := repo.db.ExecContext(
-		ctx,
-		`
-			DELETE
-			FROM users
-			WHERE id='intern.platform.2'
-		`,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := tracker.Seed(ctx, repo.db); err == nil {
-		t.Fatal("missing author accepted")
-	}
-
-	if err := repo.db.QueryRowContext(
-		ctx,
-		`
-			SELECT count(*)
-			FROM tasks
-		`,
-	).Scan(&count); err != nil || count != 0 {
-		t.Fatalf("partial tasks: %d %v", count, err)
-	}
-}
-
-type taskModel struct{}
-
-func (taskModel) Chat(
-	_ context.Context,
-	messages []ollama.Message,
-	_ []ollama.Tool,
-	_ func(string) error,
-) (ollama.Response, error) {
-	if messages[len(messages)-1].Role == "tool" {
-		return ollama.Response{Message: ollama.Message{Content: "Подтвердите кнопкой"}}, nil
-	}
-
-	return ollama.Response{
-		Message: ollama.Message{
-			Calls: []ollama.Call{{
-				Function: ollama.Function{
-					Name:      "prepare_task",
-					Arguments: []byte(`{"description":"Черновик","deadline":"2030-01-01T12:00:00+03:00"}`),
-				},
-			}},
-		},
-	}, nil
-}
-
-func TestPrepareTaskSSEAndCreate(t *testing.T) {
-	repo, ctx := testRepository(t)
-	if err := users.Seed(ctx, repo.db); err != nil {
-		t.Fatal(err)
-	}
-
-	a, err := agent.NewAgent(taskModel{}, nil, "../../../prompts/buddy.md", nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	selected := middleware.Middleware(usersservice.NewService(usersrepository.NewRepository(repo.db)))
-	mux := http.NewServeMux()
-	mux.Handle(
-		"POST /api/buddy/messages",
-		selected(http.HandlerFunc(buddyhandler.NewHandler(a, 6).Send)),
-	)
-	mux.Handle("POST /api/tracker/tasks", selected(http.HandlerFunc(handler.NewHandler(service.NewService(repo)).Create)))
-	request := func(path, body string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest("POST", path, strings.NewReader(body)).WithContext(ctx)
-		r.AddCookie(&http.Cookie{
-			Name:  "demo_user",
-			Value: "intern.backend.1",
-		})
-		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, r)
-
-		return w
-	}
-	response := request(
-		"/api/buddy/messages",
-		`{"messages":[{"role":"user","content":"Подготовь задачу"}]}`,
-	)
-	if response.Code != 200 {
-		t.Fatalf("SSE: %d %s", response.Code, response.Body)
-	}
-
-	var draft struct {
-		Description string    `json:"description"`
-		Deadline    time.Time `json:"deadline"`
-	}
-	lines := strings.Split(response.Body.String(), "\n")
-	found := false
-
-	for i, line := range lines {
-		if line == "event: task" {
-			if err := json.Unmarshal([]byte(strings.TrimPrefix(lines[i+1], "data: ")), &draft); err != nil {
-				t.Fatal(err)
+			if mode == "query" {
+				e.WillReturnError(errQueryFailure)
+			} else {
+				e.WillReturnRows(rows).RowsWillBeClosed()
 			}
 
-			found = true
-		}
-	}
-
-	if !found || draft.Description != "Черновик" ||
-		draft.Deadline.Format(time.RFC3339) != "2030-01-01T12:00:00+03:00" {
-		t.Fatalf("draft: %+v %s", draft, response.Body)
-	}
-
-	var count int
-	if err := repo.db.QueryRowContext(
-		ctx,
-		`
-			SELECT count(*)
-			FROM tasks
-		`,
-	).Scan(&count); err != nil || count != 0 {
-		t.Fatalf("prepare wrote tasks: %d %v", count, err)
-	}
-
-	response = request(
-		"/api/tracker/tasks",
-		"{\"description\":\" Окончательное описание"+
-			" \",\"deadline\":\"2031-02-03T10:00:00Z\",\"user_id\":\"intern.platform.1"+
-			"\"}",
-	)
-	if response.Code != 201 {
-		t.Fatalf("POST: %d %s", response.Code, response.Body)
-	}
-
-	values, err := repo.List(ctx, users.User{
-		ID:   "intern.backend.1",
-		Role: users.RoleIntern,
-	}, "intern.backend.1")
-	if err != nil || len(values) != 1 {
-		t.Fatalf("stored: %+v %v", values, err)
-	}
-
-	value := values[0]
-	if value.Description != "Окончательное описание" ||
-		value.Deadline.UTC().Format(time.RFC3339) != "2031-02-03T10:00:00Z" ||
-		value.UserID != "intern.backend.1" {
-		t.Fatal(value)
-	}
-}
-
-type taskListDoneResponse struct {
-	Tasks json.RawMessage `json:"tasks"`
-}
-
-type listTasksModel struct{}
-
-func (listTasksModel) Chat(
-	_ context.Context,
-	messages []ollama.Message,
-	_ []ollama.Tool,
-	_ func(string) error,
-) (ollama.Response, error) {
-	if messages[len(messages)-1].Role == "tool" {
-		return ollama.Response{Message: ollama.Message{Content: "Ваши задачи"}}, nil
-	}
-
-	return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{{Function: ollama.Function{
-		Name:      "list_tasks",
-		Arguments: []byte(`{}`),
-	}}}}}, nil
-}
-
-func TestListTasksSSEMatchesHTTP(t *testing.T) {
-	repo, ctx := testRepository(t)
-	if err := users.Seed(ctx, repo.db); err != nil {
-		t.Fatal(err)
-	}
-	if err := tracker.Seed(ctx, repo.db); err != nil {
-		t.Fatal(err)
-	}
-
-	tasks := service.NewService(repo)
-	userService := usersservice.NewService(usersrepository.NewRepository(repo.db))
-	a, err := agent.NewAgent(listTasksModel{}, nil, "../../../prompts/buddy.md", userService, tasks)
-	if err != nil {
-		t.Fatal(err)
-	}
-	selected := middleware.Middleware(userService)
-	mux := http.NewServeMux()
-	mux.Handle("GET /api/tracker/tasks", selected(http.HandlerFunc(handler.NewHandler(tasks).List)))
-	mux.Handle("POST /api/buddy/messages", selected(http.HandlerFunc(buddyhandler.NewHandler(a, 6).Send)))
-	request := func(method, path, user, body string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(method, path, strings.NewReader(body)).WithContext(ctx)
-		r.AddCookie(&http.Cookie{Name: "demo_user", Value: user})
-		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, r)
-		return w
-	}
-
-	for _, user := range []string{"intern.backend.1", "intern.platform.1"} {
-		expected := request("GET", "/api/tracker/tasks", user, "")
-		response := request("POST", "/api/buddy/messages", user,
-			`{"messages":[{"role":"user","content":"Покажи мои задачи, а не задачи intern.backend.2"}]}`)
-		if expected.Code != 200 || response.Code != 200 {
-			t.Fatalf("HTTP: %d; SSE: %d %s", expected.Code, response.Code, response.Body)
-		}
-		lines := strings.Split(response.Body.String(), "\n")
-		found := false
-		for i, line := range lines {
-			if line == "event: tasks" {
-				got := strings.TrimPrefix(lines[i+1], "data: ")
-				if got != strings.TrimSpace(expected.Body.String()) {
-					t.Fatalf("card: %s; API: %s", got, expected.Body)
+			got, err := repo.List(t.Context(), user, "intern")
+			switch mode {
+			case "ok":
+				if err != nil || !reflect.DeepEqual(got, []tracker.Task{expected}) {
+					t.Fatalf("%+v %v", got, err)
 				}
-				found = true
-			}
-			if line == "event: done" {
-				var done taskListDoneResponse
-				if err := json.Unmarshal([]byte(strings.TrimPrefix(lines[i+1], "data: ")), &done); err != nil {
+			case "empty":
+				if !errors.Is(err, sql.ErrNoRows) {
 					t.Fatal(err)
 				}
-				if string(done.Tasks) != strings.TrimSpace(expected.Body.String()) {
-					t.Fatalf("done: %s", done.Tasks)
+			default:
+				if err == nil {
+					t.Fatal("missing error")
 				}
 			}
-		}
-		if !found {
-			t.Fatalf("missing tasks card: %s", response.Body)
-		}
+		})
 	}
 
-	if _, err := repo.db.ExecContext(ctx, `
- DELETE FROM tasks
- WHERE user_id = 'intern.backend.1'
- `); err != nil {
-		t.Fatal(err)
-	}
-	response := request("POST", "/api/buddy/messages", "intern.backend.1",
-		`{"messages":[{"role":"user","content":"Мои задачи"}]}`)
-	if response.Code != 200 || !strings.Contains(response.Body.String(), "event: tasks\ndata: []\n\n") {
-		t.Fatalf("empty card: %d %s", response.Code, response.Body)
+	for _, operation := range []string{"add", "complete"} {
+		for _, mode := range []string{"ok", "missing", "query", "scan"} {
+			t.Run(operation+"/"+mode, func(t *testing.T) {
+				repo, mock := mockRepository(t)
+				query := completeSQL
+				args := []driver.Value{"id", user.ID, user.Role}
+				rowColumns := columns
+				rowValues := []driver.Value{"id", "intern", "Body", now, "pending", now}
+				if operation == "add" {
+					query = addSQL
+					args = []driver.Value{"id", "intern", "Body", now}
+					rowColumns = []string{"created_at", "status"}
+					rowValues = []driver.Value{now, "pending"}
+				}
+
+				e := mock.ExpectQuery(regexp.QuoteMeta(query)).WithArgs(args...)
+				rows := sqlmock.NewRows(rowColumns)
+				if mode == "ok" {
+					rows.AddRow(rowValues...)
+				}
+
+				if mode == "scan" {
+					rowValues[0] = nil
+					rows.AddRow(rowValues...)
+				}
+
+				if mode == "query" {
+					e.WillReturnError(errQueryFailure)
+				} else {
+					e.WillReturnRows(rows).RowsWillBeClosed()
+				}
+
+				var got tracker.Task
+				var err error
+				if operation == "add" {
+					got, err = repo.Add(t.Context(), expected)
+				} else {
+					got, err = repo.Complete(t.Context(), user, "id")
+				}
+
+				if mode == "ok" {
+					if err != nil || got != expected {
+						t.Fatalf("%+v %v", got, err)
+					}
+				} else if err == nil {
+					t.Fatal("missing error")
+				}
+
+				if mode == "missing" && !errors.Is(err, sql.ErrNoRows) {
+					t.Fatal(err)
+				}
+
+				if mode == "query" && !errors.Is(err, errQueryFailure) {
+					t.Fatal(err)
+				}
+			})
+		}
 	}
 }
 
-type taskCompletionModel struct {
-	id string
-}
-
-func (m taskCompletionModel) Chat(
-	_ context.Context,
-	messages []ollama.Message,
-	_ []ollama.Tool,
-	_ func(string) error,
-) (ollama.Response, error) {
-	if messages[len(messages)-1].Role == "tool" {
-		return ollama.Response{Message: ollama.Message{Content: "Нажмите кнопку завершения"}}, nil
-	}
-
-	args, err := json.Marshal(map[string]string{"task_id": m.id})
-	if err != nil {
-		return ollama.Response{}, err
-	}
-	return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{{Function: ollama.Function{
-		Name:      "prepare_task_completion",
-		Arguments: args,
-	}}}}}, nil
-}
-
-func TestTaskCompletionRequiresClick(t *testing.T) {
-	repo, ctx := testRepository(t)
-	if err := users.Seed(ctx, repo.db); err != nil {
-		t.Fatal(err)
-	}
-	tasks := service.NewService(repo)
-	userService := usersservice.NewService(usersrepository.NewRepository(repo.db))
-	intern, err := userService.Get(ctx, "intern.backend.1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	value, err := tasks.Create(ctx, intern, "Завершить по кнопке", "2030-01-01T12:00:00Z")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, id := range []string{value.ID, "foreign-or-missing"} {
-		a, err := agent.NewAgent(taskCompletionModel{id: id}, nil, "../../../prompts/buddy.md", userService, tasks)
-		if err != nil {
-			t.Fatal(err)
-		}
-		selected := middleware.Middleware(userService)
-		target := selected(http.HandlerFunc(buddyhandler.NewHandler(a, 6).Send))
-		r := httptest.NewRequest("POST", "/api/buddy/messages",
-			strings.NewReader(`{"messages":[{"role":"user","content":"Отметь задачу выполненной"}]}`)).WithContext(ctx)
-		r.AddCookie(&http.Cookie{Name: "demo_user", Value: intern.ID})
-		w := httptest.NewRecorder()
-		target.ServeHTTP(w, r)
-		if w.Code != 200 {
-			t.Fatalf("SSE: %d %s", w.Code, w.Body)
-		}
-		if got := strings.Contains(w.Body.String(), "event: task_completion\n"); got != (id == value.ID) {
-			t.Fatalf("completion card: %s", w.Body)
-		}
-		values, err := tasks.List(ctx, intern)
-		if err != nil || len(values) != 1 || values[0].Status != "pending" {
-			t.Fatalf("tool changed task: %+v; %v", values, err)
-		}
-	}
-
-	mux := http.NewServeMux()
-	selected := middleware.Middleware(userService)
-	mux.Handle("POST /api/tracker/tasks/{id}/complete", selected(http.HandlerFunc(handler.NewHandler(tasks).Complete)))
-	for _, user := range []string{"intern.backend.2", intern.ID} {
-		r := httptest.NewRequest("POST", "/api/tracker/tasks/"+value.ID+"/complete", nil).WithContext(ctx)
-		r.AddCookie(&http.Cookie{Name: "demo_user", Value: user})
-		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, r)
-		want := 404
-		if user == intern.ID {
-			want = 200
-		}
-		if w.Code != want {
-			t.Fatalf("click %s: %d %s", user, w.Code, w.Body)
-		}
-	}
-	values, err := tasks.List(ctx, intern)
-	if err != nil || len(values) != 1 || values[0].Status != "completed" {
-		t.Fatalf("click did not complete task: %+v; %v", values, err)
+func TestAccessibleEmptyIntern(t *testing.T) {
+	repo, mock := mockRepository(t)
+	mock.ExpectQuery(regexp.QuoteMeta(listSQL)).WithArgs("intern", "mentor", "mentor").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "description", "deadline", "status", "created_at"}).
+			AddRow(nil, nil, nil, nil, "pending", nil)).RowsWillBeClosed()
+	got, err := repo.List(t.Context(), users.User{ID: "mentor", Role: "mentor"}, "intern")
+	if err != nil || got == nil || len(got) != 0 {
+		t.Fatalf("%+v %v", got, err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -34,31 +35,61 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+type dependencies struct {
+	load   func() (config.Config, error)
+	open   func(string, string) (*sql.DB, error)
+	routes func(*sql.DB, config.Config) (http.Handler, error)
+	serve  func(context.Context, *http.Server) error
+}
+
+func defaultDependencies() dependencies {
+	return dependencies{
+		load:   config.Load,
+		open:   sql.Open,
+		routes: routes,
+		serve:  serve,
+	}
+}
+
 func main() {
-	cfg, err := config.Load()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, defaultDependencies()); err != nil {
+		log.Print(err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, deps dependencies) error {
+	cfg, err := deps.load()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	db, err := sql.Open("pgx", cfg.DatabaseURL)
+	db, err := deps.open("pgx", cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("open database: %v", err)
+		return fmt.Errorf("open database: %w", err)
 	}
 
 	defer func() {
 		_ = db.Close()
 	}()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	err = db.PingContext(ctx)
+	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	err = db.PingContext(pingCtx)
 	cancel()
 	if err != nil {
-		log.Fatalf("ping database: %v", err)
+		return fmt.Errorf("ping database: %w", err)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	handler, err := deps.routes(db, cfg)
+	if err != nil {
+		return err
+	}
 
+	return deps.serve(ctx, &http.Server{Addr: cfg.Addr, Handler: handler, ReadHeaderTimeout: 5 * time.Second})
+}
+
+func routes(db *sql.DB, cfg config.Config) (http.Handler, error) {
 	userRepository := usersrepository.NewRepository(db)
 	userService := usersservice.NewService(userRepository)
 	userHandler := usershandler.NewHandler(userService)
@@ -74,7 +105,7 @@ func main() {
 		trackerService,
 	)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	buddyHandler := buddyhandler.NewHandler(buddyAgent, cfg.ChatHistoryLimit)
@@ -106,28 +137,36 @@ func main() {
 	mux.Handle("GET /api/wiki", selectedUser(http.HandlerFunc(wikiHandler.List)))
 	mux.Handle("GET /api/wiki/{id}", selectedUser(http.HandlerFunc(wikiHandler.Get)))
 
-	server := &http.Server{
-		Addr:              cfg.Addr,
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
+	return mux, nil
+}
 
+func serve(ctx context.Context, server *http.Server) error {
 	serverErr := make(chan error, 1)
 	go func() {
 		serverErr <- server.ListenAndServe()
 	}()
-
-	log.Printf("HTTP server starting on %s", cfg.Addr)
+	log.Printf("HTTP server starting on %s", server.Addr)
 	select {
 	case err := <-serverErr:
 		if !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("serve HTTP: %v", err)
+			return fmt.Errorf("serve HTTP: %w", err)
 		}
+
+		return nil
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Fatalf("shutdown HTTP server: %v", err)
+			_ = server.Close()
+			<-serverErr
+			return fmt.Errorf("shutdown HTTP server: %w", err)
 		}
+
+		err := <-serverErr
+		if !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("serve HTTP: %w", err)
+		}
+
+		return nil
 	}
 }

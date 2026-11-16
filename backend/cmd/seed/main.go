@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"time"
 
@@ -15,35 +16,60 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+type dependencies struct {
+	load    func() (config.Config, error)
+	open    func(string, string) (*sql.DB, error)
+	users   func(context.Context, *sql.DB) error
+	tickets func(context.Context, *sql.DB) error
+	tasks   func(context.Context, *sql.DB) error
+}
+
 func main() {
-	cfg, err := config.Load()
-	if err != nil {
+	if err := execute(defaultDependencies()); err != nil {
 		log.Fatal(err)
 	}
+}
 
-	db, err := sql.Open("pgx", cfg.DatabaseURL)
+func execute(deps dependencies) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	return run(ctx, deps)
+}
+
+func run(ctx context.Context, deps dependencies) error {
+	cfg, err := deps.load()
 	if err != nil {
-		log.Fatalf("open database: %v", err)
+		return err
+	}
+
+	db, err := deps.open("pgx", cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
 	}
 
 	defer func() {
 		_ = db.Close()
 	}()
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-
-	if err := users.Seed(ctx, db); err != nil {
-		log.Fatal(err)
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
-	if err := ticket.Seed(ctx, db); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := tracker.Seed(ctx, db); err != nil {
-		log.Fatal(err)
+	for _, stage := range []func(context.Context, *sql.DB) error{deps.users, deps.tickets, deps.tasks} {
+		if err := stage(ctx, db); err != nil {
+			return err
+		}
 	}
 
 	log.Print("demo users, tickets and tasks seeded")
+
+	return nil
+}
+
+func defaultDependencies() dependencies {
+	return dependencies{
+		load:  config.Load,
+		open:  sql.Open,
+		users: users.Seed, tickets: ticket.Seed, tasks: tracker.Seed,
+	}
 }

@@ -3,6 +3,7 @@ module backend
 go 1.27.0
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/jackc/pgx/v5 v5.13.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0

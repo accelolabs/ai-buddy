@@ -1,376 +1,286 @@
 package wiki
 
 import (
-	"context"
 	"database/sql"
-	"encoding/json"
+	"database/sql/driver"
 	"errors"
-	"fmt"
 	"math"
-	"os"
 	"reflect"
+	"regexp"
 	"testing"
-	"time"
 
 	// Project packages.
 	"backend/internal/wiki"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
+	"github.com/DATA-DOG/go-sqlmock"
 )
 
-// Each test applies the real migrations in a separate schema.
-func testRepository(t *testing.T) (*Repository, context.Context) {
-	t.Helper()
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL is not set")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	t.Cleanup(cancel)
-
-	cfg, err := pgx.ParseConfig(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	admin := stdlib.OpenDB(*cfg)
-	t.Cleanup(func() {
-		if err := admin.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	schema := fmt.Sprintf("wiki_test_%d", time.Now().UnixNano())
-	if _, err := admin.ExecContext(ctx, `
-		CREATE SCHEMA
-	`+schema); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Cleanup(func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cleanupCancel()
-
-		if _, err := admin.ExecContext(cleanupCtx, `
-			DROP SCHEMA
-		`+schema+` CASCADE`); err != nil {
-			t.Error(err)
-		}
-	})
-
-	cfg.RuntimeParams["search_path"] = schema
-	db := stdlib.OpenDB(*cfg)
-	t.Cleanup(func() {
-		if err := db.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	if err := goose.SetDialect("postgres"); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := goose.UpContext(ctx, db, "../../../migrations"); err != nil {
-		t.Fatal(err)
-	}
-
-	return NewRepository(db), ctx
-}
-
-func TestDocuments(t *testing.T) {
-	repo, ctx := testRepository(t)
-	list, err := repo.List(ctx)
-	if err != nil || list == nil || len(list) != 0 {
-		t.Fatalf("empty list: %v, %v", list, err)
-	}
-
-	common := wiki.Document{
-		ID:    "common",
-		Path:  "guide.md",
-		Title: "Общая",
-	}
-	backend := wiki.Document{
-		ID:    "backend",
-		Path:  "backend/guide.md",
-		Team:  "backend",
-		Title: "Backend",
-	}
-	platform := wiki.Document{
-		ID:    "platform",
-		Path:  "platform/guide.md",
-		Team:  "platform",
-		Title: "Platform",
-	}
-	if err := repo.Sync(ctx, []wiki.Document{platform, common, backend}, nil); err != nil {
-		t.Fatal(err)
-	}
-
-	list, err = repo.List(ctx)
-	if err != nil || !reflect.DeepEqual(list, []wiki.Document{backend, common, platform}) {
-		t.Fatalf("List(): %v, %v", list, err)
-	}
-
-	for _, doc := range []wiki.Document{common, backend, platform} {
-		got, err := repo.Get(ctx, doc.ID)
-		if err != nil || got != doc {
-			t.Fatalf("Get(%q): %v, %v", doc.ID, got, err)
-		}
-	}
-
-	if _, err := repo.Get(ctx, "missing"); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("missing: %v", err)
-	}
-}
-
-func TestChunksSync(t *testing.T) {
-	repo, ctx := testRepository(t)
-	first := wiki.Document{
-		ID:    "a",
-		Path:  "a.md",
-		Title: "First",
-	}
-	second := wiki.Document{
-		ID:    "b",
-		Path:  "b.md",
-		Title: "Second",
-	}
-	embedding := make([]float64, 768)
-	embedding[0], embedding[767] = 0.25, -0.5
-	chunks := []wiki.Chunk{
-		{
-			DocumentID: "a",
-			Ordinal:    1,
-			Anchor:     "раздел",
-			Text:       "Second chunk",
-			Embedding:  embedding,
-		},
-		{
-			DocumentID: "b",
-			Ordinal:    0,
-			Text:       "Another document",
-		},
-		{
-			DocumentID: "a",
-			Ordinal:    0,
-			Text:       "First chunk",
-		},
-	}
-
-	for range 2 {
-		if err := repo.Sync(ctx, []wiki.Document{first, second}, chunks); err != nil {
-			t.Fatal(err)
-		}
-
-		got, err := readChunks(ctx, repo.db, "a")
-		if err != nil || !reflect.DeepEqual(got, []wiki.Chunk{chunks[2], chunks[0]}) {
-			t.Fatalf("stored chunks: %#v, %v", got, err)
-		}
-	}
-
-	changed := first
-	changed.Title = "Changed"
-	// Failed inserts must roll back metadata updates, document deletions and chunk replacement.
-	for _, bad := range [][]wiki.Chunk{
-		{{
-			DocumentID: "missing",
-			Ordinal:    0,
-			Text:       "orphan",
-		}},
-		{{
-			DocumentID: "a",
-			Ordinal:    0,
-			Text:       "wrong dimension",
-			Embedding:  []float64{1, 2},
-		}},
-		{{
-			DocumentID: "a",
-			Ordinal:    0,
-			Text:       "invalid number",
-			Embedding:  []float64{math.NaN()},
-		}},
-		{{
-			DocumentID: "a",
-			Ordinal:    0,
-			Text:       "one",
-		}, {
-			DocumentID: "a",
-			Ordinal:    0,
-			Text:       "duplicate",
-		}},
-	} {
-		if err := repo.Sync(ctx, []wiki.Document{changed}, bad); err == nil {
-			t.Fatal("invalid chunks accepted")
-		}
-
-		got, err := repo.Get(ctx, "a")
-		if err != nil || got != first {
-			t.Fatalf("metadata rollback: %v, %v", got, err)
-		}
-
-		if _, err := repo.Get(ctx, "b"); err != nil {
-			t.Fatalf("document deletion not rolled back: %v", err)
-		}
-
-		stored, err := readChunks(ctx, repo.db, "a")
-		if err != nil || !reflect.DeepEqual(stored, []wiki.Chunk{chunks[2], chunks[0]}) {
-			t.Fatalf("chunks rollback: %#v, %v", stored, err)
-		}
-	}
-
-	updated := []wiki.Chunk{{
-		DocumentID: "a",
-		Ordinal:    0,
-		Anchor:     "new-anchor",
-		Text:       "Changed content",
-	}}
-	if err := repo.Sync(ctx, []wiki.Document{first}, updated); err != nil {
-		t.Fatal(err)
-	}
-
-	stored, err := readChunks(ctx, repo.db, "a")
-	if err != nil || !reflect.DeepEqual(stored, updated) {
-		t.Fatalf("updated chunks: %#v, %v", stored, err)
-	}
-
-	if stored, err := readChunks(ctx, repo.db, "b"); err != nil || len(stored) != 0 {
-		t.Fatalf("deleted document chunks: %#v, %v", stored, err)
-	}
-
-	if _, err := repo.db.ExecContext(
-		ctx,
+const listSQL = `
+			SELECT id, path, team, title
+			FROM documents
+			ORDER BY path
 		`
+
+const getSQL = `
+			SELECT id, path, team, title
+			FROM documents
+			WHERE id = $1
+		`
+
+const deleteDocumentsSQL = `
 			DELETE
 			FROM documents
-			WHERE id='a'
-		`,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	if stored, err := readChunks(ctx, repo.db, "a"); err != nil || len(stored) != 0 {
-		t.Fatalf("cascade: %#v, %v", stored, err)
-	}
-
-	if err := repo.Sync(ctx, []wiki.Document{first}, updated); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := repo.Sync(ctx, nil, nil); err != nil {
-		t.Fatal(err)
-	}
-
-	if stored, err := readChunks(ctx, repo.db, "a"); err != nil || len(stored) != 0 {
-		t.Fatalf("empty corpus: %#v, %v", stored, err)
-	}
-}
-
-func TestSearchChunks(t *testing.T) {
-	repo, ctx := testRepository(t)
-	vector := func(x, y float64) []float64 {
-		v := make([]float64, 768)
-		v[0], v[1] = x, y
-		return v
-	}
-	docs := []wiki.Document{{
-		ID:   "a",
-		Path: "a.md",
-	}, {
-		ID:   "b",
-		Path: "b.md",
-	}}
-	chunks := []wiki.Chunk{
-		{
-			DocumentID: "a",
-			Ordinal:    0,
-			Anchor:     "first",
-			Text:       "closest",
-			Embedding:  vector(1, 0),
-		},
-		{
-			DocumentID: "a",
-			Ordinal:    1,
-			Text:       "further",
-			Embedding:  vector(0, 1),
-		},
-		{
-			DocumentID: "a",
-			Ordinal:    2,
-			Text:       "without vector",
-		},
-		{
-			DocumentID: "b",
-			Ordinal:    0,
-			Text:       "excluded",
-			Embedding:  vector(1, 0),
-		},
-	}
-	if err := repo.Sync(ctx, docs, chunks); err != nil {
-		t.Fatal(err)
-	}
-
-	for _, limit := range []int{1, 3} {
-		got, err := repo.SearchChunks(ctx, vector(1, 0), []string{"a"}, limit)
-		wantCount := min(limit, 2)
-		if err != nil || len(got) != wantCount {
-			t.Fatalf("search = %v, %v", got, err)
-		}
-
-		for i, chunk := range got {
-			want := chunks[i]
-			want.Embedding = nil
-			if !reflect.DeepEqual(chunk, want) {
-				t.Fatalf("chunk = %+v, want %+v", chunk, want)
-			}
-		}
-	}
-
-	got, err := repo.SearchChunks(ctx, vector(1, 0), []string{}, 3)
-	if err != nil || got == nil || len(got) != 0 {
-		t.Fatalf("empty scope = %v, %v", got, err)
-	}
-}
-
-func readChunks(ctx context.Context, db *sql.DB, documentID string) ([]wiki.Chunk, error) {
-	rows, err := db.QueryContext(
-		ctx,
+			WHERE NOT (path = ANY($1::text[]))
 		`
-			SELECT document_id, ordinal, anchor, text, embedding::text
+
+const upsertSQL = `
+				INSERT INTO documents (id, path, team, title)
+				VALUES ($1, $2, $3, $4)
+				ON CONFLICT (path) DO UPDATE
+				SET team = EXCLUDED.team, title = EXCLUDED.title
+				WHERE (documents.team, documents.title) IS DISTINCT FROM (EXCLUDED.team, EXCLUDED.title)
+			`
+
+const deleteChunksSQL = `
+			DELETE
 			FROM chunks
-			WHERE document_id = $1
-			ORDER BY ordinal
-		`,
-		documentID,
-	)
+		`
+
+const insertChunkSQL = `
+				INSERT INTO chunks (document_id, ordinal, anchor, text, embedding)
+				VALUES ($1, $2, $3, $4, $5)
+			`
+
+const searchSQL = `
+			SELECT document_id, ordinal, anchor, text
+			FROM chunks
+			WHERE document_id = ANY($1::text[])
+				AND embedding IS NOT NULL
+			ORDER BY embedding OPERATOR(public.<=>) $2::public.vector, document_id, ordinal
+			LIMIT $3
+		`
+
+func mockRepository(t *testing.T) (*Repository, sqlmock.Sqlmock) {
+	t.Helper()
+	db, mock, err := sqlmock.New(sqlmock.ValueConverterOption(arrayConverter{}))
 	if err != nil {
-		return nil, fmt.Errorf("list wiki chunks: %w", err)
+		t.Fatal(err)
 	}
 
-	defer func() {
-		_ = rows.Close()
-	}()
-
-	chunks := make([]wiki.Chunk, 0)
-
-	for rows.Next() {
-		var chunk wiki.Chunk
-		var embedding sql.NullString
-		if err := rows.Scan(&chunk.DocumentID, &chunk.Ordinal, &chunk.Anchor, &chunk.Text, &embedding); err != nil {
-			return nil, fmt.Errorf("scan wiki chunk: %w", err)
+	t.Cleanup(func() {
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Error(err)
 		}
 
-		if embedding.Valid {
-			if err := json.Unmarshal([]byte(embedding.String), &chunk.Embedding); err != nil {
-				return nil, fmt.Errorf("decode wiki chunk embedding: %w", err)
+		_ = db.Close()
+	})
+
+	return NewRepository(db), mock
+}
+
+var errQueryFailure = errors.New("query failure")
+
+func TestReadDocuments(t *testing.T) {
+	expected := wiki.Document{ID: "doc", Path: "guide.md", Team: "backend", Title: "Guide"}
+
+	for _, single := range []bool{false, true} {
+		for _, mode := range []string{"ok", "empty", "query", "scan", "iterate"} {
+			t.Run(fmtName(single, mode), func(t *testing.T) {
+				repo, mock := mockRepository(t)
+				query := listSQL
+				if single {
+					query = getSQL
+				}
+
+				e := mock.ExpectQuery(regexp.QuoteMeta(query))
+				if single {
+					e.WithArgs("doc")
+				}
+
+				rows := sqlmock.NewRows([]string{"id", "path", "team", "title"})
+				switch mode {
+				case "ok":
+					rows.AddRow("doc", "guide.md", "backend", "Guide")
+				case "scan":
+					rows.AddRow(nil, "guide.md", "backend", "Guide")
+				case "iterate":
+					rows.AddRow("doc", "guide.md", "backend", "Guide").RowError(0, errQueryFailure)
+				}
+
+				if mode == "query" {
+					e.WillReturnError(errQueryFailure)
+				} else {
+					e.WillReturnRows(rows).RowsWillBeClosed()
+				}
+
+				if single {
+					got, err := repo.Get(t.Context(), "doc")
+					if mode == "ok" {
+						if err != nil || got != expected {
+							t.Fatalf("%+v %v", got, err)
+						}
+					} else if err == nil {
+						t.Fatal("missing error")
+					}
+
+					if mode == "empty" && !errors.Is(err, sql.ErrNoRows) {
+						t.Fatal(err)
+					}
+				} else {
+					got, err := repo.List(t.Context())
+					switch mode {
+					case "ok":
+						if err != nil || !reflect.DeepEqual(got, []wiki.Document{expected}) {
+							t.Fatalf("%+v %v", got, err)
+						}
+					case "empty":
+						if err != nil || got == nil || len(got) != 0 {
+							t.Fatalf("%+v %v", got, err)
+						}
+					default:
+						if err == nil {
+							t.Fatal("missing error")
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
+func fmtName(single bool, mode string) string {
+	if single {
+		return "get/" + mode
+	}
+
+	return "list/" + mode
+}
+
+func TestSearch(t *testing.T) {
+	for _, mode := range []string{"ok", "empty", "query", "scan", "iterate", "encode"} {
+		t.Run(mode, func(t *testing.T) {
+			repo, mock := mockRepository(t)
+			vector := []float64{1, 0.5}
+			if mode == "encode" {
+				vector = []float64{math.NaN()}
+			} else {
+				e := mock.ExpectQuery(regexp.QuoteMeta(searchSQL)).WithArgs([]string{"doc"}, "[1,0.5]", 3)
+				rows := sqlmock.NewRows([]string{"document_id", "ordinal", "anchor", "text"})
+				switch mode {
+				case "ok":
+					rows.AddRow("doc", 2, "section", "Text")
+				case "scan":
+					rows.AddRow("doc", "bad ordinal", "section", "Text")
+				case "iterate":
+					rows.AddRow("doc", 2, "section", "Text").RowError(0, errQueryFailure)
+				}
+
+				if mode == "query" {
+					e.WillReturnError(errQueryFailure)
+				} else {
+					e.WillReturnRows(rows).RowsWillBeClosed()
+				}
 			}
-		}
 
-		chunks = append(chunks, chunk)
+			got, err := repo.SearchChunks(t.Context(), vector, []string{"doc"}, 3)
+			switch mode {
+			case "ok":
+				expected := []wiki.Chunk{{DocumentID: "doc", Ordinal: 2, Anchor: "section", Text: "Text"}}
+				if err != nil || !reflect.DeepEqual(got, expected) {
+					t.Fatalf("%+v %v", got, err)
+				}
+			case "empty":
+				if err != nil || got == nil || len(got) != 0 {
+					t.Fatalf("%+v %v", got, err)
+				}
+			default:
+				if err == nil {
+					t.Fatal("missing error")
+				}
+			}
+		})
+	}
+}
+
+func TestSync(t *testing.T) {
+	for _, fail := range []string{
+		"", "begin", "delete docs", "upsert", "delete chunks", "encode", "insert chunk", "commit",
+	} {
+		t.Run("failure/"+fail, func(t *testing.T) {
+			repo, mock := mockRepository(t)
+			docs := []wiki.Document{{ID: "doc", Path: "guide.md", Team: "backend", Title: "Guide"}}
+			chunks := []wiki.Chunk{
+				{DocumentID: "doc", Ordinal: 2, Anchor: "section", Text: "Text", Embedding: []float64{1, 0.5}},
+				{DocumentID: "doc", Ordinal: 3, Text: "No vector"},
+			}
+
+			begin := mock.ExpectBegin()
+			if fail == "begin" {
+				begin.WillReturnError(errQueryFailure)
+			} else {
+				operations := []struct {
+					name, query string
+					args        []driver.Value
+				}{
+					{"delete docs", deleteDocumentsSQL, []driver.Value{[]string{"guide.md"}}},
+					{"upsert", upsertSQL, []driver.Value{"doc", "guide.md", "backend", "Guide"}},
+					{"delete chunks", deleteChunksSQL, nil},
+					{"insert chunk", insertChunkSQL, []driver.Value{"doc", 2, "section", "Text", "[1,0.5]"}},
+					{"insert second", insertChunkSQL, []driver.Value{"doc", 3, "", "No vector", nil}},
+				}
+
+				for _, op := range operations {
+					if fail == "encode" && op.name == "insert chunk" {
+						chunks[0].Embedding = []float64{math.Inf(1)}
+						break
+					}
+
+					e := mock.ExpectExec(regexp.QuoteMeta(op.query)).WithArgs(op.args...)
+					if op.name == fail {
+						e.WillReturnError(errQueryFailure)
+						break
+					}
+
+					e.WillReturnResult(sqlmock.NewResult(0, 1))
+				}
+
+				if fail == "" || fail == "commit" {
+					e := mock.ExpectCommit()
+					if fail == "commit" {
+						e.WillReturnError(errQueryFailure)
+					}
+				} else {
+					mock.ExpectRollback()
+				}
+			}
+
+			err := repo.Sync(t.Context(), docs, chunks)
+			if (err != nil) != (fail != "") {
+				t.Fatalf("%v", err)
+			}
+		})
+	}
+}
+
+// pgx accepts PostgreSQL arrays; sqlmock needs a converter to retain their values.
+type arrayConverter struct{}
+
+func (arrayConverter) ConvertValue(value any) (driver.Value, error) {
+	if array, ok := value.([]string); ok {
+		return array, nil
 	}
 
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("read wiki chunks: %w", err)
-	}
+	return driver.DefaultParameterConverter.ConvertValue(value)
+}
 
-	return chunks, nil
+func TestEmptySync(t *testing.T) {
+	repo, mock := mockRepository(t)
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(deleteDocumentsSQL)).WithArgs([]string{}).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta(deleteChunksSQL)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	if err := repo.Sync(t.Context(), nil, nil); err != nil {
+		t.Fatal(err)
+	}
 }

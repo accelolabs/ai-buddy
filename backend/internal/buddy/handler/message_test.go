@@ -138,7 +138,12 @@ func TestContextAndSSE(t *testing.T) {
 			Content:        "reply",
 			Source:         &buddy.Source{DocumentID: "doc"},
 			TaskCompletion: &tracker.Task{ID: "to-complete", UserID: "intern", Status: "pending"},
-			Tasks:          []tracker.Task{{ID: "saved", UserID: "intern", Description: "Сохранённая задача", Status: "pending"}},
+			Tasks: []tracker.Task{{
+				ID:          "saved",
+				UserID:      "intern",
+				Description: "Сохранённая задача",
+				Status:      "pending",
+			}},
 			Task: &buddy.Task{
 				Description: "Задача",
 				Deadline: time.Date(
@@ -331,5 +336,41 @@ func TestEmptyTasksCard(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(body, "event: tasks\ndata: []\n\n") ||
 		!strings.Contains(body, `"tasks":[]`) || strings.Index(body, "event: tasks") > strings.Index(body, "event: done") {
 		t.Fatalf("empty card: %d %s", w.Code, body)
+	}
+}
+
+func TestAttachmentWriteFailures(t *testing.T) {
+	for _, stage := range []string{"source", "ticket", "task", "tasks", "task_completion", "done"} {
+		t.Run(stage, func(t *testing.T) {
+			a := &fakeAgent{generate: func(
+				_ context.Context,
+				_ users.User,
+				_ []buddy.Message,
+				_ func(buddy.Event) error,
+			) (buddy.Answer, error) {
+				answer := buddy.Answer{Content: "answer"}
+				switch stage {
+				case "source":
+					answer.Source = &buddy.Source{}
+				case "ticket":
+					answer.Ticket = &buddy.Ticket{}
+				case "task":
+					answer.Task = &buddy.Task{}
+				case "tasks":
+					answer.Tasks = []tracker.Task{}
+				case "task_completion":
+					answer.TaskCompletion = &tracker.Task{}
+				}
+
+				return answer, nil
+			}}
+			w := &failingStreamWriter{ResponseRecorder: httptest.NewRecorder(), writeErr: errors.New("disconnected")}
+			r := httptest.NewRequest("POST", "/", strings.NewReader(`{"messages":[{"role":"user","content":"hello"}]}`))
+			r.AddCookie(&http.Cookie{Name: "demo_user", Value: "intern"})
+			middleware.Middleware(userRepository{})(http.HandlerFunc(NewHandler(a, 6).Send)).ServeHTTP(w, r)
+			if w.Body.Len() != 0 {
+				t.Fatal(w.Body)
+			}
+		})
 	}
 }
