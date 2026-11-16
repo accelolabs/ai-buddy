@@ -18,8 +18,10 @@ export default defineConfig({
     css: false,
     coverage: {
       provider: 'v8',
-      reporter: ['text'],
-      exclude: ['node_modules/', './setupTests.ts'],
+      reporter: ['text', 'html', 'json-summary'],
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/tests/**'],
+      thresholds: { statements: 80, branches: 80, functions: 80, lines: 80 },
     },
   },
 });

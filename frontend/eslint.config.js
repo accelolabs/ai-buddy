@@ -8,7 +8,7 @@ import eslintConfigPrettier from 'eslint-config-prettier';
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**', 'build/**', '.vite/**'],
+    ignores: ['dist/**', 'node_modules/**', 'build/**', '.vite/**', 'coverage/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
