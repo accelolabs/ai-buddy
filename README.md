@@ -11,14 +11,65 @@
 Нужны Docker и Docker Compose. Из корня проекта:
 
 ```sh
-cd backend
+cp .env.example .env
 docker compose up -d --build
-docker compose run --rm --build seed
-docker compose run --rm --build index
 ```
 
-API: `http://localhost:8080`. Первый запуск скачивает модели Ollama.
-Остановка: `docker compose down` из `backend/`.
+Приложение: `http://127.0.0.1:8080`. Открывается выбор пользователя из API.
+Миграции, демоданные, загрузка моделей и индексация выполняются автоматически до запуска API.
+Первый запуск скачивает модели и может занять несколько минут. По умолчанию используется CPU.
+При повторном запуске существующие модели и данные сохраняются в именованных томах.
+Имя проекта `buddy-backend` сохранено для совместимости с прежними томами.
+
+Переменные в корневом `.env`: `WEB_PORT` (8080), `POSTGRES_PASSWORD` (buddy),
+`CHAT_MODEL` (qwen3.5:4b), `EMBEDDING_MODEL` (embeddinggemma:300m),
+`CHAT_CONTEXT_LENGTH` (16384), `CHAT_HISTORY_LIMIT` (6), `RAG_CHUNK_COUNT` (3).
+После смены моделей или базы знаний перезапустите подготовку:
+
+```sh
+docker compose up -d --force-recreate ollama-model ollama-chat-model index server web
+```
+
+Веб-вход привязан к `127.0.0.1:${WEB_PORT}`; API, PostgreSQL и Ollama не публикуют порты.
+Nginx обслуживает SPA и проксирует `/api`, включая SSE без буферизации.
+Для внешнего HTTPS используйте Caddy на сервере (пример: `Caddyfile.example`):
+
+```caddyfile
+buddy.example.com {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+Укажите свой домен, направьте DNS на сервер и откройте порты 80/443 для Caddy.
+При изменении `WEB_PORT` обновите адрес в Caddy. Caddy не входит в Compose.
+
+```sh
+docker compose ps -a
+docker compose logs -f web server index
+docker compose run --rm index  # повторная индексация после изменения knowledge-base/
+docker compose down           # остановка без удаления данных
+```
+
+Не используйте `down -v`, если данные нужно сохранить.
+
+## Разработка фронтенда
+
+```sh
+cd frontend
+npm ci
+npm run dev
+npm run build
+npm run lint:check
+npm run format:check
+npm test
+```
+
+Vite (`http://localhost:5173`) проксирует `/api` на `http://127.0.0.1:8080`.
+Можно использовать запущенный Compose или локальный бэкенд с параметрами из `backend/.env.example`.
+При работе через Compose порт прокси должен совпадать с `WEB_PORT`.
+Чат хранится только в памяти вкладки: переходы между разделами его сохраняют,
+перезагрузка, выход, смена пользователя и «Новый чат» очищают.
+Создание и завершение записей требуют отдельного нажатия кнопки в карточке.
 
 ## Покрытие бэкенда
 

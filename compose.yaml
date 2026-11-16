@@ -1,10 +1,7 @@
 name: buddy-backend
-
 services:
   server:
-    build: .
-    ports:
-      - "8080:8080"
+    build: ./backend
     environment:
       ADDR: :8080
       CHAT_MODEL: ${CHAT_MODEL:-qwen3.5:4b}
@@ -17,102 +14,135 @@ services:
       OLLAMA_URL: http://ollama:11434
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-embeddinggemma:300m}
     volumes:
-      - ./prompts:/prompts:ro
-      - ../knowledge-base:/knowledge-base:ro
+    - ./backend/prompts:/prompts:ro
+    - ./knowledge-base:/knowledge-base:ro
     depends_on:
-      migrate:
+      seed:
+        condition: service_completed_successfully
+      index:
         condition: service_completed_successfully
       ollama-chat-model:
         condition: service_completed_successfully
-
+    restart: unless-stopped
+    healthcheck:
+      test:
+      - CMD
+      - wget
+      - -q
+      - -O
+      - /dev/null
+      - http://127.0.0.1:8080/api/users
+      interval: 10s
+      timeout: 5s
+      retries: 10
   migrate:
-    build: .
-    command: ["./migrate"]
+    build: ./backend
+    command:
+    - ./migrate
     environment:
       DATABASE_URL: postgres://buddy:${POSTGRES_PASSWORD:-buddy}@postgres:5432/buddy?sslmode=disable
     depends_on:
       postgres:
         condition: service_healthy
-
   seed:
-    build: .
-    profiles: [tools]
-    command: ["./seed"]
+    build: ./backend
+    command:
+    - ./seed
     environment:
       DATABASE_URL: postgres://buddy:${POSTGRES_PASSWORD:-buddy}@postgres:5432/buddy?sslmode=disable
     depends_on:
       migrate:
         condition: service_completed_successfully
-
   index:
-    build: .
-    profiles: [tools]
-    command: ["./index"]
+    build: ./backend
+    command:
+    - ./index
     environment:
       DATABASE_URL: postgres://buddy:${POSTGRES_PASSWORD:-buddy}@postgres:5432/buddy?sslmode=disable
       KNOWLEDGE_BASE_DIR: /knowledge-base
       OLLAMA_URL: http://ollama:11434
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-embeddinggemma:300m}
     volumes:
-      - ../knowledge-base:/knowledge-base:ro
+    - ./knowledge-base:/knowledge-base:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
       ollama-model:
         condition: service_completed_successfully
-
   ollama:
     image: ollama/ollama:latest
-    ports:
-      - "127.0.0.1:11434:11434"
     volumes:
-      - ollama:/root/.ollama
+    - ollama:/root/.ollama
     healthcheck:
-      test: ["CMD", "ollama", "list"]
+      test:
+      - CMD
+      - ollama
+      - list
       interval: 3s
       timeout: 3s
       retries: 20
-
+    restart: unless-stopped
   ollama-model:
     image: ollama/ollama:latest
-    entrypoint: ["/bin/sh", "-c"]
+    entrypoint:
+    - /bin/sh
+    - -c
     environment:
       OLLAMA_HOST: http://ollama:11434
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-embeddinggemma:300m}
     command:
-      - 'ollama show "$$EMBEDDING_MODEL" >/dev/null 2>&1 || ollama pull "$$EMBEDDING_MODEL"'
+    - ollama show "$$EMBEDDING_MODEL" >/dev/null 2>&1 || ollama pull "$$EMBEDDING_MODEL"
     depends_on:
       ollama:
         condition: service_healthy
-
   ollama-chat-model:
     image: ollama/ollama:latest
-    entrypoint: ["/bin/sh", "-c"]
+    entrypoint:
+    - /bin/sh
+    - -c
     environment:
       OLLAMA_HOST: http://ollama:11434
       CHAT_MODEL: ${CHAT_MODEL:-qwen3.5:4b}
     command:
-      - 'ollama show "$$CHAT_MODEL" >/dev/null 2>&1 || ollama pull "$$CHAT_MODEL"'
+    - ollama show "$$CHAT_MODEL" >/dev/null 2>&1 || ollama pull "$$CHAT_MODEL"
     depends_on:
       ollama:
         condition: service_healthy
-
   postgres:
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: buddy
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-buddy}
       POSTGRES_DB: buddy
-    ports:
-      - "127.0.0.1:5432:5432"
     volumes:
-      - postgres:/var/lib/postgresql/data
+    - postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U buddy -d buddy"]
+      test:
+      - CMD-SHELL
+      - pg_isready -U buddy -d buddy
       interval: 3s
       timeout: 3s
       retries: 20
-
+    restart: unless-stopped
+  web:
+    build: ./frontend
+    ports:
+    - 127.0.0.1:${WEB_PORT:-8080}:80
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+      - CMD
+      - wget
+      - -q
+      - -O
+      - /dev/null
+      - http://127.0.0.1/health
+      interval: 10s
+      timeout: 3s
+      retries: 5
 volumes:
-  postgres:
-  ollama:
+  postgres: null
+  ollama: null
