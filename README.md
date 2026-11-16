@@ -1,21 +1,50 @@
 # AI Buddy
 
-AI Buddy — демо для адаптации стажёров: чат с инструментами MCP, задачи и прогресс,
-вопросы наставнику и поиск по базе знаний. Один Go backend, одна PostgreSQL с pgvector,
-локальные модели Ollama. Пользователь выбирается cookie `demo_user`.
+## Запуск
 
-Текущая реализация сохранена в `backend-ai/`. Новую структуру и упрощение
-бэкенда разбираем с пользователем по фичам: [инструкция](docs/REFACTORING.md).
-
-- [Запуск, конфигурация и проверки](backend-ai/README.md)
-- [Архитектура прежней реализации](docs/SDD.md)
-- [Единый OpenAPI](backend-ai/api/openapi.yaml)
-- [База знаний](docs/KNOWLEDGE_BASE.md)
+Нужны Docker и Docker Compose. Из корня проекта:
 
 ```sh
-cd backend-ai
-docker compose -f deploy/compose.yaml --env-file deploy/.env.example up -d --build
+cd backend
+docker compose up -d --build
+docker compose run --rm --build seed
+docker compose run --rm --build index
 ```
 
-API доступен на `http://localhost:8080`. `GET /api/users` возвращает шесть демо-профилей.
-Frontend в эту работу не входит; контракт переключателя описан в README бэкенда.
+API: `http://localhost:8080`. Первый запуск скачивает модели Ollama.
+Остановка: `docker compose down` из `backend/`.
+
+## Покрытие бэкенда
+
+Нужен Go 1.27+. PostgreSQL и Ollama для тестов не требуются. Из корня проекта:
+
+```sh
+cd backend
+go test -race -count=1 -coverpkg=./... -coverprofile=/tmp/buddy-coverage.out ./...
+go tool cover -func=/tmp/buddy-coverage.out
+go tool cover -html=/tmp/buddy-coverage.out -o /tmp/buddy-coverage.html
+```
+
+`-func` показывает покрытие функций и общий процент, HTML — покрытие строк кода.
+
+## Эндпойнты
+
+Кроме `GET /api/users`, нужна cookie `demo_user=<id>` из списка пользователей.
+Стажёр работает со своими данными; ментор видит данные назначенных ему стажёров.
+
+| Метод | Путь | Назначение |
+| --- | --- | --- |
+| GET | `/api/users` | Выбор пользователя |
+| GET | `/api/users/interns` | Стажёры текущего ментора |
+| POST | `/api/buddy/messages` | Чат через SSE; тело: `{"messages":[{"role":"user","content":"Привет"}]}` |
+| GET | `/api/wiki` | Доступные статьи |
+| GET | `/api/wiki/{id}` | Исходный Markdown статьи |
+| GET | `/api/tracker/tasks` | Свои задачи |
+| GET | `/api/tracker/interns/{internID}/tasks` | Задачи стажёра ментора |
+| POST | `/api/tracker/tasks` | Создание: `description`, `deadline` в RFC3339 с часовым поясом |
+| POST | `/api/tracker/tasks/{id}/complete` | Завершение задачи; пустое тело |
+| GET | `/api/tickets` | Доступные тикеты |
+| GET | `/api/tickets/{id}` | Тикет |
+| POST | `/api/tickets` | Создание: `title`, `description` |
+
+Создание задач/тикетов и завершение задач доступны стажёру по отдельному нажатию кнопки.
