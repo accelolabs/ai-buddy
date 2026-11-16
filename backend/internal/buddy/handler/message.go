@@ -48,6 +48,7 @@ type messageResponse struct {
 	Content string          `json:"content"`
 	Source  *sourceResponse `json:"source"`
 	Ticket  *ticketResponse `json:"ticket"`
+	Task    *taskResponse   `json:"task"`
 }
 
 type sourceResponse struct {
@@ -144,7 +145,13 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := stream.send("done", messageResponse{Content: reply.Content, Source: sourceView(reply.Source), Ticket: ticketView(reply.Ticket)}); err != nil {
+	if reply.Task != nil {
+		if err := stream.send("task", taskView(reply.Task)); err != nil {
+			log.Printf("write task: %v", err)
+			return
+		}
+	}
+	if err := stream.send("done", messageResponse{Content: reply.Content, Source: sourceView(reply.Source), Ticket: ticketView(reply.Ticket), Task: taskView(reply.Task)}); err != nil {
 		log.Printf("write buddy reply: %v", err)
 	}
 }

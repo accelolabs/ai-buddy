@@ -1,6 +1,10 @@
 package repository
 
 import (
+	"backend/internal/buddy/agent"
+	buddyhandler "backend/internal/buddy/handler"
+	"backend/internal/ollama"
+	"backend/internal/ticket"
 	"backend/internal/tracker"
 	"backend/internal/tracker/handler"
 	"backend/internal/users"
@@ -369,4 +373,168 @@ type taskResponseForTest struct {
 	Deadline    time.Time `json:"deadline"`
 	Status      string    `json:"status"`
 	CreatedAt   time.Time `json:"created_at"`
+}
+
+func TestTaskSeed(t *testing.T) {
+	repo, ctx := testRepository(t)
+	if err := users.Seed(ctx, repo.db); err != nil {
+		t.Fatal(err)
+	}
+	if err := ticket.Seed(ctx, repo.db); err != nil {
+		t.Fatal(err)
+	}
+	if err := tracker.Seed(ctx, repo.db); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := repo.db.QueryRowContext(ctx, `SELECT count(*) FROM tasks`).Scan(&count); err != nil || count != 12 {
+		t.Fatalf("count: %d %v", count, err)
+	}
+	for _, id := range []string{"intern.backend.1", "intern.backend.2", "intern.platform.1", "intern.platform.2"} {
+		values, err := repo.List(ctx, users.User{ID: id, Role: users.RoleIntern}, id)
+		if err != nil || len(values) != 3 {
+			t.Fatalf("author: %+v %v", values, err)
+		}
+		for i, value := range values {
+			if value.UserID != id || value.Description == "" || value.CreatedAt.IsZero() || !strings.HasPrefix(value.ID, "demo.task."+id+".") || value.Status != []string{"completed", "overdue", "pending"}[i] {
+				t.Fatal(value)
+			}
+			if delta := value.Deadline.Sub(value.CreatedAt); delta != []time.Duration{-48 * time.Hour, -24 * time.Hour, 72 * time.Hour}[i] {
+				t.Fatalf("deadline offset: %v", delta)
+			}
+		}
+	}
+	snapshotSQL := `SELECT json_agg(t ORDER BY id)::text FROM tasks t`
+	var before, after string
+	if err := repo.db.QueryRowContext(ctx, snapshotSQL).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	if err := tracker.Seed(ctx, repo.db); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.db.QueryRowContext(ctx, snapshotSQL).Scan(&after); err != nil || before != after {
+		t.Fatalf("rerun changed data: %v", err)
+	}
+	if _, err := repo.Complete(ctx, users.User{ID: "intern.backend.1", Role: users.RoleIntern}, "demo.task.intern.backend.1.1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.db.ExecContext(ctx, `UPDATE tasks SET description='Изменено', deadline='2020-01-01Z', created_at='2019-01-01Z' WHERE id='demo.task.intern.backend.1.1'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.db.QueryRowContext(ctx, snapshotSQL).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := users.Seed(ctx, repo.db); err != nil {
+			t.Fatal(err)
+		}
+		if err := ticket.Seed(ctx, repo.db); err != nil {
+			t.Fatal(err)
+		}
+		if err := tracker.Seed(ctx, repo.db); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repo.db.QueryRowContext(ctx, snapshotSQL).Scan(&after); err != nil || before != after {
+		t.Fatalf("overwrote edits/completion: %v", err)
+	}
+	if _, err := repo.db.ExecContext(ctx, `DELETE FROM tasks`); err != nil {
+		t.Fatal(err)
+	}
+	// A late SQL failure must roll back tasks and preserve prior seed stages.
+	if _, err := repo.db.ExecContext(ctx, `ALTER TABLE tasks ADD CONSTRAINT seed_failure CHECK (user_id <> 'intern.platform.2')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := tracker.Seed(ctx, repo.db); err == nil {
+		t.Fatal("constraint failure ignored")
+	}
+	if err := repo.db.QueryRowContext(ctx, `SELECT count(*) FROM tasks`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("partial tasks: %d %v", count, err)
+	}
+	if err := repo.db.QueryRowContext(ctx, `SELECT count(*) FROM tickets`).Scan(&count); err != nil || count != 8 {
+		t.Fatalf("earlier tickets lost: %d %v", count, err)
+	}
+	if _, err := repo.db.ExecContext(ctx, `ALTER TABLE tasks DROP CONSTRAINT seed_failure`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.db.ExecContext(ctx, `DELETE FROM tickets WHERE user_id='intern.platform.2'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.db.ExecContext(ctx, `DELETE FROM users WHERE id='intern.platform.2'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := tracker.Seed(ctx, repo.db); err == nil {
+		t.Fatal("missing author accepted")
+	}
+	if err := repo.db.QueryRowContext(ctx, `SELECT count(*) FROM tasks`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("partial tasks: %d %v", count, err)
+	}
+}
+
+type taskModel struct{}
+
+func (taskModel) Chat(_ context.Context, messages []ollama.Message, _ []ollama.Tool, _ func(string) error) (ollama.Response, error) {
+	if messages[len(messages)-1].Role == "tool" {
+		return ollama.Response{Message: ollama.Message{Content: "Подтвердите кнопкой"}}, nil
+	}
+	return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{{Function: ollama.Function{Name: "prepare_task", Arguments: []byte(`{"description":"Черновик","deadline":"2030-01-01T12:00:00+03:00"}`)}}}}}, nil
+}
+
+func TestPrepareTaskSSEAndCreate(t *testing.T) {
+	repo, ctx := testRepository(t)
+	if err := users.Seed(ctx, repo.db); err != nil {
+		t.Fatal(err)
+	}
+	a, err := agent.NewAgent(taskModel{}, nil, "../../../prompts/buddy.md", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := middleware.Middleware(usersrepository.NewRepository(repo.db))
+	mux := http.NewServeMux()
+	mux.Handle("POST /api/buddy/messages", selected(http.HandlerFunc(buddyhandler.NewHandler(a, 6).Send)))
+	mux.Handle("POST /api/tracker/tasks", selected(http.HandlerFunc(handler.NewHandler(repo).Create)))
+	request := func(path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", path, strings.NewReader(body)).WithContext(ctx)
+		r.AddCookie(&http.Cookie{Name: "demo_user", Value: "intern.backend.1"})
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		return w
+	}
+	response := request("/api/buddy/messages", `{"messages":[{"role":"user","content":"Подготовь задачу"}]}`)
+	if response.Code != 200 {
+		t.Fatalf("SSE: %d %s", response.Code, response.Body)
+	}
+	var draft struct {
+		Description string    `json:"description"`
+		Deadline    time.Time `json:"deadline"`
+	}
+	lines := strings.Split(response.Body.String(), "\n")
+	found := false
+	for i, line := range lines {
+		if line == "event: task" {
+			if err := json.Unmarshal([]byte(strings.TrimPrefix(lines[i+1], "data: ")), &draft); err != nil {
+				t.Fatal(err)
+			}
+			found = true
+		}
+	}
+	if !found || draft.Description != "Черновик" || draft.Deadline.Format(time.RFC3339) != "2030-01-01T12:00:00+03:00" {
+		t.Fatalf("draft: %+v %s", draft, response.Body)
+	}
+	var count int
+	if err := repo.db.QueryRowContext(ctx, `SELECT count(*) FROM tasks`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("prepare wrote tasks: %d %v", count, err)
+	}
+	response = request("/api/tracker/tasks", `{"description":" Окончательное описание ","deadline":"2031-02-03T10:00:00Z","user_id":"intern.platform.1"}`)
+	if response.Code != 201 {
+		t.Fatalf("POST: %d %s", response.Code, response.Body)
+	}
+	values, err := repo.List(ctx, users.User{ID: "intern.backend.1", Role: users.RoleIntern}, "intern.backend.1")
+	if err != nil || len(values) != 1 {
+		t.Fatalf("stored: %+v %v", values, err)
+	}
+	value := values[0]
+	if value.Description != "Окончательное описание" || value.Deadline.UTC().Format(time.RFC3339) != "2031-02-03T10:00:00Z" || value.UserID != "intern.backend.1" {
+		t.Fatal(value)
+	}
 }

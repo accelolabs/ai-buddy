@@ -307,3 +307,68 @@ type ticketResponseForTest struct {
 	Description string    `json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
 }
+
+func TestTicketSeed(t *testing.T) {
+	repo, ctx := testRepository(t)
+	if err := users.Seed(ctx, repo.db); err != nil {
+		t.Fatal(err)
+	}
+	if err := ticket.Seed(ctx, repo.db); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := repo.db.QueryRowContext(ctx, `SELECT count(*) FROM tickets`).Scan(&count); err != nil || count != 8 {
+		t.Fatalf("count: %d %v", count, err)
+	}
+	var snapshot string
+	snapshotSQL := `SELECT json_agg(t ORDER BY id)::text FROM tickets t`
+	if err := repo.db.QueryRowContext(ctx, snapshotSQL).Scan(&snapshot); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"intern.backend.1", "intern.backend.2", "intern.platform.1", "intern.platform.2"} {
+		values, err := repo.List(ctx, users.User{ID: id, Role: users.RoleIntern})
+		if err != nil || len(values) != 2 {
+			t.Fatalf("author: %+v %v", values, err)
+		}
+		for _, value := range values {
+			if value.UserID != id || value.Description == "" || value.Title == "" || value.CreatedAt.IsZero() || !strings.HasPrefix(value.ID, "demo.ticket."+id+".") {
+				t.Fatal(value)
+			}
+		}
+	}
+	if err := ticket.Seed(ctx, repo.db); err != nil {
+		t.Fatal(err)
+	}
+	var after string
+	if err := repo.db.QueryRowContext(ctx, snapshotSQL).Scan(&after); err != nil || after != snapshot {
+		t.Fatalf("rerun changed records: %v", err)
+	}
+	if _, err := repo.db.ExecContext(ctx, `UPDATE tickets SET title='Изменено', description='Новое описание', created_at='2020-01-01Z' WHERE id='demo.ticket.intern.backend.1.1'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.db.QueryRowContext(ctx, snapshotSQL).Scan(&snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if err := ticket.Seed(ctx, repo.db); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.db.QueryRowContext(ctx, snapshotSQL).Scan(&after); err != nil || after != snapshot {
+		t.Fatalf("overwrote edits: %v", err)
+	}
+	// Fail after several inserts to verify the whole seed rolls back.
+	if _, err := repo.db.ExecContext(ctx, `DELETE FROM tickets`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.db.ExecContext(ctx, `DELETE FROM users WHERE id='intern.platform.2'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := ticket.Seed(ctx, repo.db); err == nil {
+		t.Fatal("missing author accepted")
+	}
+	if err := repo.db.QueryRowContext(ctx, `SELECT count(*) FROM tickets`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("partial seed: %d %v", count, err)
+	}
+	if err := repo.db.QueryRowContext(ctx, `SELECT count(*) FROM users`).Scan(&count); err != nil || count != 5 {
+		t.Fatalf("earlier seed changed: %d %v", count, err)
+	}
+}

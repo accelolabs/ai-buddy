@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeAgent struct {
@@ -83,7 +84,7 @@ func TestContextAndSSE(t *testing.T) {
 		if err := emit(buddy.Event{Type: "text", Text: "reply"}); err != nil {
 			return buddy.Answer{}, err
 		}
-		return buddy.Answer{Content: "reply", Source: &buddy.Source{DocumentID: "doc"}, Ticket: &buddy.Ticket{Title: "title", Description: "description", Recipient: buddy.Recipient{ID: "mentor", Name: "Mentor"}}}, nil
+		return buddy.Answer{Content: "reply", Source: &buddy.Source{DocumentID: "doc"}, Task: &buddy.Task{Description: "Задача", Deadline: time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)}, Ticket: &buddy.Ticket{Title: "title", Description: "description", Recipient: buddy.Recipient{ID: "mentor", Name: "Mentor"}}}, nil
 	}}
 	w := send(NewHandler(a, 2), `{"messages":[{"role":"user","content":"first"},{"role":"assistant","content":"second"},{"role":"user","content":" third "}]}`, "intern")
 	body := w.Body.String()
@@ -91,12 +92,15 @@ func TestContextAndSSE(t *testing.T) {
 		t.Fatalf("response: %d %s", w.Code, body)
 	}
 	last := -1
-	for _, event := range []string{"state", "text", "source", "ticket", "done"} {
+	for _, event := range []string{"state", "text", "source", "ticket", "task", "done"} {
 		pos := strings.Index(body, "event: "+event+"\n")
 		if pos <= last {
 			t.Fatalf("event order: %s", body)
 		}
 		last = pos
+	}
+	if !strings.Contains(body, "event: task\ndata: {\"description\":\"Задача\",\"deadline\":\"2030-01-01T00:00:00Z\"}") || !strings.Contains(body, `"task":{"description":"Задача","deadline":"2030-01-01T00:00:00Z"}`) {
+		t.Fatal(body)
 	}
 	for _, field := range []string{`"status"`, `"ticket_id"`, `"chat_id"`, `"created_at"`, "event: chat"} {
 		if strings.Contains(body, field) {
@@ -126,7 +130,7 @@ func TestStreamErrors(t *testing.T) {
 						return buddy.Answer{}, err
 					}
 				}
-				return buddy.Answer{Source: &buddy.Source{}, Ticket: &buddy.Ticket{}}, errors.New("private details")
+				return buddy.Answer{Source: &buddy.Source{}, Ticket: &buddy.Ticket{}, Task: &buddy.Task{}}, errors.New("private details")
 			}}
 			r := httptest.NewRequest("POST", "/api/buddy/messages", strings.NewReader(`{"messages":[{"role":"user","content":"x"}]}`)).WithContext(ctx)
 			r.AddCookie(&http.Cookie{Name: "demo_user", Value: "intern"})
@@ -139,7 +143,7 @@ func TestStreamErrors(t *testing.T) {
 			}
 			middleware.Middleware(userRepository{})(http.HandlerFunc(NewHandler(a, 6).Send)).ServeHTTP(w, r)
 			body := w.Body.String()
-			for _, event := range []string{"source", "ticket", "done"} {
+			for _, event := range []string{"source", "ticket", "task", "done"} {
 				if strings.Contains(body, "event: "+event) {
 					t.Fatal(body)
 				}
@@ -169,7 +173,7 @@ func TestNoAttachmentsOrHistory(t *testing.T) {
 	}}
 	for range 2 {
 		w := send(NewHandler(a, 6), `{"messages":[{"role":"user","content":"new"}]}`, "intern")
-		if w.Body.String() != "event: done\ndata: {\"content\":\"answer\",\"source\":null,\"ticket\":null}\n\n" {
+		if w.Body.String() != "event: done\ndata: {\"content\":\"answer\",\"source\":null,\"ticket\":null,\"task\":null}\n\n" {
 			t.Fatal(w.Body)
 		}
 	}

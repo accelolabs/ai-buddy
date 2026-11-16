@@ -12,4 +12,5 @@ type Answer struct {
 	Content string
 	Source  *Source
 	Ticket  *Ticket
+	Task    *Task
 }

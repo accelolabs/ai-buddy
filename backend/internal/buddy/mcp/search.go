@@ -23,6 +23,7 @@ type Handler struct {
 	user     users.User
 	users    mentorRepository
 	ticket   *buddy.Ticket
+	task     *buddy.Task
 	rag      searcher
 	team     string
 	mu       sync.Mutex
@@ -52,6 +53,7 @@ func NewHandler(rag searcher, user users.User, users mentorRepository) *Handler 
 
 func (h *Handler) Register(server *sdk.Server) {
 	if h.user.Role == users.RoleIntern {
+		sdk.AddTool(server, &sdk.Tool{Name: "prepare_task", Description: "Подготовить карточку задачи с описанием и дедлайном RFC3339 с часовым поясом. Создание требует подтверждения стажёром кнопкой."}, h.PrepareTask)
 		sdk.AddTool(server, &sdk.Tool{Name: "prepare_ticket", Description: "Подготовить карточку тикета назначенному ментору. Создание требует подтверждения стажёром."}, h.PrepareTicket)
 	}
 	sdk.AddTool(server, &sdk.Tool{

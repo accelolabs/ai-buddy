@@ -2,6 +2,8 @@ package main
 
 import (
 	"backend/internal/config"
+	"backend/internal/ticket"
+	"backend/internal/tracker"
 	"backend/internal/users"
 	"context"
 	"database/sql"
@@ -30,5 +32,11 @@ func main() {
 	if err := users.Seed(ctx, db); err != nil {
 		log.Fatal(err)
 	}
-	log.Print("demo users seeded")
+	if err := ticket.Seed(ctx, db); err != nil {
+		log.Fatal(err)
+	}
+	if err := tracker.Seed(ctx, db); err != nil {
+		log.Fatal(err)
+	}
+	log.Print("demo users, tickets and tasks seeded")
 }

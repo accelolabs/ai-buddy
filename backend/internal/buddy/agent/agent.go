@@ -87,7 +87,7 @@ func (a *Agent) Generate(ctx context.Context, user users.User, history []buddy.M
 			return buddy.Answer{}, fmt.Errorf("generate answer: %w", err)
 		}
 		if len(response.Message.Calls) == 0 {
-			return buddy.Answer{Content: content.String(), Source: handler.Source(), Ticket: handler.Ticket()}, nil
+			return buddy.Answer{Content: content.String(), Source: handler.Source(), Ticket: handler.Ticket(), Task: handler.Task()}, nil
 		}
 		if calls+len(response.Message.Calls) > maxToolCalls {
 			return buddy.Answer{}, fmt.Errorf("tool call limit exceeded")

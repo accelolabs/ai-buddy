@@ -8,6 +8,7 @@ import (
 	"backend/internal/wiki/rag"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -359,7 +360,7 @@ func TestTicketGeneration(t *testing.T) {
 	model := &fakeModel{}
 	model.reply = func(messages []ollama.Message, tools []ollama.Tool) (ollama.Response, error) {
 		if model.calls == 1 {
-			if len(tools) != 3 {
+			if len(tools) != 4 {
 				t.Fatalf("tools: %v", tools)
 			}
 			return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{{Function: ollama.Function{Name: "prepare_ticket", Arguments: []byte(`{"title":" Тема ","description":" Текст "}`)}}}}}, nil
@@ -388,7 +389,7 @@ func TestTicketGeneration(t *testing.T) {
 	}
 }
 
-func TestSourceAndTicketTogether(t *testing.T) {
+func TestAttachmentsTogether(t *testing.T) {
 	model := &fakeModel{}
 	model.reply = func(messages []ollama.Message, _ []ollama.Tool) (ollama.Response, error) {
 		var calls []ollama.Call
@@ -399,6 +400,7 @@ func TestSourceAndTicketTogether(t *testing.T) {
 			calls = []ollama.Call{
 				{Function: ollama.Function{Name: "attach_source", Arguments: []byte(`{"document_id":"doc","ordinal":0}`)}},
 				{Function: ollama.Function{Name: "prepare_ticket", Arguments: []byte(`{"title":"Тема","description":"Описание"}`)}},
+				{Function: ollama.Function{Name: "prepare_task", Arguments: []byte(`{"description":"Задача","deadline":"2030-01-01T00:00:00Z"}`)}},
 			}
 		case 3:
 			calls = []ollama.Call{
@@ -423,11 +425,59 @@ func TestSourceAndTicketTogether(t *testing.T) {
 	a.users = mentorStore{}
 	u := users.User{ID: "intern", Role: users.RoleIntern}
 	answer, err := a.Generate(t.Context(), u, []buddy.Message{{Role: buddy.RoleUser, Content: "first request"}}, nil)
-	if err != nil || answer.Source == nil || answer.Source.DocumentID != "doc" || answer.Ticket == nil || answer.Ticket.Title != "Тема" {
+	if err != nil || answer.Source == nil || answer.Source.DocumentID != "doc" || answer.Ticket == nil || answer.Ticket.Title != "Тема" || answer.Task == nil || answer.Task.Description != "Задача" {
 		t.Fatalf("attachments: %+v %v", answer, err)
 	}
 	answer, err = a.Generate(t.Context(), u, []buddy.Message{{Role: buddy.RoleUser, Content: "new request"}}, nil)
-	if err != nil || answer.Source != nil || answer.Ticket != nil {
+	if err != nil || answer.Source != nil || answer.Ticket != nil || answer.Task != nil {
 		t.Fatalf("attachments leaked: %+v %v", answer, err)
+	}
+}
+
+func TestTaskGenerationAndSharedLimit(t *testing.T) {
+	for _, overflow := range []bool{false, true} {
+		t.Run(fmt.Sprint(overflow), func(t *testing.T) {
+			model := &fakeModel{}
+			model.reply = func(messages []ollama.Message, tools []ollama.Tool) (ollama.Response, error) {
+				switch model.calls {
+				case 1:
+					return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{
+						{Function: ollama.Function{Name: "prepare_task", Arguments: []byte(`{"description":"first","deadline":"2020-01-01T00:00:00Z"}`)}},
+						{Function: ollama.Function{Name: "prepare_task", Arguments: []byte(`{"description":" final ","deadline":"2030-01-01T00:00:00Z"}`)}},
+						{Function: ollama.Function{Name: "prepare_task", Arguments: []byte(`{"description":"bad","deadline":""}`)}},
+						{Function: ollama.Function{Name: "search_documents", Arguments: []byte(`{"query":"q"}`)}},
+						{Function: ollama.Function{Name: "attach_source", Arguments: []byte(`{"document_id":"doc","ordinal":0}`)}},
+						{Function: ollama.Function{Name: "prepare_ticket", Arguments: []byte(`{"title":"x","description":"y"}`)}},
+					}}}, nil
+				case 2:
+					if len(tools) != 0 {
+						t.Fatal("shared tool limit lost")
+					}
+					if !strings.Contains(messages[len(messages)-4].Content, "error") {
+						t.Fatal("missing validation error")
+					}
+					if overflow {
+						return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{{Function: ollama.Function{Name: "prepare_task", Arguments: []byte(`{}`)}}}}}, nil
+					}
+				}
+				return ollama.Response{Message: ollama.Message{Content: "Подтвердите кнопкой"}}, nil
+			}
+			a := testAgent(t, model, &fakeRAG{})
+			a.users = mentorStore{}
+			answer, err := a.Generate(t.Context(), users.User{Role: users.RoleIntern}, nil, nil)
+			if overflow {
+				if err == nil || answer.Task != nil || answer.Ticket != nil || answer.Source != nil {
+					t.Fatalf("limit: %+v %v", answer, err)
+				}
+				return
+			}
+			if err != nil || answer.Task == nil || answer.Task.Description != "final" {
+				t.Fatalf("answer: %+v %v", answer, err)
+			}
+			answer, err = a.Generate(t.Context(), users.User{Role: users.RoleIntern}, nil, nil)
+			if err != nil || answer.Task != nil {
+				t.Fatalf("leaked: %+v %v", answer, err)
+			}
+		})
 	}
 }
