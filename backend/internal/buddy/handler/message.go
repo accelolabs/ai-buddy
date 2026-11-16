@@ -27,29 +27,28 @@ type inputMessage struct {
 	Content string `json:"content"`
 }
 
-type (
-	messageRequest struct {
-		Messages []inputMessage `json:"messages"`
-	}
-	stateResponse struct {
-		State    string `json:"state"`
-		Progress string `json:"progress,omitempty"`
-	}
-)
+type messageRequest struct {
+	Messages []inputMessage `json:"messages"`
+}
 
-type (
-	textResponse struct {
-		Text string `json:"text"`
-	}
-	errorResponse struct {
-		Error string `json:"error"`
-	}
-	messageResponse struct {
-		Content string          `json:"content"`
-		Source  *sourceResponse `json:"source"`
-		Ticket  *ticketResponse `json:"ticket"`
-	}
-)
+type stateResponse struct {
+	State    string `json:"state"`
+	Progress string `json:"progress,omitempty"`
+}
+
+type textResponse struct {
+	Text string `json:"text"`
+}
+
+type errorResponse struct {
+	Error string `json:"error"`
+}
+
+type messageResponse struct {
+	Content string          `json:"content"`
+	Source  *sourceResponse `json:"source"`
+	Ticket  *ticketResponse `json:"ticket"`
+}
 
 type sourceResponse struct {
 	DocumentID string `json:"document_id"`
