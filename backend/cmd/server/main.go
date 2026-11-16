@@ -18,14 +18,18 @@ import (
 	"backend/internal/ollama"
 	tickethandler "backend/internal/ticket/handler"
 	ticketrepository "backend/internal/ticket/repository"
+	ticketservice "backend/internal/ticket/service"
 	trackerhandler "backend/internal/tracker/handler"
 	trackerrepository "backend/internal/tracker/repository"
+	trackerservice "backend/internal/tracker/service"
 	usershandler "backend/internal/users/handler"
 	"backend/internal/users/middleware"
 	usersrepository "backend/internal/users/repository"
+	usersservice "backend/internal/users/service"
 	wikihandler "backend/internal/wiki/handler"
 	"backend/internal/wiki/rag"
 	wikirepository "backend/internal/wiki/repository"
+	wikiservice "backend/internal/wiki/service"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -56,24 +60,25 @@ func main() {
 	defer stop()
 
 	userRepository := usersrepository.NewRepository(db)
-	userHandler := usershandler.NewHandler(userRepository)
+	userService := usersservice.NewService(userRepository)
+	userHandler := usershandler.NewHandler(userService)
 	wikiRepository := wikirepository.NewRepository(db)
-	wikiHandler := wikihandler.NewHandler(wikiRepository, cfg.KnowledgeBaseDir)
+	wikiHandler := wikihandler.NewHandler(wikiservice.NewService(wikiRepository, cfg.KnowledgeBaseDir))
 	search := rag.NewRAG(wikiRepository, ollama.NewClient(cfg.OllamaURL, cfg.EmbeddingModel), cfg.RAGChunkCount)
 	buddyAgent, err := agent.NewAgent(
 		ollama.NewChatClient(cfg.OllamaURL, cfg.ChatModel, cfg.ChatContextLength),
 		search,
 		cfg.SystemPromptFile,
-		userRepository,
+		userService,
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	buddyHandler := buddyhandler.NewHandler(buddyAgent, cfg.ChatHistoryLimit)
-	ticketHandler := tickethandler.NewHandler(ticketrepository.NewRepository(db))
-	trackerHandler := trackerhandler.NewHandler(trackerrepository.NewRepository(db))
-	selectedUser := middleware.Middleware(userRepository)
+	ticketHandler := tickethandler.NewHandler(ticketservice.NewService(ticketrepository.NewRepository(db)))
+	trackerHandler := trackerhandler.NewHandler(trackerservice.NewService(trackerrepository.NewRepository(db)))
+	selectedUser := middleware.Middleware(userService)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/users", userHandler.List)

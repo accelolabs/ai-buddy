@@ -19,7 +19,7 @@ func (f listFunc) List(ctx context.Context) ([]users.User, error) {
 	return f(ctx)
 }
 
-func (f listFunc) ListInterns(ctx context.Context, _ string) ([]users.User, error) {
+func (f listFunc) ListInterns(ctx context.Context, _ users.User) ([]users.User, error) {
 	return f(ctx)
 }
 
@@ -114,8 +114,8 @@ func (s *internLister) List(context.Context) ([]users.User, error) {
 	return nil, nil
 }
 
-func (s *internLister) ListInterns(_ context.Context, id string) ([]users.User, error) {
-	s.mentorID = id
+func (s *internLister) ListInterns(_ context.Context, user users.User) ([]users.User, error) {
+	s.mentorID = user.ID
 
 	return nil, s.err
 }

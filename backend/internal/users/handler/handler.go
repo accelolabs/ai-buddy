@@ -3,21 +3,23 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 
 	// Project packages.
 	"backend/internal/users"
 	"backend/internal/users/middleware"
+	"backend/internal/users/service"
 )
 
-type userLister interface {
+type userService interface {
 	List(context.Context) ([]users.User, error)
-	ListInterns(context.Context, string) ([]users.User, error)
+	ListInterns(context.Context, users.User) ([]users.User, error)
 }
 
 type Handler struct {
-	repository userLister
+	service userService
 }
 
 type userResponse struct {
@@ -27,14 +29,14 @@ type userResponse struct {
 	Team string `json:"team"`
 }
 
-func NewHandler(repository userLister) *Handler {
+func NewHandler(service userService) *Handler {
 	return &Handler{
-		repository: repository,
+		service: service,
 	}
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	users, err := h.repository.List(r.Context())
+	users, err := h.service.List(r.Context())
 	if err != nil {
 		log.Printf("list users: %v", err)
 		http.Error(w, "failed to list users", http.StatusInternalServerError)
@@ -68,7 +70,13 @@ func (h *Handler) ListInterns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	values, err := h.repository.ListInterns(r.Context(), user.ID)
+	values, err := h.service.ListInterns(r.Context(), user)
+	if errors.Is(err, service.ErrForbidden) {
+		http.Error(w, "only mentors can list interns", http.StatusForbidden)
+
+		return
+	}
+
 	if err != nil {
 		log.Printf("list interns: %v", err)
 		http.Error(w, "failed to list interns", http.StatusInternalServerError)

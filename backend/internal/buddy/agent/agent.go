@@ -27,18 +27,18 @@ type searcher interface {
 	Search(context.Context, string, string) ([]rag.Match, error)
 }
 
-type mentorRepository interface {
+type mentorService interface {
 	GetMentor(context.Context, string) (users.User, error)
 }
 
 type Agent struct {
-	users        mentorRepository
+	users        mentorService
 	rag          searcher
 	model        model
 	systemPrompt string
 }
 
-func NewAgent(model model, rag searcher, promptFile string, users mentorRepository) (*Agent, error) {
+func NewAgent(model model, rag searcher, promptFile string, users mentorService) (*Agent, error) {
 	prompt, err := os.ReadFile(promptFile)
 	if err != nil {
 		return nil, fmt.Errorf("read system prompt: %w", err)

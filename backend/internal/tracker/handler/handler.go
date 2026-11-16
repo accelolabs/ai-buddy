@@ -2,30 +2,29 @@ package handler
 
 import (
 	"context"
-	"crypto/rand"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	// Project packages.
 	"backend/internal/tracker"
+	"backend/internal/tracker/service"
 	"backend/internal/users"
 	"backend/internal/users/middleware"
 )
 
-type taskRepository interface {
-	Add(context.Context, tracker.Task) (tracker.Task, error)
-	List(context.Context, users.User, string) ([]tracker.Task, error)
+type taskService interface {
+	Create(context.Context, users.User, string, string) (tracker.Task, error)
+	List(context.Context, users.User) ([]tracker.Task, error)
+	ListIntern(context.Context, users.User, string) ([]tracker.Task, error)
 	Complete(context.Context, users.User, string) (tracker.Task, error)
 }
 
 type Handler struct {
-	repository taskRepository
+	service taskService
 }
 
 type taskRequest struct {
@@ -42,9 +41,9 @@ type taskResponse struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-func NewHandler(repository taskRepository) *Handler {
+func NewHandler(service taskService) *Handler {
 	return &Handler{
-		repository: repository,
+		service: service,
 	}
 }
 
@@ -77,7 +76,13 @@ func selectedUser(w http.ResponseWriter, r *http.Request, role string) (users.Us
 }
 
 func writeError(w http.ResponseWriter, r *http.Request, err error) {
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, service.ErrForbidden) {
+		http.Error(w, "role is not allowed", http.StatusForbidden)
+
+		return
+	}
+
+	if errors.Is(err, service.ErrNotFound) {
 		http.NotFound(w, r)
 
 		return
@@ -101,7 +106,8 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.list(w, r, user, user.ID)
+	values, err := h.service.List(r.Context(), user)
+	h.list(w, r, values, err)
 }
 
 func (h *Handler) ListIntern(w http.ResponseWriter, r *http.Request) {
@@ -110,11 +116,11 @@ func (h *Handler) ListIntern(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.list(w, r, user, r.PathValue("internID"))
+	values, err := h.service.ListIntern(r.Context(), user, r.PathValue("internID"))
+	h.list(w, r, values, err)
 }
 
-func (h *Handler) list(w http.ResponseWriter, r *http.Request, user users.User, internID string) {
-	values, err := h.repository.List(r.Context(), user, internID)
+func (h *Handler) list(w http.ResponseWriter, r *http.Request, values []tracker.Task, err error) {
 	if err != nil {
 		writeError(w, r, err)
 
@@ -150,23 +156,19 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	input.Description = strings.TrimSpace(input.Description)
-	deadline, err := time.Parse(time.RFC3339, input.Deadline)
-	if err != nil || input.Description == "" {
+	value, err := h.service.Create(r.Context(), user, input.Description, input.Deadline)
+	if errors.Is(err, service.ErrInvalidInput) {
 		http.Error(w, "invalid task", http.StatusBadRequest)
 
 		return
 	}
 
-	value, err := h.repository.Add(
-		r.Context(),
-		tracker.Task{
-			ID:          rand.Text(),
-			UserID:      user.ID,
-			Description: input.Description,
-			Deadline:    deadline,
-		},
-	)
+	if errors.Is(err, service.ErrForbidden) {
+		http.Error(w, "role is not allowed", http.StatusForbidden)
+
+		return
+	}
+
 	if err != nil {
 		log.Printf("create task: %v", err)
 		http.Error(w, "failed to create task", http.StatusInternalServerError)
@@ -190,7 +192,7 @@ func (h *Handler) Complete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	value, err := h.repository.Complete(r.Context(), user, r.PathValue("id"))
+	value, err := h.service.Complete(r.Context(), user, r.PathValue("id"))
 	if err != nil {
 		writeError(w, r, err)
 

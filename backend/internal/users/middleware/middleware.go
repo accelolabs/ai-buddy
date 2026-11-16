@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"log"
 	"net/http"
@@ -10,9 +9,10 @@ import (
 
 	// Project packages.
 	"backend/internal/users"
+	"backend/internal/users/service"
 )
 
-type userGetter interface {
+type userService interface {
 	Get(context.Context, string) (users.User, error)
 }
 
@@ -24,7 +24,7 @@ func UserFromContext(ctx context.Context) (users.User, bool) {
 	return user, ok
 }
 
-func Middleware(repository userGetter) func(http.Handler) http.Handler {
+func Middleware(users userService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cookie, err := r.Cookie("demo_user")
@@ -41,8 +41,8 @@ func Middleware(repository userGetter) func(http.Handler) http.Handler {
 				return
 			}
 
-			user, err := repository.Get(r.Context(), id)
-			if errors.Is(err, sql.ErrNoRows) {
+			user, err := users.Get(r.Context(), id)
+			if errors.Is(err, service.ErrNotFound) {
 				http.Error(w, "unknown demo_user", http.StatusUnauthorized)
 
 				return

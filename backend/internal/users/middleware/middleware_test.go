@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 
 	// Project packages.
 	"backend/internal/users"
+	"backend/internal/users/service"
 )
 
 type getFunc func(context.Context, string) (users.User, error)
@@ -61,7 +61,7 @@ func TestMiddleware(t *testing.T) {
 			name:   "unknown user",
 			cookie: "demo_user=missing",
 			id:     "missing",
-			err:    fmt.Errorf("get user: %w", sql.ErrNoRows),
+			err:    fmt.Errorf("get user: %w", service.ErrNotFound),
 			status: http.StatusUnauthorized,
 		},
 		{

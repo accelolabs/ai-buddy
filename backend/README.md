@@ -79,14 +79,30 @@ go run ./cmd/server
 
 После объединения миграций прежнюю БД нужно пересоздать по инструкции выше.
 
+## Слои HTTP-сценариев
+
+Для tracker, ticket, wiki и users используется цепочка handler → service → repository.
+Хендлеры читают контекст, маршрут и JSON, ограничивают тело и формируют HTTP-ответы.
+Проверки роли перед чтением тела сохраняют приоритет 401/403; сервисы повторяют
+прикладные проверки при самостоятельном вызове. Интерфейс зависимости объявлен
+у потребителя. SQL доступа, сортировка и вычисление статусов остаются в репозиториях.
+Ошибки сервисов преобразуются через `errors.Is`: `ErrInvalidInput` в 400,
+`ErrForbidden` в 403, `ErrNotFound` в 404 (для выбора пользователя — 401).
+Ошибки вставки, включая `sql.ErrNoRows`, остаются внутренними ошибками 500.
+Middleware выбора пользователя и получение ментора в MCP используют `users/service`.
+Подготовка MCP-черновиков сохраняет отдельную логику и не вызывает создание записей.
+
 ## Пользователи и сидирование
 
 Пакет `internal/users` содержит сущность `User` с полями `ID`, `Name`, `Role`,
-`Team`. HTTP-хендлер находится в `internal/users/handler/handler.go`.
-PostgreSQL-репозиторий `users.Repository` находится
-в `internal/users/repository/repository.go`: `Add`, `Get`, `List`. ID задаёт вызывающий код;
-повторное добавление того же ID возвращает ошибку. Для отсутствующего ID `Get`
-возвращает ошибку, которую можно проверить через `errors.Is(err, sql.ErrNoRows)`.
+`Team`. HTTP-хендлер находится в `internal/users/handler/handler.go` и вызывает
+`users/service.Service`: `List(ctx)`, `ListInterns(ctx, user)`, `Get(ctx, id)` и
+`GetMentor(ctx, internID)`. Сервис проверяет роль ментора для списка стажёров
+и передаёт его ID в репозиторий. Отсутствие пользователя или ментора обозначает
+`service.ErrNotFound`.
+PostgreSQL-репозиторий находится в `internal/users/repository`:
+`Get`, `List`, `ListInterns`, `GetMentor`. Отсутствующий ID на уровне репозитория
+даёт ошибку, оборачивающую `sql.ErrNoRows`.
 `List` возвращает пользователей в порядке ID, для пустой таблицы — пустой срез.
 Допустимые роли: `intern` и `mentor`.
 
@@ -167,10 +183,10 @@ HTTP-список пользователей и demo_user сохраняют п�
 
 ### Выбранный пользователь
 
-Middleware `middleware.Middleware(userRepository)(handler)` из
+Middleware `middleware.Middleware(userService)(handler)` из
 `internal/users/middleware` читает cookie `demo_user`,
 декодирует значение, заданное через `encodeURIComponent(user.id)`, и загружает
-пользователя методом `Get`. В хендлере он доступен через
+пользователя методом `users/service.Service.Get`. В хендлере он доступен через
 `middleware.UserFromContext(r.Context())`, возвращающий `(users.User, bool)`.
 
 Отсутствующая или пустая cookie и неизвестный ID дают HTTP 401,
@@ -379,8 +395,14 @@ SDK строит схемы из именованных типов адапте�
 Файл читается только после проверки доступа; `os.Root` ограничивает чтение
 каталогом базы знаний, в том числе при использовании символических ссылок.
 
-HTTP-хендлер находится в `internal/wiki/handler`, методы репозитория:
-`List(ctx)` и `Get(ctx, id)`. Репозиторий читает метаданные без правил доступа.
+HTTP-хендлер находится в `internal/wiki/handler` и вызывает `wiki/service.Service`:
+`List(ctx, user)` фильтрует общие документы и документы команды,
+`Get(ctx, user, id)` проверяет доступ и читает исходные байты через `os.OpenRoot`.
+Сервис получает репозиторий и каталог базы знаний. `ErrNotFound` обозначает
+недоступную статью или отсутствующий файл; `ErrReadFile` отличает ошибки открытия
+корня и чтения Markdown от ошибок получения метаданных.
+Методы репозитория `List(ctx)` и `Get(ctx, id)` читают метаданные без правил доступа.
+RAG и индексатор продолжают обращаться к wiki-репозиторию напрямую.
 Содержимое файлов не хранится в БД.
 Compose подключает каталог `knowledge-base/` серверу только для чтения.
 После изменения файлов запускайте индексацию для обновления метаданных.
@@ -401,7 +423,7 @@ cfg.ChatModel, cfg.ChatContextLength)`; клиент индексации про
 Ошибка callback и отмена контекста останавливают запрос; HTTP-таймаут клиента
 остаётся равным одной минуте. Поток без завершающего `done` считается ошибкой.
 
-`agent.NewAgent(model, rag, cfg.SystemPromptFile, userRepository)` из `internal/buddy/agent` читает системный промпт из файла.
+`agent.NewAgent(model, rag, cfg.SystemPromptFile, userService)` из `internal/buddy/agent` читает системный промпт из файла.
 Русский промпт лежит в `prompts/buddy.md`; Compose подключает каталог к серверу.
 `Agent.Generate(ctx, user, history, emit)` принимает текущего пользователя
 и историю `[]buddy.Message` без системного промпта, возвращает
@@ -538,7 +560,10 @@ curl -N --cookie 'demo_user=intern.backend.1' \
 ## Тикеты
 
 `internal/ticket` содержит модель `Ticket`, PostgreSQL-репозиторий с `*sql.DB`
-и HTTP-обработчик. Созданные тикеты хранятся самостоятельно.
+и подпакеты `handler`, `service`. Сервис предоставляет `Create(ctx, user, title,
+description)`, `List(ctx, user)`, `Get(ctx, user, id)`: проверяет роль при создании,
+нормализует поля, генерирует ID и назначает автора из доверенного пользователя.
+Созданные тикеты хранятся самостоятельно.
 Все маршруты требуют существующий `demo_user`:
 
 - `POST /api/tickets` — только стажёр, тело `{"title":"Нет доступа","description":"Нужен доступ к репозиторию"}`.
@@ -574,8 +599,10 @@ ID генерируется через `crypto/rand.Text`, время задаё
 
 ## Tracker
 
-`internal/tracker` содержит `Task`, подпакеты `handler` и `repository`, без сервисного
-слоя. Названия задачи нет: карточка использует описание. Все маршруты требуют
+`internal/tracker` содержит `Task`, подпакеты `handler`, `service`, `repository`.
+Сервис предоставляет `Create(ctx, user, description, deadline)`, `List(ctx, user)`,
+`ListIntern(ctx, user, internID)` и `Complete(ctx, user, id)`. Он проверяет роли,
+нормализует описание, разбирает дедлайн, генерирует ID и назначает автора. Названия задачи нет: карточка использует описание. Все маршруты требуют
 существующий `demo_user`:
 
 | Маршрут | Доступ и результат |

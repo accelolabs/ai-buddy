@@ -21,10 +21,12 @@ import (
 	"backend/internal/ticket"
 	"backend/internal/tracker"
 	"backend/internal/tracker/handler"
+	"backend/internal/tracker/service"
 	"backend/internal/users"
 	usershandler "backend/internal/users/handler"
 	"backend/internal/users/middleware"
 	usersrepository "backend/internal/users/repository"
+	usersservice "backend/internal/users/service"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -416,9 +418,9 @@ func TestHTTP(t *testing.T) {
 	}
 
 	ur := usersrepository.NewRepository(repo.db)
-	h := handler.NewHandler(repo)
-	uh := usershandler.NewHandler(ur)
-	selected := middleware.Middleware(ur)
+	h := handler.NewHandler(service.NewService(repo))
+	uh := usershandler.NewHandler(usersservice.NewService(ur))
+	selected := middleware.Middleware(usersservice.NewService(ur))
 	mux := http.NewServeMux()
 	mux.Handle("POST /api/tracker/tasks", selected(http.HandlerFunc(h.Create)))
 	mux.Handle("GET /api/tracker/tasks", selected(http.HandlerFunc(h.List)))
@@ -859,13 +861,13 @@ func TestPrepareTaskSSEAndCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	selected := middleware.Middleware(usersrepository.NewRepository(repo.db))
+	selected := middleware.Middleware(usersservice.NewService(usersrepository.NewRepository(repo.db)))
 	mux := http.NewServeMux()
 	mux.Handle(
 		"POST /api/buddy/messages",
 		selected(http.HandlerFunc(buddyhandler.NewHandler(a, 6).Send)),
 	)
-	mux.Handle("POST /api/tracker/tasks", selected(http.HandlerFunc(handler.NewHandler(repo).Create)))
+	mux.Handle("POST /api/tracker/tasks", selected(http.HandlerFunc(handler.NewHandler(service.NewService(repo)).Create)))
 	request := func(path, body string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", path, strings.NewReader(body)).WithContext(ctx)
 		r.AddCookie(&http.Cookie{

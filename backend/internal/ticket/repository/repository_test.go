@@ -17,9 +17,11 @@ import (
 	// Project packages.
 	"backend/internal/ticket"
 	"backend/internal/ticket/handler"
+	"backend/internal/ticket/service"
 	"backend/internal/users"
 	"backend/internal/users/middleware"
 	usersrepository "backend/internal/users/repository"
+	usersservice "backend/internal/users/service"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -350,8 +352,8 @@ func TestHTTPAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h := handler.NewHandler(repo)
-	selected := middleware.Middleware(usersrepository.NewRepository(repo.db))
+	h := handler.NewHandler(service.NewService(repo))
+	selected := middleware.Middleware(usersservice.NewService(usersrepository.NewRepository(repo.db)))
 	mux := http.NewServeMux()
 
 	mux.Handle("POST /api/tickets", selected(http.HandlerFunc(h.Create)))

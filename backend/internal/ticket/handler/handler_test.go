@@ -12,6 +12,7 @@ import (
 
 	// Project packages.
 	"backend/internal/ticket"
+	"backend/internal/ticket/service"
 	"backend/internal/users"
 	"backend/internal/users/middleware"
 )
@@ -72,7 +73,7 @@ func TestErrors(t *testing.T) {
 				fmt.Sprintf("%s-%s-%d", method, tc.role, tc.status),
 				func(t *testing.T) {
 					repo := &failingRepository{err: tc.err}
-					h := NewHandler(repo)
+					h := NewHandler(service.NewService(repo))
 					f := h.Get
 
 					switch method {

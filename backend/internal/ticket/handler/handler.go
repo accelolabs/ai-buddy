@@ -2,30 +2,28 @@ package handler
 
 import (
 	"context"
-	"crypto/rand"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	// Project packages.
 	"backend/internal/ticket"
+	"backend/internal/ticket/service"
 	"backend/internal/users"
 	"backend/internal/users/middleware"
 )
 
-type ticketRepository interface {
-	Add(context.Context, ticket.Ticket) (ticket.Ticket, error)
+type ticketService interface {
+	Create(context.Context, users.User, string, string) (ticket.Ticket, error)
 	List(context.Context, users.User) ([]ticket.Ticket, error)
 	Get(context.Context, users.User, string) (ticket.Ticket, error)
 }
 
 type Handler struct {
-	repository ticketRepository
+	service ticketService
 }
 
 type ticketRequest struct {
@@ -41,9 +39,9 @@ type ticketResponse struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-func NewHandler(repository ticketRepository) *Handler {
+func NewHandler(service ticketService) *Handler {
 	return &Handler{
-		repository: repository,
+		service: service,
 	}
 }
 
@@ -65,7 +63,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	values, err := h.repository.List(r.Context(), user)
+	values, err := h.service.List(r.Context(), user)
 	if err != nil {
 		log.Printf("list tickets: %v", err)
 		http.Error(w, "failed to list tickets", http.StatusInternalServerError)
@@ -93,8 +91,8 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	value, err := h.repository.Get(r.Context(), user, r.PathValue("id"))
-	if errors.Is(err, sql.ErrNoRows) {
+	value, err := h.service.Get(r.Context(), user, r.PathValue("id"))
+	if errors.Is(err, service.ErrNotFound) {
 		http.NotFound(w, r)
 
 		return
@@ -141,22 +139,19 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	input.Title, input.Description = strings.TrimSpace(input.Title), strings.TrimSpace(input.Description)
-	if input.Title == "" || input.Description == "" {
+	value, err := h.service.Create(r.Context(), user, input.Title, input.Description)
+	if errors.Is(err, service.ErrInvalidInput) {
 		http.Error(w, "invalid ticket", http.StatusBadRequest)
 
 		return
 	}
 
-	value, err := h.repository.Add(
-		r.Context(),
-		ticket.Ticket{
-			ID:          rand.Text(),
-			UserID:      user.ID,
-			Title:       input.Title,
-			Description: input.Description,
-		},
-	)
+	if errors.Is(err, service.ErrForbidden) {
+		http.Error(w, "only interns can create tickets", http.StatusForbidden)
+
+		return
+	}
+
 	if err != nil {
 		log.Printf("create ticket: %v", err)
 		http.Error(w, "failed to create ticket", http.StatusInternalServerError)

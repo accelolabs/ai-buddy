@@ -17,6 +17,7 @@ import (
 	"backend/internal/users"
 	"backend/internal/users/middleware"
 	"backend/internal/wiki"
+	"backend/internal/wiki/service"
 )
 
 type readerStub struct {
@@ -59,7 +60,7 @@ func request(
 	cookie bool,
 ) *httptest.ResponseRecorder {
 	t.Helper()
-	h := NewHandler(stub, root)
+	h := NewHandler(service.NewService(stub, root))
 	mux := http.NewServeMux()
 	selected := middleware.Middleware(userStub{role})
 	mux.Handle("GET /api/wiki", selected(http.HandlerFunc(h.List)))

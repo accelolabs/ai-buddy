@@ -2,27 +2,25 @@ package handler
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
-	"io/fs"
 	"log"
 	"net/http"
-	"os"
 
 	// Project packages.
+	"backend/internal/users"
 	"backend/internal/users/middleware"
 	"backend/internal/wiki"
+	"backend/internal/wiki/service"
 )
 
-type documentReader interface {
-	List(context.Context) ([]wiki.Document, error)
-	Get(context.Context, string) (wiki.Document, error)
+type documentService interface {
+	List(context.Context, users.User) ([]wiki.Document, error)
+	Get(context.Context, users.User, string) ([]byte, error)
 }
 
 type Handler struct {
-	repository documentReader
-	root       string
+	service documentService
 }
 
 type documentResponse struct {
@@ -31,10 +29,9 @@ type documentResponse struct {
 	Title string `json:"title"`
 }
 
-func NewHandler(repository documentReader, root string) *Handler {
+func NewHandler(service documentService) *Handler {
 	return &Handler{
-		repository: repository,
-		root:       root,
+		service: service,
 	}
 }
 
@@ -46,7 +43,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	documents, err := h.repository.List(r.Context())
+	documents, err := h.service.List(r.Context(), user)
 	if err != nil {
 		log.Printf("list wiki: %v", err)
 		http.Error(w, "failed to list articles", http.StatusInternalServerError)
@@ -57,13 +54,11 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	response := make([]documentResponse, 0, len(documents))
 
 	for _, document := range documents {
-		if document.Team == "" || document.Team == user.Team {
-			response = append(response, documentResponse{
-				ID:    document.ID,
-				Team:  document.Team,
-				Title: document.Title,
-			})
-		}
+		response = append(response, documentResponse{
+			ID:    document.ID,
+			Team:  document.Team,
+			Title: document.Title,
+		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -80,8 +75,8 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	document, err := h.repository.Get(r.Context(), r.PathValue("id"))
-	if errors.Is(err, sql.ErrNoRows) {
+	content, err := h.service.Get(r.Context(), user, r.PathValue("id"))
+	if errors.Is(err, service.ErrNotFound) {
 		http.NotFound(w, r)
 
 		return
@@ -89,39 +84,11 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Printf("get wiki: %v", err)
-		http.Error(w, "failed to get article", http.StatusInternalServerError)
-
-		return
-	}
-
-	if document.Team != "" && document.Team != user.Team {
-		http.NotFound(w, r)
-
-		return
-	}
-
-	root, err := os.OpenRoot(h.root)
-	if err != nil {
-		log.Printf("open knowledge base: %v", err)
-		http.Error(w, "failed to read article", http.StatusInternalServerError)
-
-		return
-	}
-
-	defer func() {
-		_ = root.Close()
-	}()
-
-	content, err := root.ReadFile(document.Path)
-	if errors.Is(err, fs.ErrNotExist) {
-		http.NotFound(w, r)
-
-		return
-	}
-
-	if err != nil {
-		log.Printf("read wiki %q: %v", document.ID, err)
-		http.Error(w, "failed to read article", http.StatusInternalServerError)
+		message := "failed to get article"
+		if errors.Is(err, service.ErrReadFile) {
+			message = "failed to read article"
+		}
+		http.Error(w, message, http.StatusInternalServerError)
 
 		return
 	}

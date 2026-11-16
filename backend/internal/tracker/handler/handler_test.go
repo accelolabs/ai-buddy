@@ -12,6 +12,7 @@ import (
 
 	// Project packages.
 	"backend/internal/tracker"
+	"backend/internal/tracker/service"
 	"backend/internal/users"
 	"backend/internal/users/middleware"
 )
@@ -73,7 +74,7 @@ func TestErrors(t *testing.T) {
 				fmt.Sprintf("%s-%d", method, tc.status),
 				func(t *testing.T) {
 					repo := &failingRepository{err: tc.err}
-					h := NewHandler(repo)
+					h := NewHandler(service.NewService(repo))
 					f := h.Create
 					body := `{"description":"x","deadline":"2099-01-01T00:00:00Z"}`
 

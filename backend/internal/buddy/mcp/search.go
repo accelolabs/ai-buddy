@@ -12,7 +12,7 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-type mentorRepository interface {
+type mentorService interface {
 	GetMentor(context.Context, string) (users.User, error)
 }
 
@@ -23,7 +23,7 @@ type searcher interface {
 // Handler binds tools and attachments to one run for a trusted user.
 type Handler struct {
 	user  users.User
-	users mentorRepository
+	users mentorService
 	rag   searcher
 
 	mu       sync.Mutex
@@ -49,7 +49,7 @@ type Chunk struct {
 	Text       string `json:"text"`
 }
 
-func NewHandler(rag searcher, user users.User, users mentorRepository) *Handler {
+func NewHandler(rag searcher, user users.User, users mentorService) *Handler {
 	return &Handler{
 		rag:   rag,
 		user:  user,

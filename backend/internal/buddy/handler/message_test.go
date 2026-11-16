@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +14,7 @@ import (
 	"backend/internal/buddy"
 	"backend/internal/users"
 	"backend/internal/users/middleware"
+	"backend/internal/users/service"
 )
 
 type fakeAgent struct {
@@ -37,7 +37,7 @@ type userRepository struct{}
 
 func (userRepository) Get(_ context.Context, id string) (users.User, error) {
 	if id != "intern" {
-		return users.User{}, sql.ErrNoRows
+		return users.User{}, service.ErrNotFound
 	}
 
 	return users.User{
