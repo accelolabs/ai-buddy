@@ -20,4 +20,9 @@ export const PROMPT_ACTIONS: PromptAction[] = [
     subtitle: 'о закрытии практики',
     promptText: 'Покажи памятку о закрытии практики',
   },
+  {
+    title: 'Какие у меня задачи?',
+    subtitle: 'список задач и сроки',
+    promptText: 'Покажи мои задачи и сроки выполнения',
+  },
 ];

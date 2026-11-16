@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { Link, useLocation, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import Markdown from 'react-markdown';
@@ -48,8 +49,9 @@ export function WikiPage() {
         <h1 className="mb-6 text-3xl font-bold">База знаний</h1>
         {documentId ? (
           <>
-            <Link to="/wiki" className="text-sky-700">
-              ← Все статьи
+            <Link to="/wiki" className="inline-flex items-center gap-1.5 text-sky-700">
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              Все статьи
             </Link>
             <RequestState
               loading={article.isPending}

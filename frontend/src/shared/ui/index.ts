@@ -27,4 +27,3 @@ export {
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from './tooltip';
 export { PromptButton } from './prompt-button/PromptButton';
 export { Picture } from './picture/Picture';
-export * from './sidebar/sidebar';

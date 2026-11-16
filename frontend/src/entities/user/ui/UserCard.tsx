@@ -1,3 +1,4 @@
+import { Menu } from '@base-ui/react/menu';
 import { LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { changeUser } from '@/shared/api/session';
@@ -24,8 +25,7 @@ export function UserCard({
   const { data: queryUser, isLoading } = useUser();
   const user = propUser ?? queryUser;
 
-  const handleLogout = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleLogout = () => {
     if (onLogout) {
       onLogout();
       return;
@@ -34,52 +34,42 @@ export function UserCard({
     navigate('/login');
   };
 
-  if (isLoading && !user) {
-    return (
-      <div className={`flex items-center gap-3 ${className}`}>
-        <div className="flex h-8 w-8 shrink-0 animate-pulse items-center justify-center rounded-full bg-primary/10" />
-        <div className="flex min-w-0 flex-col gap-1 group-data-[collapsible=icon]:hidden">
-          <div className="h-3.5 w-16 animate-pulse rounded bg-sidebar-foreground/20" />
-          <div className="h-2.5 w-10 animate-pulse rounded bg-sidebar-foreground/10" />
-        </div>
-      </div>
-    );
-  }
-
-  const initial = getUserInitials(user?.name);
-  const roleLabel = getUserRoleLabel(user?.role);
-
   return (
-    <div
-      className={`flex w-full items-center justify-between gap-2 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center ${className}`}
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
-          {initial}
-        </div>
-        <div className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
-          <span className="truncate text-sm font-medium text-sidebar-foreground">
-            {user?.name ?? 'Пользователь'}
-          </span>
-          {showRole && (
-            <span className="truncate text-xs text-sidebar-foreground/60">{roleLabel}</span>
-          )}
-        </div>
-      </div>
-
-      {showLogout && (
-        <button
-          type="button"
-          onClick={handleLogout}
-          title="Выйти"
-          aria-label="Выйти"
-          className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-sidebar-foreground/70 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400 cursor-pointer"
-        >
-          <LogOut className="h-4 w-4 shrink-0" />
-          <span className="group-data-[collapsible=icon]:hidden">Выйти</span>
-        </button>
-      )}
-    </div>
+    <Menu.Root>
+      <Menu.Trigger
+        disabled={isLoading && !user}
+        aria-label={`Профиль: ${user?.name ?? 'Пользователь'}`}
+        className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 disabled:animate-pulse ${className}`}
+      >
+        {getUserInitials(user?.name)}
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner align="end" sideOffset={8} collisionPadding={16} className="z-50">
+          <Menu.Popup className="w-64 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white p-1.5 shadow-lg outline-none">
+            <div className="px-3 py-2.5">
+              <p className="break-words text-sm font-semibold text-slate-900">
+                {user?.name ?? 'Пользователь'}
+              </p>
+              {showRole && (
+                <p className="mt-1 text-xs text-slate-500">{getUserRoleLabel(user?.role)}</p>
+              )}
+            </div>
+            {showLogout && (
+              <>
+                <Menu.Separator className="mx-2 my-1 h-px bg-slate-100" />
+                <Menu.Item
+                  onClick={handleLogout}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-slate-600 outline-none data-highlighted:bg-red-50 data-highlighted:text-red-600"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Выйти
+                </Menu.Item>
+              </>
+            )}
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
   );
 }
 
