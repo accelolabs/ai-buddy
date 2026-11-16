@@ -32,16 +32,6 @@ docker compose up -d --force-recreate ollama-model ollama-chat-model index serve
 
 Веб-вход привязан к `127.0.0.1:${WEB_PORT}`; API, PostgreSQL и Ollama не публикуют порты.
 Nginx обслуживает SPA и проксирует `/api`, включая SSE без буферизации.
-Для внешнего HTTPS используйте Caddy на сервере (пример: `Caddyfile.example`):
-
-```caddyfile
-buddy.example.com {
-    reverse_proxy 127.0.0.1:8080
-}
-```
-
-Укажите свой домен, направьте DNS на сервер и откройте порты 80/443 для Caddy.
-При изменении `WEB_PORT` обновите адрес в Caddy. Caddy не входит в Compose.
 
 ```sh
 docker compose ps -a
