@@ -103,10 +103,12 @@ GitHub Actions на push и pull request проверяет форматиров
 | GET | `/api/wiki/{id}` | Исходный Markdown статьи |
 | GET | `/api/tracker/tasks` | Свои задачи |
 | GET | `/api/tracker/interns/{internID}/tasks` | Задачи стажёра ментора |
-| POST | `/api/tracker/tasks` | Создание: `description`, `deadline` в RFC3339 с часовым поясом |
+| POST | `/api/tracker/tasks` | Создание: `description`, `deadline` в формате `YYYY-MM-DD` (без времени) |
 | POST | `/api/tracker/tasks/{id}/complete` | Завершение задачи; пустое тело |
 | GET | `/api/tickets` | Доступные тикеты |
 | GET | `/api/tickets/{id}` | Тикет |
 | POST | `/api/tickets` | Создание: `title`, `description` |
 
 Создание задач/тикетов и завершение задач доступны стажёру по отдельному нажатию кнопки.
+
+Дедлайны задач — календарные даты без времени во всех HTTP, MCP и SSE ответах. Задача просрочена со следующего дня по Москве (`Europe/Moscow`). Перед подготовкой задачи агент вызывает MCP-инструмент `get_current_time` (ответ: `current_time` в RFC3339 и `timezone`), затем передаёт дату в `prepare_task`.

@@ -8,8 +8,8 @@ import (
 )
 
 type taskResponse struct {
-	Description string    `json:"description"`
-	Deadline    time.Time `json:"deadline"`
+	Description string `json:"description"`
+	Deadline    string `json:"deadline"`
 }
 
 func taskView(card *buddy.Task) *taskResponse {
@@ -19,6 +19,6 @@ func taskView(card *buddy.Task) *taskResponse {
 
 	return &taskResponse{
 		Description: card.Description,
-		Deadline:    card.Deadline,
+		Deadline:    card.Deadline.Format(time.DateOnly),
 	}
 }

@@ -80,7 +80,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 progress: 'Выполняю действие',
               }[state] || state) +
               (progress
-                ? ` · ${{ search_documents: 'Ищу в базе знаний', attach_source: 'Добавляю источник', list_tasks: 'Загружаю задачи', prepare_task: 'Готовлю задачу', prepare_ticket: 'Готовлю обращение', prepare_task_completion: 'Готовлю завершение задачи' }[progress] || 'Обрабатываю запрос'}`
+                ? ` · ${{ get_current_time: 'Получаю текущее время', search_documents: 'Ищу в базе знаний', attach_source: 'Добавляю источник', list_tasks: 'Загружаю задачи', prepare_task: 'Готовлю задачу', prepare_ticket: 'Готовлю обращение', prepare_task_completion: 'Готовлю завершение задачи' }[progress] || 'Обрабатываю запрос'}`
                 : ''),
             status: 'in_progress' as const,
           };

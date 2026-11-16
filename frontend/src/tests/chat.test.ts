@@ -47,13 +47,13 @@ describe('SSE and in-memory chat', () => {
   it('merges all cards from done without duplicates and sends only text history', async () => {
     changeUser('intern');
     const ticket = { title: 'Тема', description: 'Описание' };
-    const task = { description: 'Изучить', deadline: '2027-01-01T10:00:00+03:00' };
+    const task = { description: 'Изучить', deadline: '2027-01-01' };
     const completion = {
       ...task,
       id: 'task-1',
       user_id: 'intern',
       status: 'pending',
-      created_at: task.deadline,
+      created_at: '2027-01-01T10:00:00+03:00',
     };
     const source = {
       document_id: 'wiki-1',
@@ -119,7 +119,7 @@ describe('SSE and in-memory chat', () => {
         user_id: 'intern',
         description: 'Украсть Фобос',
         status: 'pending' as const,
-        deadline: '2027-01-01T12:00:00Z',
+        deadline: '2027-01-01',
         created_at: '',
       };
       const fetch = vi

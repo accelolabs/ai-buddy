@@ -67,7 +67,7 @@ func TestListTasks(t *testing.T) {
 
 	if store.user != user || len(output.Tasks) != 1 || output.Tasks[0].ID != "task" ||
 		output.Tasks[0].UserID != user.ID || output.Tasks[0].Status != "pending" ||
-		output.Tasks[0].Description != "Задача" || !output.Tasks[0].Deadline.Equal(store.values[0].Deadline) ||
+		output.Tasks[0].Description != "Задача" || output.Tasks[0].Deadline != store.values[0].Deadline.Format(time.DateOnly) ||
 		!output.Tasks[0].CreatedAt.Equal(store.values[0].CreatedAt) {
 		t.Fatalf("tasks: %s; user: %+v", encoded, store.user)
 	}

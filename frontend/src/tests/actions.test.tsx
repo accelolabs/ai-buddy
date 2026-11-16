@@ -28,7 +28,7 @@ const renderCard = (kind: 'ticket' | 'task' | 'complete' = 'ticket') =>
             : {
                 id: 'task-1',
                 description: 'Задача',
-                deadline: '2027-01-01T12:00:00+03:00',
+                deadline: '2027-01-01',
                 user_id: 'intern',
                 status: 'pending',
                 created_at: '',
@@ -93,7 +93,7 @@ describe('explicit action confirmation', () => {
     expect(screen.getByLabelText('Тема обращения')).toHaveValue('Тема');
     expect(screen.getByLabelText('Текст сообщения')).toHaveValue('Описание');
   });
-  it('sends RFC3339 deadlines and completes tasks with an empty body', async () => {
+  it('sends calendar deadlines and completes tasks with an empty body', async () => {
     const fetch = vi
       .fn()
       .mockImplementation(() =>
@@ -109,7 +109,7 @@ describe('explicit action confirmation', () => {
     fireEvent.change(screen.getByLabelText('Описание задачи'), {
       target: { value: 'Обновлённая задача' },
     });
-    const deadlineInput = screen.getByLabelText('Срок (местное время)') as HTMLInputElement;
+    const deadlineInput = screen.getByLabelText('Срок') as HTMLInputElement;
     fireEvent.change(deadlineInput, {
       target: { value: deadlineInput.value.replace('2027-01-01', '2027-01-02') },
     });
@@ -117,11 +117,12 @@ describe('explicit action confirmation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Подтвердить создание' }));
     await screen.findByRole('status');
     const payload = JSON.parse(fetch.mock.calls[0][1]?.body as string);
-    expect(payload.deadline).toMatch(/T\d\d:\d\d:\d\d\.\d{3}Z$/);
-    expect(new Date(payload.deadline).toISOString()).toBe('2027-01-02T09:00:00.000Z');
+    expect(deadlineInput).toHaveAttribute('type', 'date');
+    expect(payload.deadline).toBe('2027-01-02');
     expect(payload.description).toBe('Обновлённая задача');
     view.unmount();
     renderCard('complete');
+    expect(screen.getByText('Срок: 01.01.2027')).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'Завершить задачу' }));
     await screen.findByRole('status');
@@ -134,7 +135,7 @@ describe('explicit action confirmation', () => {
       user_id: 'intern',
       description: 'Выбранная задача',
       status: 'pending' as const,
-      deadline: '2027-01-01T12:00:00+03:00',
+      deadline: '2027-01-01',
       created_at: '',
     };
     const fetch = vi.fn().mockResolvedValue(

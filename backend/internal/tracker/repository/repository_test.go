@@ -22,7 +22,7 @@ const addSQL = `
 			RETURNING created_at,
 				CASE
 					WHEN completed THEN 'completed'
-					WHEN deadline < now() THEN 'overdue'
+					WHEN deadline < (now() AT TIME ZONE 'Europe/Moscow')::date THEN 'overdue'
 					ELSE 'pending'
 				END
 		`
@@ -31,7 +31,7 @@ const listSQL = `
 			SELECT t.id, t.user_id, t.description, t.deadline,
 				CASE
 					WHEN completed THEN 'completed'
-					WHEN deadline < now() THEN 'overdue'
+					WHEN deadline < (now() AT TIME ZONE 'Europe/Moscow')::date THEN 'overdue'
 					ELSE 'pending'
 				END, t.created_at
 			FROM users u
@@ -62,7 +62,7 @@ const completeSQL = `
 			RETURNING id, user_id, description, deadline,
 				CASE
 					WHEN completed THEN 'completed'
-					WHEN deadline < now() THEN 'overdue'
+					WHEN deadline < (now() AT TIME ZONE 'Europe/Moscow')::date THEN 'overdue'
 					ELSE 'pending'
 				END, created_at
 		`

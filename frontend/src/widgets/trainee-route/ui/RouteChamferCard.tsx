@@ -1,6 +1,6 @@
 import { Check, Loader2 } from 'lucide-react';
 import type { Task } from '@/shared/api/contracts';
-import { taskStatus, dateTime } from '@/shared/api/contracts';
+import { taskStatus, calendarDate } from '@/shared/api/contracts';
 export function RouteChamferCard({
   task,
   order,
@@ -39,7 +39,7 @@ export function RouteChamferCard({
             {taskStatus(task.status)}
           </p>
           <h3 className="mt-1 break-words font-bold text-slate-900">{task.description}</h3>
-          <p className="text-xs text-slate-500">Срок: {dateTime(task.deadline)}</p>
+          <p className="text-xs text-slate-500">Срок: {calendarDate(task.deadline)}</p>
         </div>
         {onComplete && task.status !== 'completed' && (
           <button

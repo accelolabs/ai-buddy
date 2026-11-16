@@ -115,8 +115,8 @@ func TestMCPTools(t *testing.T) {
 	}()
 
 	listed, err := session.ListTools(ctx, nil)
-	if err != nil || len(listed.Tools) != 2 || listed.Tools[0].Name != "attach_source" ||
-		listed.Tools[1].Name != "search_documents" {
+	if err != nil || len(listed.Tools) != 3 || listed.Tools[0].Name != "attach_source" ||
+		listed.Tools[1].Name != "get_current_time" || listed.Tools[2].Name != "search_documents" {
 		t.Fatalf("tools: %v, %v", listed, err)
 	}
 

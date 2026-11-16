@@ -29,7 +29,7 @@ func (r *Repository) Add(ctx context.Context, value tracker.Task) (tracker.Task,
 			RETURNING created_at,
 				CASE
 					WHEN completed THEN 'completed'
-					WHEN deadline < now() THEN 'overdue'
+					WHEN deadline < (now() AT TIME ZONE 'Europe/Moscow')::date THEN 'overdue'
 					ELSE 'pending'
 				END
 		`,
@@ -54,7 +54,7 @@ func (r *Repository) List(ctx context.Context, user users.User, internID string)
 			SELECT t.id, t.user_id, t.description, t.deadline,
 				CASE
 					WHEN completed THEN 'completed'
-					WHEN deadline < now() THEN 'overdue'
+					WHEN deadline < (now() AT TIME ZONE 'Europe/Moscow')::date THEN 'overdue'
 					ELSE 'pending'
 				END, t.created_at
 			FROM users u
@@ -138,7 +138,7 @@ func (r *Repository) Complete(ctx context.Context, user users.User, id string) (
 			RETURNING id, user_id, description, deadline,
 				CASE
 					WHEN completed THEN 'completed'
-					WHEN deadline < now() THEN 'overdue'
+					WHEN deadline < (now() AT TIME ZONE 'Europe/Moscow')::date THEN 'overdue'
 					ELSE 'pending'
 				END, created_at
 		`,

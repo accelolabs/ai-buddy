@@ -11,7 +11,7 @@ type listedTaskResponse struct {
 	ID          string    `json:"id"`
 	UserID      string    `json:"user_id"`
 	Description string    `json:"description"`
-	Deadline    time.Time `json:"deadline"`
+	Deadline    string    `json:"deadline"`
 	Status      string    `json:"status"`
 	CreatedAt   time.Time `json:"created_at"`
 }
@@ -35,7 +35,7 @@ func listedTaskView(value tracker.Task) listedTaskResponse {
 		ID:          value.ID,
 		UserID:      value.UserID,
 		Description: value.Description,
-		Deadline:    value.Deadline,
+		Deadline:    value.Deadline.Format(time.DateOnly),
 		Status:      value.Status,
 		CreatedAt:   value.CreatedAt,
 	}

@@ -32,9 +32,9 @@ func (h *Handler) PrepareTask(
 	}
 
 	description := strings.TrimSpace(args.Description)
-	deadline, err := time.Parse(time.RFC3339, args.Deadline)
+	deadline, err := time.Parse(time.DateOnly, args.Deadline)
 	if description == "" || err != nil {
-		return nil, TaskResult{}, fmt.Errorf("description and RFC3339 deadline with timezone are required")
+		return nil, TaskResult{}, fmt.Errorf("description and YYYY-MM-DD deadline are required")
 	}
 
 	h.mu.Lock()

@@ -20,7 +20,7 @@ export function ActionCard({
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState('title' in draft ? draft.title : '');
   const [description, setDescription] = useState(draft.description);
-  const [deadline, setDeadline] = useState('deadline' in draft ? localDate(draft.deadline) : '');
+  const [deadline, setDeadline] = useState('deadline' in draft ? draft.deadline : '');
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<Task | Ticket | null>(null);
   const [error, setError] = useState('');
@@ -45,7 +45,7 @@ export function ActionCard({
         : JSON.stringify(
             kind === 'ticket'
               ? { title: title.trim(), description: description.trim() }
-              : { description: description.trim(), deadline: new Date(deadline).toISOString() },
+              : { description: description.trim(), deadline },
           );
       const value = await request<Task | Ticket>(path, { method: 'POST', body, signal });
       if (signal.aborted) return;
@@ -244,11 +244,11 @@ export function ActionCard({
           />
         </label>
         <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-          Срок (местное время)
+          Срок
           <input
             required
             readOnly={!editing}
-            type="datetime-local"
+            type="date"
             value={deadline}
             onChange={(event) => setDeadline(event.target.value)}
             className="mt-1.5 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-slate-800 outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
@@ -295,8 +295,4 @@ export function ActionCard({
       </fieldset>
     </form>
   );
-}
-function localDate(value: string) {
-  const date = new Date(value);
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }

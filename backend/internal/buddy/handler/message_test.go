@@ -191,11 +191,11 @@ func TestContextAndSSE(t *testing.T) {
 
 	if !strings.Contains(
 		body,
-		"event: task\ndata: {\"description\":\"Задача\",\"deadline\":\"2030-01-01T00:00:00Z\"}",
+		"event: task\ndata: {\"description\":\"Задача\",\"deadline\":\"2030-01-01\"}",
 	) ||
 		!strings.Contains(
 			body,
-			`"task":{"description":"Задача","deadline":"2030-01-01T00:00:00Z"}`,
+			`"task":{"description":"Задача","deadline":"2030-01-01"}`,
 		) {
 		t.Fatal(body)
 	}

@@ -44,7 +44,7 @@ func TestPrepareTicket(t *testing.T) {
 	defer closeSession()
 
 	tools, err := session.ListTools(t.Context(), nil)
-	if err != nil || len(tools.Tools) != 6 {
+	if err != nil || len(tools.Tools) != 7 {
 		t.Fatalf("tools: %v %v", tools, err)
 	}
 

@@ -32,7 +32,7 @@ func TestPrepareTask(t *testing.T) {
 	}
 
 	encoded, err := json.Marshal(names)
-	if err != nil || string(encoded) != `["attach_source","list_tasks","prepare_task",`+
+	if err != nil || string(encoded) != `["attach_source","get_current_time","list_tasks","prepare_task",`+
 		`"prepare_task_completion","prepare_ticket","search_documents"]` {
 		t.Fatalf("tools: %s %v", encoded, err)
 	}
@@ -57,24 +57,24 @@ func TestPrepareTask(t *testing.T) {
 
 	call(map[string]any{
 		"description": " \nЗадача 🔑\t",
-		"deadline":    "2020-01-01T12:00:00+03:00",
+		"deadline":    "2020-01-01",
 	}, false)
 	want := *h.Task()
-	if want.Description != "Задача 🔑" || want.Deadline.Format(time.RFC3339) != "2020-01-01T12:00:00+03:00" {
+	if want.Description != "Задача 🔑" || want.Deadline.Format(time.DateOnly) != "2020-01-01" {
 		t.Fatal(want)
 	}
 
 	for _, args := range []map[string]any{
 		{},
 		{"description": "x"},
-		{"deadline": "2026-01-01T00:00:00Z"},
+		{"deadline": "2026-01-01"},
 		{
 			"description": 1,
-			"deadline":    "2026-01-01T00:00:00Z",
+			"deadline":    "2026-01-01",
 		},
 		{
 			"description": "\u2003",
-			"deadline":    "2026-01-01T00:00:00Z",
+			"deadline":    "2026-01-01",
 		},
 		{
 			"description": "x",
@@ -82,7 +82,7 @@ func TestPrepareTask(t *testing.T) {
 		},
 		{
 			"description": "x",
-			"deadline":    "2026-01-01",
+			"deadline":    "2026-01-01T00:00:00Z",
 		},
 		{
 			"description": "x",
@@ -90,7 +90,7 @@ func TestPrepareTask(t *testing.T) {
 		},
 		{
 			"description": "x",
-			"deadline":    "2026-02-30T12:00:00Z",
+			"deadline":    "2026-02-30",
 		},
 	} {
 		call(args, true)
@@ -101,7 +101,7 @@ func TestPrepareTask(t *testing.T) {
 
 	call(map[string]any{
 		"description": "Новая",
-		"deadline":    "2030-01-01T00:00:00Z",
+		"deadline":    "2030-01-01",
 	}, false)
 	copy := h.Task()
 	if copy.Description != "Новая" {
@@ -121,7 +121,7 @@ func TestPrepareTask(t *testing.T) {
 		other := NewHandler(nil, users.User{Role: role}, nil, nil)
 		if _, _, err := other.PrepareTask(t.Context(), nil, TaskArgs{
 			Description: "x",
-			Deadline:    "2030-01-01T00:00:00Z",
+			Deadline:    "2030-01-01",
 		}); err == nil ||
 			other.Task() != nil {
 			t.Fatal("role bypass")

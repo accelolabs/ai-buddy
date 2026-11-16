@@ -78,7 +78,7 @@ func TestErrors(t *testing.T) {
 					repo := &failingRepository{err: tc.err}
 					h := NewHandler(service.NewService(repo))
 					f := h.Create
-					body := `{"description":"x","deadline":"2099-01-01T00:00:00Z"}`
+					body := `{"description":"x","deadline":"2099-01-01"}`
 
 					switch method {
 					case "list":
@@ -194,7 +194,7 @@ func TestHTTPValidationAndResponses(t *testing.T) {
 
 	for range 2 {
 		w := request("POST", "/api/tracker/tasks", `{"description":" Body ",`+
-			`"deadline":"2030-01-02T03:04:05Z","user_id":"forged"}`)
+			`"deadline":"2030-01-02","user_id":"forged"}`)
 		var value taskResponse
 		if err := json.Unmarshal(w.Body.Bytes(), &value); err != nil {
 			t.Fatal(err)

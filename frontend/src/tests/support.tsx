@@ -23,7 +23,7 @@ export const task = {
   id: 'task-1',
   user_id: intern.id,
   description: 'Изучить документацию',
-  deadline: '2027-01-01T12:00:00Z',
+  deadline: '2027-01-01',
   status: 'pending' as const,
   created_at: '2026-01-01T12:00:00Z',
 };

@@ -68,6 +68,11 @@ func NewHandler(rag searcher, user users.User, users mentorService, tracker task
 }
 
 func (h *Handler) Register(server *sdk.Server) {
+	sdk.AddTool(server, &sdk.Tool{
+		Name:        "get_current_time",
+		Description: "Получить текущее время в Europe/Moscow. Перед подготовкой задачи обязательно вызови этот инструмент для расчёта срока.",
+	}, h.GetCurrentTime)
+
 	if h.user.Role == users.RoleIntern {
 		sdk.AddTool(server, &sdk.Tool{
 			Name: "prepare_task_completion",
@@ -89,8 +94,8 @@ func (h *Handler) Register(server *sdk.Server) {
 			&sdk.Tool{
 				Name: "prepare_task",
 				Description: "Подготовить черновик задачи с описанием и известным сроком" +
-					" RFC3339 с часовым поясом. При неизвестном сроке не вызывай инструмент:" +
-					" уточни дату, время и пояс. Создание требует нажатия кнопки.",
+					" YYYY-MM-DD. Сначала вызови get_current_time. При неизвестном сроке не вызывай инструмент:" +
+					" уточни дату. Создание требует нажатия кнопки.",
 			},
 			h.PrepareTask,
 		)

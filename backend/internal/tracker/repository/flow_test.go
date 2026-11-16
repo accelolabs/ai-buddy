@@ -48,7 +48,7 @@ func (m flowModel) Chat(
 	case "prepare_task_completion":
 		args = []byte(`{"task_id":"saved"}`)
 	case "prepare_task":
-		args = []byte(`{"description":"Новая задача","deadline":"2030-01-01T00:00:00Z"}`)
+		args = []byte(`{"description":"Новая задача","deadline":"2030-01-01"}`)
 	}
 
 	return ollama.Response{Message: ollama.Message{
@@ -178,7 +178,7 @@ func TestCardsAndExplicitPost(t *testing.T) {
 				mock.ExpectQuery(regexp.QuoteMeta(addSQL)).WithArgs(sqlmock.AnyArg(), "intern.a", "Окончательные поля", now).
 					WillReturnRows(sqlmock.NewRows([]string{"created_at", "status"}).AddRow(now, "pending"))
 				w := request("POST", "/api/tracker/tasks", "intern.a", `{"description":"Окончательные поля",`+
-					`"deadline":"2030-01-01T00:00:00Z","user_id":"intern.b"}`)
+					`"deadline":"2030-01-01","user_id":"intern.b"}`)
 				var body map[string]any
 				if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 					t.Fatal(err)

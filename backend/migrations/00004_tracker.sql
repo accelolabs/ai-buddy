@@ -3,7 +3,7 @@ CREATE TABLE tasks (
     id text PRIMARY KEY,
     user_id text NOT NULL REFERENCES users(id),
     description text NOT NULL,
-    deadline timestamptz NOT NULL,
+    deadline date NOT NULL,
     completed boolean NOT NULL DEFAULT false,
     created_at timestamptz NOT NULL DEFAULT now()
 );

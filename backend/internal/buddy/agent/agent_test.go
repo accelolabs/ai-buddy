@@ -84,7 +84,7 @@ func TestGenerate(t *testing.T) {
 		}
 
 		if model.calls == 1 {
-			if len(tools) != 2 {
+			if len(tools) != 3 {
 				t.Fatal("missing tools")
 			}
 
@@ -581,7 +581,7 @@ func TestTicketGeneration(t *testing.T) {
 	model := &fakeModel{}
 	model.reply = func(messages []ollama.Message, tools []ollama.Tool) (ollama.Response, error) {
 		if model.calls == 1 {
-			if len(tools) != 6 {
+			if len(tools) != 7 {
 				t.Fatalf("tools: %v", tools)
 			}
 
@@ -665,7 +665,7 @@ func TestAttachmentsTogether(t *testing.T) {
 				{
 					Function: ollama.Function{
 						Name:      "prepare_task",
-						Arguments: []byte(`{"description":"Задача","deadline":"2030-01-01T00:00:00Z"}`),
+						Arguments: []byte(`{"description":"Задача","deadline":"2030-01-01"}`),
 					},
 				},
 			}
@@ -737,13 +737,13 @@ func TestTaskGenerationAndSharedLimit(t *testing.T) {
 							{
 								Function: ollama.Function{
 									Name:      "prepare_task",
-									Arguments: []byte(`{"description":"first","deadline":"2020-01-01T00:00:00Z"}`),
+									Arguments: []byte(`{"description":"first","deadline":"2020-01-01"}`),
 								},
 							},
 							{
 								Function: ollama.Function{
 									Name:      "prepare_task",
-									Arguments: []byte(`{"description":" final ","deadline":"2030-01-01T00:00:00Z"}`),
+									Arguments: []byte(`{"description":" final ","deadline":"2030-01-01"}`),
 								},
 							},
 							{Function: ollama.Function{
@@ -954,5 +954,36 @@ func TestEmptyTasksAndToolFailureRemainDistinct(t *testing.T) {
 				t.Fatalf("empty tasks lost: %+v", answer.Tasks)
 			}
 		})
+	}
+}
+
+func TestTaskWithCurrentTime(t *testing.T) {
+	model := &fakeModel{}
+	model.reply = func(messages []ollama.Message, tools []ollama.Tool) (ollama.Response, error) {
+		switch model.calls {
+		case 1:
+			return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{{Function: ollama.Function{
+				Name: "get_current_time", Arguments: []byte(`{}`),
+			}}}}}, nil
+		case 2:
+			last := messages[len(messages)-1]
+			if last.ToolName != "get_current_time" || !strings.Contains(last.Content, "Europe/Moscow") {
+				t.Fatalf("time result: %+v", last)
+			}
+			return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{{Function: ollama.Function{
+				Name: "prepare_task", Arguments: []byte(`{"description":"Задача","deadline":"2030-01-01"}`),
+			}}}}}, nil
+		default:
+			last := messages[len(messages)-1]
+			if last.ToolName != "prepare_task" || !strings.Contains(last.Content, "true") {
+				t.Fatalf("task result: %+v", last)
+			}
+			return ollama.Response{Message: ollama.Message{Content: "Подтвердите создание кнопкой"}}, nil
+		}
+	}
+	a := testAgent(t, model, nil)
+	answer, err := a.Generate(t.Context(), users.User{Role: users.RoleIntern}, nil, nil)
+	if err != nil || answer.Task == nil || answer.Task.Deadline.Format("2006-01-02") != "2030-01-01" || model.calls != 3 {
+		t.Fatalf("answer: %+v, %v", answer, err)
 	}
 }

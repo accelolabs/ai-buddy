@@ -12,7 +12,7 @@ import (
 
 const seedSQL0 = `
 					INSERT INTO tasks (id, user_id, description, deadline, completed)
-					VALUES ($1, $2, $3, now() + $4 * interval '1 hour', $5)
+					VALUES ($1, $2, $3, (now() AT TIME ZONE 'Europe/Moscow')::date + $4::integer, $5)
 					ON CONFLICT (id) DO NOTHING
 				`
 
@@ -31,10 +31,10 @@ func TestSeed(t *testing.T) {
 	for _, intern := range []string{"intern.backend.1", "intern.backend.2", "intern.platform.1", "intern.platform.2"} {
 		for i, record := range []struct {
 			description string
-			hours       int64
+			days        int64
 			completed   bool
 		}{
-			{"Изучить документацию", 72, false}, {"Настроить окружение", -24, false}, {"Ознакомиться с командой", -48, true},
+			{"Изучить документацию", 3, false}, {"Настроить окружение", -1, false}, {"Ознакомиться с командой", -2, true},
 		} {
 			records = append(records, struct {
 				query string
@@ -45,7 +45,7 @@ func TestSeed(t *testing.T) {
 					fmt.Sprintf("demo.task.%s.%d", intern, i+1),
 					intern,
 					record.description,
-					record.hours,
+					record.days,
 					record.completed,
 				},
 			})

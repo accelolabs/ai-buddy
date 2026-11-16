@@ -41,7 +41,7 @@ func (s *Service) Create(ctx context.Context, user users.User, description, dead
 	}
 
 	description = strings.TrimSpace(description)
-	parsed, err := time.Parse(time.RFC3339, deadline)
+	parsed, err := time.Parse(time.DateOnly, deadline)
 	if err != nil || description == "" {
 		return tracker.Task{}, ErrInvalidInput
 	}

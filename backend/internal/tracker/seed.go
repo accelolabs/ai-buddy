@@ -10,20 +10,20 @@ import (
 func Seed(ctx context.Context, db *sql.DB) error {
 	records := []struct {
 		description string
-		hours       int
+		days        int
 		completed   bool
 	}{
 		{
 			description: "Изучить документацию",
-			hours:       72,
+			days:        3,
 		},
 		{
 			description: "Настроить окружение",
-			hours:       -24,
+			days:        -1,
 		},
 		{
 			description: "Ознакомиться с командой",
-			hours:       -48,
+			days:        -2,
 			completed:   true,
 		},
 	}
@@ -44,13 +44,13 @@ func Seed(ctx context.Context, db *sql.DB) error {
 				ctx,
 				`
 					INSERT INTO tasks (id, user_id, description, deadline, completed)
-					VALUES ($1, $2, $3, now() + $4 * interval '1 hour', $5)
+					VALUES ($1, $2, $3, (now() AT TIME ZONE 'Europe/Moscow')::date + $4::integer, $5)
 					ON CONFLICT (id) DO NOTHING
 				`,
 				id,
 				internID,
 				record.description,
-				record.hours,
+				record.days,
 				record.completed,
 			)
 			if err != nil {

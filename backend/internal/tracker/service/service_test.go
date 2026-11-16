@@ -45,25 +45,27 @@ func TestCreate(t *testing.T) {
 	repo := &repositoryStub{}
 	service := NewService(repo)
 	user := users.User{ID: "trusted", Role: users.RoleIntern}
-	first, err := service.Create(t.Context(), user, " \n задача \t", "2000-01-01T12:00:00+03:00")
+	first, err := service.Create(t.Context(), user, " \n задача \t", "2000-01-01")
 	if err != nil ||
 		first.ID == "" ||
 		first.UserID != user.ID ||
 		first.Description != "задача" ||
-		first.Deadline.Format("2006-01-02T15:04:05Z07:00") != "2000-01-01T12:00:00+03:00" {
+		first.Deadline.Format("2006-01-02") != "2000-01-01" {
 		t.Fatalf("created: %+v, %v", first, err)
 	}
 
-	second, err := service.Create(t.Context(), user, "задача", "2000-01-01T12:00:00+03:00")
+	second, err := service.Create(t.Context(), user, "задача", "2000-01-01")
 	if err != nil || first.ID == second.ID {
 		t.Fatalf("IDs: %q %q; %v", first.ID, second.ID, err)
 	}
 
 	for _, input := range [][2]string{
-		{" ", "2000-01-01T00:00:00Z"},
+		{" ", "2000-01-01"},
 		{"task", ""},
 		{"task", "2000-01-01T00:00:00"},
 		{"task", "invalid"},
+		{"task", "2000-01-01T00:00:00Z"},
+		{"task", "2026-02-30"},
 	} {
 		before := repo.calls
 		if _, err := service.Create(t.Context(), user, input[0], input[1]); !errors.Is(err, ErrInvalidInput) ||
@@ -73,7 +75,7 @@ func TestCreate(t *testing.T) {
 	}
 
 	repo.err = fmt.Errorf("insert: %w", sql.ErrNoRows)
-	if _, err := service.Create(t.Context(), user, "task", "2000-01-01T00:00:00Z"); !errors.Is(err, sql.ErrNoRows) ||
+	if _, err := service.Create(t.Context(), user, "task", "2000-01-01"); !errors.Is(err, sql.ErrNoRows) ||
 		errors.Is(err, ErrNotFound) {
 		t.Fatalf("insert error: %v", err)
 	}

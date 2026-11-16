@@ -1,5 +1,6 @@
 export interface TaskDraft {
   description: string;
+  /** Calendar date in YYYY-MM-DD format. */
   deadline: string;
 }
 export interface Task extends TaskDraft {
@@ -33,3 +34,5 @@ export interface Article {
 export const taskStatus = (status: Task['status']) =>
   ({ pending: 'Впереди', overdue: 'Просрочено', completed: 'Выполнено' })[status];
 export const dateTime = (value: string) => new Date(value).toLocaleString('ru-RU');
+
+export const calendarDate = (value: string) => value.split('-').reverse().join('.');
