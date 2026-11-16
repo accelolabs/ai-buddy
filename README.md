@@ -61,18 +61,33 @@ Vite (`http://localhost:5173`) проксирует `/api` на `http://127.0.0.
 перезагрузка, выход и смена пользователя очищают.
 Создание и завершение записей требуют отдельного нажатия кнопки в карточке.
 
-## Покрытие бэкенда
+## Проверки и покрытие
 
-Нужен Go 1.27+. PostgreSQL и Ollama для тестов не требуются. Из корня проекта:
+Нужны Python 3.10+, Go 1.27+ и Node.js 24+. Python-пакеты не требуются.
+Перед первым запуском установите зависимости фронтенда:
 
 ```sh
-cd backend
-go test -race -count=1 -coverpkg=./... -coverprofile=/tmp/buddy-coverage.out ./...
-go tool cover -func=/tmp/buddy-coverage.out
-go tool cover -html=/tmp/buddy-coverage.out -o /tmp/buddy-coverage.html
+npm --prefix frontend ci
+python3 scripts/measure_coverage.py
 ```
 
-`-func` показывает покрытие функций и общий процент, HTML — покрытие строк кода.
+Скрипт запускает тесты обеих частей и возвращает ненулевой код при ошибках
+или покрытии ниже 80%. Бэкенд проверяется с `-race`; PostgreSQL и Ollama не нужны.
+Go измеряет покрытие инструкций, фронтенд — строк, инструкций, функций и ветвлений.
+
+```sh
+python3 scripts/measure_coverage.py backend   # только Go
+python3 scripts/measure_coverage.py frontend  # только фронтенд
+python3 -m unittest discover -s scripts -p 'test_*.py'
+```
+
+HTML-отчёты: `backend/coverage/index.html` и `frontend/coverage/index.html`.
+В `backend/coverage/` также сохраняются профиль Go и проценты по функциям,
+в `frontend/coverage/` — JSON-сводка. Отчёты не добавляются в Git.
+
+GitHub Actions на push и pull request проверяет форматирование, линтеры,
+сборку, тесты и порог покрытия. Затем валидирует корневой Compose и собирает
+образы сервера и Nginx. Отчёты доступны в артефакте `coverage` в течение 14 дней.
 
 ## Эндпойнты
 
