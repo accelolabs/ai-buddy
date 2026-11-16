@@ -7,6 +7,8 @@ import (
 	"backend/internal/ollama"
 	tickethandler "backend/internal/ticket/handler"
 	ticketrepository "backend/internal/ticket/repository"
+	trackerhandler "backend/internal/tracker/handler"
+	trackerrepository "backend/internal/tracker/repository"
 	usershandler "backend/internal/users/handler"
 	"backend/internal/users/middleware"
 	usersrepository "backend/internal/users/repository"
@@ -61,9 +63,15 @@ func main() {
 	}
 	buddyHandler := buddyhandler.NewHandler(buddyAgent, cfg.ChatHistoryLimit)
 	ticketHandler := tickethandler.NewHandler(ticketrepository.NewRepository(db))
+	trackerHandler := trackerhandler.NewHandler(trackerrepository.NewRepository(db))
 	selectedUser := middleware.Middleware(userRepository)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/users", userHandler.List)
+	mux.Handle("GET /api/users/interns", selectedUser(http.HandlerFunc(userHandler.ListInterns)))
+	mux.Handle("GET /api/tracker/tasks", selectedUser(http.HandlerFunc(trackerHandler.List)))
+	mux.Handle("GET /api/tracker/interns/{internID}/tasks", selectedUser(http.HandlerFunc(trackerHandler.ListIntern)))
+	mux.Handle("POST /api/tracker/tasks", selectedUser(http.HandlerFunc(trackerHandler.Create)))
+	mux.Handle("POST /api/tracker/tasks/{id}/complete", selectedUser(http.HandlerFunc(trackerHandler.Complete)))
 	mux.Handle("POST /api/buddy/messages", selectedUser(http.HandlerFunc(buddyHandler.Send)))
 	mux.Handle("POST /api/tickets", selectedUser(http.HandlerFunc(ticketHandler.Create)))
 	mux.Handle("GET /api/tickets", selectedUser(http.HandlerFunc(ticketHandler.List)))

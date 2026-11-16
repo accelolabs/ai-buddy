@@ -79,7 +79,7 @@ func TestSchemaLifecycle(t *testing.T) {
 	if err := repo.db.QueryRowContext(ctx, `SELECT string_agg(tablename, ',' ORDER BY tablename) FROM pg_tables WHERE schemaname=current_schema()`).Scan(&tables); err != nil {
 		t.Fatal(err)
 	}
-	if tables != "chunks,documents,goose_db_version,mentorships,tickets,users" {
+	if tables != "chunks,documents,goose_db_version,mentorships,tasks,tickets,users" {
 		t.Fatalf("unexpected tables: %s", tables)
 	}
 	if err := goose.DownToContext(ctx, repo.db, "../../../migrations", 0); err != nil {
