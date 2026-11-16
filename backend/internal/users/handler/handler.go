@@ -1,12 +1,14 @@
 package handler
 
 import (
-	"backend/internal/users"
-	"backend/internal/users/middleware"
 	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+
+	// Project packages.
+	"backend/internal/users"
+	"backend/internal/users/middleware"
 )
 
 type userLister interface {
@@ -26,7 +28,9 @@ type userResponse struct {
 }
 
 func NewHandler(repository userLister) *Handler {
-	return &Handler{repository: repository}
+	return &Handler{
+		repository: repository,
+	}
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -34,10 +38,12 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("list users: %v", err)
 		http.Error(w, "failed to list users", http.StatusInternalServerError)
+
 		return
 	}
 
 	response := make([]userResponse, len(users))
+
 	for i, user := range users {
 		response[i] = userResponse(user)
 	}
@@ -52,22 +58,30 @@ func (h *Handler) ListInterns(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
 		http.Error(w, "select a user", http.StatusUnauthorized)
+
 		return
 	}
+
 	if user.Role != users.RoleMentor {
 		http.Error(w, "only mentors can list interns", http.StatusForbidden)
+
 		return
 	}
+
 	values, err := h.repository.ListInterns(r.Context(), user.ID)
 	if err != nil {
 		log.Printf("list interns: %v", err)
 		http.Error(w, "failed to list interns", http.StatusInternalServerError)
+
 		return
 	}
+
 	response := make([]userResponse, len(values))
+
 	for i, value := range values {
 		response[i] = userResponse(value)
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.Printf("write interns: %v", err)

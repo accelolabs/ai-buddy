@@ -1,11 +1,13 @@
 package main
 
 import (
-	"backend/internal/config"
 	"context"
 	"database/sql"
 	"log"
 	"time"
+
+	// Project packages.
+	"backend/internal/config"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
@@ -21,15 +23,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("open database: %v", err)
 	}
+
 	defer func() {
 		_ = db.Close()
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
+
 	if err := goose.SetDialect("postgres"); err != nil {
 		log.Fatalf("set migration dialect: %v", err)
 	}
+
 	if err := goose.UpContext(ctx, db, "migrations"); err != nil {
 		log.Fatalf("apply migrations: %v", err)
 	}

@@ -6,6 +6,4 @@ type Event struct {
 	State    string
 	Progress string
 	Text     string
-	Source   *Source
-	Ticket   *Ticket
 }

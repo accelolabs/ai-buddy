@@ -16,6 +16,7 @@ func TestEmbed(t *testing.T) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/embed" || r.Header.Get("Content-Type") != "application/json" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL)
 		}
+
 		var body struct {
 			Model    string `json:"model"`
 			Input    string `json:"input"`
@@ -24,16 +25,23 @@ func TestEmbed(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
-		if body.Model != "embeddinggemma:300m" || body.Input != "Русский текст" || body.Truncate == nil || *body.Truncate {
+
+		if body.Model != "embeddinggemma:300m" || body.Input != "Русский текст" || body.Truncate == nil ||
+			*body.Truncate {
 			t.Errorf("request body: %+v", body)
 		}
+
 		w.Header().Set("Content-Type", "application/json")
 		if _, err := w.Write([]byte(`{"embeddings":[[0.1,0.2,0.3]]}`)); err != nil {
 			t.Error(err)
 		}
 	}))
 	defer server.Close()
-	got, err := NewClient(server.URL+"/", "embeddinggemma:300m").Embed(context.Background(), "Русский текст")
+
+	got, err := NewClient(server.URL+"/", "embeddinggemma:300m").Embed(
+		context.Background(),
+		"Русский текст",
+	)
 	if err != nil || !reflect.DeepEqual(got, []float64{0.1, 0.2, 0.3}) {
 		t.Fatalf("Embed: %v, %v", got, err)
 	}
@@ -59,6 +67,7 @@ func TestEmbedErrors(t *testing.T) {
 				}
 			}))
 			defer server.Close()
+
 			if _, err := NewClient(server.URL, "model").Embed(context.Background(), "text"); err == nil {
 				t.Fatal("invalid response accepted")
 			}
@@ -69,13 +78,22 @@ func TestEmbedErrors(t *testing.T) {
 func TestEmbedCancellation(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { close(started); <-release }))
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		close(started)
+		<-release
+	}))
 	defer server.Close()
+
 	defer close(release)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
 	done := make(chan error, 1)
-	go func() { _, err := NewClient(server.URL, "model").Embed(ctx, "text"); done <- err }()
+	go func() {
+		_, err := NewClient(server.URL, "model").Embed(ctx, "text")
+		done <- err
+	}()
 	select {
 	case <-started:
 	case <-time.After(time.Second):

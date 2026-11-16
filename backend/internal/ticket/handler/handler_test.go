@@ -1,9 +1,6 @@
 package handler
 
 import (
-	"backend/internal/ticket"
-	"backend/internal/users"
-	"backend/internal/users/middleware"
 	"context"
 	"database/sql"
 	"errors"
@@ -12,6 +9,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	// Project packages.
+	"backend/internal/ticket"
+	"backend/internal/users"
+	"backend/internal/users/middleware"
 )
 
 type failingRepository struct {
@@ -21,23 +23,31 @@ type failingRepository struct {
 
 func (s *failingRepository) Add(context.Context, ticket.Ticket) (ticket.Ticket, error) {
 	s.calls++
+
 	return ticket.Ticket{}, s.err
 }
 
 func (s *failingRepository) List(context.Context, users.User) ([]ticket.Ticket, error) {
 	s.calls++
+
 	return nil, s.err
 }
 
 func (s *failingRepository) Get(context.Context, users.User, string) (ticket.Ticket, error) {
 	s.calls++
+
 	return ticket.Ticket{}, s.err
 }
 
-type userRepository struct{ role string }
+type userRepository struct {
+	role string
+}
 
 func (s userRepository) Get(context.Context, string) (users.User, error) {
-	return users.User{ID: "intern", Role: s.role}, nil
+	return users.User{
+		ID:   "intern",
+		Role: s.role,
+	}, nil
 }
 
 func TestErrors(t *testing.T) {
@@ -57,38 +67,51 @@ func TestErrors(t *testing.T) {
 			if tc.status == 403 && method != "create" {
 				continue
 			}
-			t.Run(fmt.Sprintf("%s-%s-%d", method, tc.role, tc.status), func(t *testing.T) {
-				repo := &failingRepository{err: tc.err}
-				h := NewHandler(repo)
-				f := h.Get
-				switch method {
-				case "create":
-					f = h.Create
-				case "list":
-					f = h.List
-				}
-				var target http.Handler = http.HandlerFunc(f)
-				if tc.selected {
-					target = middleware.Middleware(userRepository{tc.role})(target)
-				}
-				r := httptest.NewRequest("POST", "/api/tickets", strings.NewReader(`{"title":"x","description":"y"}`))
-				r.AddCookie(&http.Cookie{Name: "demo_user", Value: "intern"})
-				w := httptest.NewRecorder()
-				target.ServeHTTP(w, r)
-				want := tc.status
-				if tc.status == 404 && method != "get" {
-					want = 500
-				}
-				if method == "create" && tc.role == users.RoleMentor {
-					want = 403
-				}
-				if w.Code != want || strings.Contains(w.Body.String(), "private") || strings.Contains(w.Body.String(), "wrapped") {
-					t.Fatalf("error: %d %s", w.Code, w.Body)
-				}
-				if (!tc.selected || want == 403) && repo.calls != 0 {
-					t.Fatal("unauthorized repository call")
-				}
-			})
+
+			t.Run(
+				fmt.Sprintf("%s-%s-%d", method, tc.role, tc.status),
+				func(t *testing.T) {
+					repo := &failingRepository{err: tc.err}
+					h := NewHandler(repo)
+					f := h.Get
+
+					switch method {
+					case "create":
+						f = h.Create
+					case "list":
+						f = h.List
+					}
+
+					var target http.Handler = http.HandlerFunc(f)
+					if tc.selected {
+						target = middleware.Middleware(userRepository{tc.role})(target)
+					}
+
+					r := httptest.NewRequest("POST", "/api/tickets", strings.NewReader(`{"title":"x","description":"y"}`))
+					r.AddCookie(&http.Cookie{
+						Name:  "demo_user",
+						Value: "intern",
+					})
+					w := httptest.NewRecorder()
+					target.ServeHTTP(w, r)
+					want := tc.status
+					if tc.status == 404 && method != "get" {
+						want = 500
+					}
+
+					if method == "create" && tc.role == users.RoleMentor {
+						want = 403
+					}
+
+					if w.Code != want || strings.Contains(w.Body.String(), "private") || strings.Contains(w.Body.String(), "wrapped") {
+						t.Fatalf("error: %d %s", w.Code, w.Body)
+					}
+
+					if (!tc.selected || want == 403) && repo.calls != 0 {
+						t.Fatal("unauthorized repository call")
+					}
+				},
+			)
 		}
 	}
 }

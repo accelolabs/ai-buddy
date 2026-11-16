@@ -1,6 +1,17 @@
 package main
 
 import (
+	"context"
+	"database/sql"
+	"errors"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	// Project packages.
 	"backend/internal/buddy/agent"
 	buddyhandler "backend/internal/buddy/handler"
 	"backend/internal/config"
@@ -15,15 +26,6 @@ import (
 	wikihandler "backend/internal/wiki/handler"
 	"backend/internal/wiki/rag"
 	wikirepository "backend/internal/wiki/repository"
-	"context"
-	"database/sql"
-	"errors"
-	"log"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -38,6 +40,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("open database: %v", err)
 	}
+
 	defer func() {
 		_ = db.Close()
 	}()
@@ -57,25 +60,42 @@ func main() {
 	wikiRepository := wikirepository.NewRepository(db)
 	wikiHandler := wikihandler.NewHandler(wikiRepository, cfg.KnowledgeBaseDir)
 	search := rag.NewRAG(wikiRepository, ollama.NewClient(cfg.OllamaURL, cfg.EmbeddingModel), cfg.RAGChunkCount)
-	buddyAgent, err := agent.NewAgent(ollama.NewChatClient(cfg.OllamaURL, cfg.ChatModel, cfg.ChatContextLength), search, cfg.SystemPromptFile, userRepository)
+	buddyAgent, err := agent.NewAgent(
+		ollama.NewChatClient(cfg.OllamaURL, cfg.ChatModel, cfg.ChatContextLength),
+		search,
+		cfg.SystemPromptFile,
+		userRepository,
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	buddyHandler := buddyhandler.NewHandler(buddyAgent, cfg.ChatHistoryLimit)
 	ticketHandler := tickethandler.NewHandler(ticketrepository.NewRepository(db))
 	trackerHandler := trackerhandler.NewHandler(trackerrepository.NewRepository(db))
 	selectedUser := middleware.Middleware(userRepository)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/users", userHandler.List)
 	mux.Handle("GET /api/users/interns", selectedUser(http.HandlerFunc(userHandler.ListInterns)))
+
 	mux.Handle("GET /api/tracker/tasks", selectedUser(http.HandlerFunc(trackerHandler.List)))
-	mux.Handle("GET /api/tracker/interns/{internID}/tasks", selectedUser(http.HandlerFunc(trackerHandler.ListIntern)))
+	mux.Handle(
+		"GET /api/tracker/interns/{internID}/tasks",
+		selectedUser(http.HandlerFunc(trackerHandler.ListIntern)),
+	)
 	mux.Handle("POST /api/tracker/tasks", selectedUser(http.HandlerFunc(trackerHandler.Create)))
-	mux.Handle("POST /api/tracker/tasks/{id}/complete", selectedUser(http.HandlerFunc(trackerHandler.Complete)))
+	mux.Handle(
+		"POST /api/tracker/tasks/{id}/complete",
+		selectedUser(http.HandlerFunc(trackerHandler.Complete)),
+	)
+
 	mux.Handle("POST /api/buddy/messages", selectedUser(http.HandlerFunc(buddyHandler.Send)))
+
 	mux.Handle("POST /api/tickets", selectedUser(http.HandlerFunc(ticketHandler.Create)))
 	mux.Handle("GET /api/tickets", selectedUser(http.HandlerFunc(ticketHandler.List)))
 	mux.Handle("GET /api/tickets/{id}", selectedUser(http.HandlerFunc(ticketHandler.Get)))
+
 	mux.Handle("GET /api/wiki", selectedUser(http.HandlerFunc(wikiHandler.List)))
 	mux.Handle("GET /api/wiki/{id}", selectedUser(http.HandlerFunc(wikiHandler.Get)))
 
@@ -84,6 +104,7 @@ func main() {
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+
 	serverErr := make(chan error, 1)
 	go func() {
 		serverErr <- server.ListenAndServe()

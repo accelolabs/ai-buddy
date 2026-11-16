@@ -1,13 +1,15 @@
 package indexer
 
 import (
-	"backend/internal/wiki"
 	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	// Project packages.
+	"backend/internal/wiki"
 )
 
 type syncFunc func(context.Context, []wiki.Document, []wiki.Chunk) error
@@ -27,17 +29,22 @@ func TestIndexerReadFailure(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "a.md"), []byte("# Readable"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := os.Symlink(filepath.Join(root, "missing"), filepath.Join(root, "z.md")); err != nil {
 		t.Fatal(err)
 	}
+
 	repository := syncFunc(func(context.Context, []wiki.Document, []wiki.Chunk) error {
 		t.Fatal("repository called after incomplete scan")
+
 		return nil
 	})
 	embedding := embedFunc(func(context.Context, string) ([]float64, error) {
 		t.Fatal("embedding requested after incomplete scan")
+
 		return nil, nil
 	})
+
 	for _, directory := range []string{root, filepath.Join(root, "missing")} {
 		if err := NewIndexer(repository, embedding, directory).Index(context.Background()); err == nil {
 			t.Fatalf("Index(%q) succeeded despite read error", directory)
@@ -54,10 +61,12 @@ func TestIndexerSyncError(t *testing.T) {
 		if gotCtx != ctx || len(documents) != 0 || len(chunks) != 0 {
 			t.Fatalf("Sync received context %v and documents %+v", gotCtx, documents)
 		}
+
 		return wantErr
 	})
 	err := NewIndexer(repository, embedFunc(func(context.Context, string) ([]float64, error) {
 		t.Fatal("embedding requested for empty corpus")
+
 		return nil, nil
 	}), t.TempDir()).Index(ctx)
 	if !called || !errors.Is(err, wantErr) {
@@ -67,9 +76,14 @@ func TestIndexerSyncError(t *testing.T) {
 
 func TestIndexerEmbeddingFailure(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "guide.md"), []byte("# Первый\nТекст\n\n## Второй\nДетали"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(root, "guide.md"),
+		[]byte("# Первый\nТекст\n\n## Второй\nДетали"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
+
 	wantErr := errors.New("ollama failed")
 	calls := 0
 	ctx := context.Background()
@@ -77,14 +91,17 @@ func TestIndexerEmbeddingFailure(t *testing.T) {
 		if gotCtx != ctx {
 			t.Fatal("embedding did not receive request context")
 		}
+
 		calls++
 		if calls == 2 {
 			return nil, wantErr
 		}
+
 		return []float64{0.5}, nil
 	})
 	repository := syncFunc(func(context.Context, []wiki.Document, []wiki.Chunk) error {
 		t.Fatal("repository called after embedding failure")
+
 		return nil
 	})
 	err := NewIndexer(repository, embedding, root).Index(ctx)
@@ -98,14 +115,17 @@ func TestIndexerCancelled(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "guide.md"), []byte("# Статья\nТекст"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	embedding := embedFunc(func(context.Context, string) ([]float64, error) {
 		t.Fatal("embedding called with cancelled context")
+
 		return nil, nil
 	})
 	repository := syncFunc(func(context.Context, []wiki.Document, []wiki.Chunk) error {
 		t.Fatal("repository called with cancelled context")
+
 		return nil
 	})
 	if err := NewIndexer(repository, embedding, root).Index(ctx); !errors.Is(err, context.Canceled) {

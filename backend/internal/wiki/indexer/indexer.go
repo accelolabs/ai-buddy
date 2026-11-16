@@ -1,7 +1,6 @@
 package indexer
 
 import (
-	"backend/internal/wiki"
 	"context"
 	"crypto/sha256"
 	"fmt"
@@ -9,6 +8,9 @@ import (
 	"os"
 	"path"
 	"strings"
+
+	// Project packages.
+	"backend/internal/wiki"
 )
 
 type documentSyncer interface {
@@ -26,7 +28,11 @@ type Indexer struct {
 }
 
 func NewIndexer(repository documentSyncer, embedder embedder, root string) *Indexer {
-	return &Indexer{repository: repository, embedder: embedder, root: root}
+	return &Indexer{
+		repository: repository,
+		embedder:   embedder,
+		root:       root,
+	}
 }
 
 func (s *Indexer) Index(ctx context.Context) error {
@@ -37,6 +43,7 @@ func (s *Indexer) Index(ctx context.Context) error {
 		if walkErr != nil {
 			return walkErr
 		}
+
 		if entry.IsDir() || path.Ext(name) != ".md" {
 			return nil
 		}
@@ -45,24 +52,30 @@ func (s *Indexer) Index(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+
 		document := parseDocument(name, string(content))
 		documents = append(documents, document)
 		chunks = append(chunks, GetChunks(document, string(content))...)
+
 		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("read knowledge base: %w", err)
 	}
+
 	for i := range chunks {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("embed wiki chunks: %w", err)
 		}
+
 		embedding, err := s.embedder.Embed(ctx, chunks[i].Text)
 		if err != nil {
 			return fmt.Errorf("embed wiki chunk %q/%d: %w", chunks[i].DocumentID, chunks[i].Ordinal, err)
 		}
+
 		chunks[i].Embedding = embedding
 	}
+
 	if err := s.repository.Sync(ctx, documents, chunks); err != nil {
 		return fmt.Errorf("index wiki: %w", err)
 	}
@@ -79,6 +92,7 @@ func parseDocument(name, content string) wiki.Document {
 	if team, _, nested := strings.Cut(name, "/"); nested {
 		document.Team = team
 	}
+
 	for line := range strings.SplitSeq(content, "\n") {
 		if title, ok := strings.CutPrefix(line, "# "); ok {
 			document.Title = strings.TrimSpace(title)

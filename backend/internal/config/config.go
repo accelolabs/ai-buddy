@@ -32,6 +32,7 @@ func Load() (Config, error) {
 	if cfg.ChatContextLength <= 0 {
 		return Config{}, fmt.Errorf("CHAT_CONTEXT_LENGTH must be positive")
 	}
+
 	if cfg.ChatHistoryLimit <= 0 {
 		return Config{}, fmt.Errorf("CHAT_HISTORY_LIMIT must be positive")
 	}

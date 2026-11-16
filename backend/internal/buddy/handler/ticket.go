@@ -17,5 +17,10 @@ func ticketView(card *buddy.Ticket) *ticketResponse {
 	if card == nil {
 		return nil
 	}
-	return &ticketResponse{Title: card.Title, Description: card.Description, Recipient: recipientResponse(card.Recipient)}
+
+	return &ticketResponse{
+		Title:       card.Title,
+		Description: card.Description,
+		Recipient:   recipientResponse(card.Recipient),
+	}
 }

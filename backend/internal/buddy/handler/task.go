@@ -1,8 +1,10 @@
 package handler
 
 import (
-	"backend/internal/buddy"
 	"time"
+
+	// Project packages.
+	"backend/internal/buddy"
 )
 
 type taskResponse struct {
@@ -14,5 +16,9 @@ func taskView(card *buddy.Task) *taskResponse {
 	if card == nil {
 		return nil
 	}
-	return &taskResponse{Description: card.Description, Deadline: card.Deadline}
+
+	return &taskResponse{
+		Description: card.Description,
+		Deadline:    card.Deadline,
+	}
 }

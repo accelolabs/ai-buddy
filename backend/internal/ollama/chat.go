@@ -56,38 +56,61 @@ type Response struct {
 	Error   string  `json:"error"`
 }
 
-func (c *Client) Chat(ctx context.Context, messages []Message, tools []Tool, emit func(string) error) (Response, error) {
+func (c *Client) Chat(
+	ctx context.Context,
+	messages []Message,
+	tools []Tool,
+	emit func(string) error,
+) (Response, error) {
 	body, err := json.Marshal(chatRequest{
-		Model: c.model, Messages: messages, Tools: tools, Stream: emit != nil,
-		Think: false, Options: chatOptions{Context: c.contextLength, Predict: 512},
+		Model:    c.model,
+		Messages: messages,
+		Tools:    tools,
+		Stream:   emit != nil,
+		Think:    false,
+		Options: chatOptions{
+			Context: c.contextLength,
+			Predict: 512,
+		},
 	})
 	if err != nil {
 		return Response{}, fmt.Errorf("encode chat request: %w", err)
 	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/chat", bytes.NewReader(body))
 	if err != nil {
 		return Response{}, fmt.Errorf("create chat request: %w", err)
 	}
+
 	req.Header.Set("Content-Type", "application/json")
 	response, err := c.http.Do(req)
 	if err != nil {
 		return Response{}, fmt.Errorf("request chat: %w", err)
 	}
-	defer func() { _ = response.Body.Close() }()
+
+	defer func() {
+		_ = response.Body.Close()
+	}()
+
 	if response.StatusCode != http.StatusOK {
 		return Response{}, fmt.Errorf("ollama chat: HTTP %d", response.StatusCode)
 	}
+
 	decoder := json.NewDecoder(response.Body)
+
 	var text strings.Builder
 	var calls []Call
+
 	for {
 		var result Response
 		if err := decoder.Decode(&result); err != nil {
 			return Response{}, fmt.Errorf("decode chat: %w", err)
 		}
+
 		if result.Error != "" {
 			return Response{}, fmt.Errorf("ollama chat: %s", result.Error)
 		}
+
 		text.WriteString(result.Message.Content)
 		calls = append(calls, result.Message.Calls...)
 		if emit != nil && result.Message.Content != "" {
@@ -95,11 +118,14 @@ func (c *Client) Chat(ctx context.Context, messages []Message, tools []Tool, emi
 				return Response{}, err
 			}
 		}
+
 		if result.Done {
 			result.Message.Content = text.String()
 			result.Message.Calls = calls
+
 			return result, nil
 		}
+
 		if emit == nil {
 			return Response{}, fmt.Errorf("ollama chat: incomplete response")
 		}
