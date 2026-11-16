@@ -2,9 +2,7 @@ package main
 
 import (
 	"backend/internal/buddy/agent"
-	"backend/internal/buddy/dialog"
 	buddyhandler "backend/internal/buddy/handler"
-	buddyrepository "backend/internal/buddy/repository"
 	"backend/internal/config"
 	"backend/internal/ollama"
 	tickethandler "backend/internal/ticket/handler"
@@ -61,18 +59,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	dialogHandler := buddyhandler.NewHandler(dialog.NewService(buddyrepository.NewRepository(db), buddyAgent, cfg.ChatHistoryLimit))
+	buddyHandler := buddyhandler.NewHandler(buddyAgent, cfg.ChatHistoryLimit)
 	ticketHandler := tickethandler.NewHandler(ticketrepository.NewRepository(db))
 	selectedUser := middleware.Middleware(userRepository)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/users", userHandler.List)
-	mux.Handle("POST /api/chats/{chatID}/messages/{messageID}/ticket/confirm", selectedUser(http.HandlerFunc(dialogHandler.ConfirmTicket)))
+	mux.Handle("POST /api/buddy/messages", selectedUser(http.HandlerFunc(buddyHandler.Send)))
+	mux.Handle("POST /api/tickets", selectedUser(http.HandlerFunc(ticketHandler.Create)))
 	mux.Handle("GET /api/tickets", selectedUser(http.HandlerFunc(ticketHandler.List)))
 	mux.Handle("GET /api/tickets/{id}", selectedUser(http.HandlerFunc(ticketHandler.Get)))
-	mux.Handle("GET /api/chats", selectedUser(http.HandlerFunc(dialogHandler.ListChats)))
-	mux.Handle("GET /api/chats/{id}", selectedUser(http.HandlerFunc(dialogHandler.GetChat)))
-	mux.Handle("POST /api/chats/messages", selectedUser(http.HandlerFunc(dialogHandler.Send)))
-	mux.Handle("POST /api/chats/{id}/messages", selectedUser(http.HandlerFunc(dialogHandler.Send)))
 	mux.Handle("GET /api/wiki", selectedUser(http.HandlerFunc(wikiHandler.List)))
 	mux.Handle("GET /api/wiki/{id}", selectedUser(http.HandlerFunc(wikiHandler.Get)))
 

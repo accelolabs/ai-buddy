@@ -8,14 +8,9 @@ import (
 	"fmt"
 )
 
-type queries interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-}
+type Repository struct{ db *sql.DB }
 
-type Repository struct{ db queries }
-
-func NewRepository(db queries) *Repository { return &Repository{db: db} }
+func NewRepository(db *sql.DB) *Repository { return &Repository{db: db} }
 
 func (r *Repository) Add(ctx context.Context, value ticket.Ticket) (ticket.Ticket, error) {
 	err := r.db.QueryRowContext(ctx, `INSERT INTO tickets (id, user_id, title, description)

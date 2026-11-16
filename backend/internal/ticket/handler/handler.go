@@ -5,20 +5,29 @@ import (
 	"backend/internal/users"
 	"backend/internal/users/middleware"
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
 type ticketRepository interface {
+	Add(context.Context, ticket.Ticket) (ticket.Ticket, error)
 	List(context.Context, users.User) ([]ticket.Ticket, error)
 	Get(context.Context, users.User, string) (ticket.Ticket, error)
 }
 
 type Handler struct{ repository ticketRepository }
+
+type ticketRequest struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+}
 
 type ticketResponse struct {
 	ID          string    `json:"id"`
@@ -75,5 +84,43 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(ticketView(value)); err != nil {
 		log.Printf("write ticket: %v", err)
+	}
+}
+
+func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "select a user", http.StatusUnauthorized)
+		return
+	}
+	if user.Role != users.RoleIntern {
+		http.Error(w, "only interns can create tickets", http.StatusForbidden)
+		return
+	}
+	var input ticketRequest
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err := decoder.Decode(&input); err != nil {
+		http.Error(w, "invalid ticket", http.StatusBadRequest)
+		return
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		http.Error(w, "invalid ticket", http.StatusBadRequest)
+		return
+	}
+	input.Title, input.Description = strings.TrimSpace(input.Title), strings.TrimSpace(input.Description)
+	if input.Title == "" || input.Description == "" {
+		http.Error(w, "invalid ticket", http.StatusBadRequest)
+		return
+	}
+	value, err := h.repository.Add(r.Context(), ticket.Ticket{ID: rand.Text(), UserID: user.ID, Title: input.Title, Description: input.Description})
+	if err != nil {
+		log.Printf("create ticket: %v", err)
+		http.Error(w, "failed to create ticket", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(ticketView(value)); err != nil {
+		log.Printf("write created ticket: %v", err)
 	}
 }

@@ -387,3 +387,47 @@ func TestTicketGeneration(t *testing.T) {
 		t.Fatalf("draft leaked: %+v %v", answer, err)
 	}
 }
+
+func TestSourceAndTicketTogether(t *testing.T) {
+	model := &fakeModel{}
+	model.reply = func(messages []ollama.Message, _ []ollama.Tool) (ollama.Response, error) {
+		var calls []ollama.Call
+		switch model.calls {
+		case 1:
+			calls = []ollama.Call{{Function: ollama.Function{Name: "search_documents", Arguments: []byte(`{"query":"q"}`)}}}
+		case 2:
+			calls = []ollama.Call{
+				{Function: ollama.Function{Name: "attach_source", Arguments: []byte(`{"document_id":"doc","ordinal":0}`)}},
+				{Function: ollama.Function{Name: "prepare_ticket", Arguments: []byte(`{"title":"Тема","description":"Описание"}`)}},
+			}
+		case 3:
+			calls = []ollama.Call{
+				{Function: ollama.Function{Name: "attach_source", Arguments: []byte(`{"document_id":"unavailable","ordinal":0}`)}},
+				{Function: ollama.Function{Name: "prepare_ticket", Arguments: []byte(`{"title":" ","description":"bad"}`)}},
+			}
+		default:
+			if model.calls == 4 {
+				for _, m := range messages[len(messages)-2:] {
+					if m.Role != "tool" || !strings.Contains(m.Content, "error") {
+						t.Fatalf("missing error: %+v", m)
+					}
+				}
+			} else if len(messages) != 2 || messages[0].Role != "system" || messages[1].Content != "new request" {
+				t.Fatalf("previous context leaked: %+v", messages)
+			}
+			return ollama.Response{Message: ollama.Message{Content: "Ответ"}}, nil
+		}
+		return ollama.Response{Message: ollama.Message{Calls: calls}}, nil
+	}
+	a := testAgent(t, model, &fakeRAG{})
+	a.users = mentorStore{}
+	u := users.User{ID: "intern", Role: users.RoleIntern}
+	answer, err := a.Generate(t.Context(), u, []buddy.Message{{Role: buddy.RoleUser, Content: "first request"}}, nil)
+	if err != nil || answer.Source == nil || answer.Source.DocumentID != "doc" || answer.Ticket == nil || answer.Ticket.Title != "Тема" {
+		t.Fatalf("attachments: %+v %v", answer, err)
+	}
+	answer, err = a.Generate(t.Context(), u, []buddy.Message{{Role: buddy.RoleUser, Content: "new request"}}, nil)
+	if err != nil || answer.Source != nil || answer.Ticket != nil {
+		t.Fatalf("attachments leaked: %+v %v", answer, err)
+	}
+}

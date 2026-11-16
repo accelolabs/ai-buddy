@@ -2,223 +2,175 @@ package handler
 
 import (
 	"backend/internal/buddy"
-	"backend/internal/buddy/dialog"
 	"backend/internal/users"
 	"backend/internal/users/middleware"
 	"context"
-	"encoding/json"
+	"database/sql"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
 
-type userStore struct{}
-
-func (userStore) Get(context.Context, string) (users.User, error) {
-	return users.User{ID: "user", Team: "backend"}, nil
+type fakeAgent struct {
+	generate func(context.Context, users.User, []buddy.Message, func(buddy.Event) error) (buddy.Answer, error)
+	calls    int
 }
 
-type fakeDialog struct {
-	confirm func(context.Context, users.User, string, int64, string, string) (buddy.Ticket, bool, error)
-	calls   int
-	list    func(context.Context, users.User) ([]buddy.Chat, error)
-	get     func(context.Context, users.User, string) (buddy.Chat, []buddy.Message, error)
-	send    func(context.Context, users.User, string, string, func(buddy.Event) error) (buddy.Message, error)
+func (a *fakeAgent) Generate(ctx context.Context, u users.User, h []buddy.Message, emit func(buddy.Event) error) (buddy.Answer, error) {
+	a.calls++
+	return a.generate(ctx, u, h, emit)
 }
 
-func (d *fakeDialog) ListChats(ctx context.Context, user users.User) ([]buddy.Chat, error) {
-	d.calls++
-	return d.list(ctx, user)
+type userRepository struct{}
+
+func (userRepository) Get(_ context.Context, id string) (users.User, error) {
+	if id != "intern" {
+		return users.User{}, sql.ErrNoRows
+	}
+	return users.User{ID: id, Role: users.RoleIntern}, nil
 }
 
-func (d *fakeDialog) GetChat(ctx context.Context, user users.User, id string) (buddy.Chat, []buddy.Message, error) {
-	d.calls++
-	return d.get(ctx, user, id)
-}
-
-func (d *fakeDialog) Send(ctx context.Context, user users.User, id, text string, emit func(buddy.Event) error) (buddy.Message, error) {
-	d.calls++
-	return d.send(ctx, user, id, text, emit)
-}
-
-func request(t *testing.T, service *fakeDialog, body string, auth bool) *httptest.ResponseRecorder {
-	t.Helper()
-	return messageRequestAt(service, "/api/chats/chat/messages", body, auth)
-}
-
-func messageRequestAt(service *fakeDialog, target, body string, auth bool) *httptest.ResponseRecorder {
-	mux := http.NewServeMux()
-	h := middleware.Middleware(userStore{})(http.HandlerFunc(NewHandler(service).Send))
-	mux.Handle("POST /api/chats/{id}/messages", h)
-	mux.Handle("POST /api/chats/messages", h)
-	r := httptest.NewRequest(http.MethodPost, target, strings.NewReader(body))
-	if auth {
-		r.AddCookie(&http.Cookie{Name: "demo_user", Value: "user"})
+func send(h *Handler, body, user string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest("POST", "/api/buddy/messages", strings.NewReader(body))
+	if user != "" {
+		r.AddCookie(&http.Cookie{Name: "demo_user", Value: user})
 	}
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, r)
+	middleware.Middleware(userRepository{})(http.HandlerFunc(h.Send)).ServeHTTP(w, r)
 	return w
 }
 
-func TestSendStream(t *testing.T) {
-	service := &fakeDialog{send: func(_ context.Context, user users.User, id, text string, emit func(buddy.Event) error) (buddy.Message, error) {
-		if user.ID != "user" || user.Team != "backend" || id != "chat" || text != "Вопрос" {
-			t.Fatal("wrong dialog inputs")
+func TestValidation(t *testing.T) {
+	a := &fakeAgent{}
+	h := NewHandler(a, 6)
+	for _, body := range []string{
+		``, `null`, `{}`, `{"messages":null}`, `{"messages":[]}`,
+		`{"messages":[{"role":"system","content":"x"}]}`,
+		`{"messages":[{"role":"tool","content":"x"}]}`,
+		`{"messages":[{"role":"user","content":" "}]}`,
+		`{"messages":[{"role":"assistant","content":"x"}]}`,
+		`{"messages":[{"role":"user","content":"x"},{"role":"assistant","content":" "},{"role":"user","content":"y"}]}`,
+		`{"messages":[{"role":"user","content":"x"}]} {}`,
+		`{"messages":[{"role":"user","content":"x"}]} garbage`,
+		`{"messages":[{"role":"user","content":"` + strings.Repeat("a", 1<<20) + `"}]}`,
+		`{"messages":[{"role":"user","content":"x"}]}` + strings.Repeat(" ", 1<<20),
+	} {
+		if w := send(h, body, "intern"); w.Code != 400 {
+			t.Fatalf("validation: %d %s", w.Code, w.Body)
 		}
-		for _, event := range []buddy.Event{
-			{Type: "state", State: "thinking"},
-			{Type: "state", State: "progress", Progress: "search_documents"},
-			{Type: "state", State: "answering"},
-			{Type: "text", Text: "Ответ\nновая строка"},
-		} {
-			if err := emit(event); err != nil {
-				return buddy.Message{}, err
-			}
-		}
-		return buddy.Message{ID: 7, ChatID: id, Role: buddy.RoleAssistant, Content: "Ответ\nновая строка"}, nil
-	}}
-	w := request(t, service, `{"content":"Вопрос"}`, true)
-	if w.Code != 200 || w.Header().Get("Content-Type") != "text/event-stream" || !w.Flushed {
-		t.Fatalf("response: %d %v", w.Code, w.Header())
 	}
+	for _, u := range []string{"", "missing"} {
+		if w := send(h, `{"messages":[{"role":"user","content":"x"}]}`, u); w.Code != 401 {
+			t.Fatalf("user: %d", w.Code)
+		}
+	}
+	if a.calls != 0 {
+		t.Fatal("invalid request reached agent")
+	}
+}
+
+func TestContextAndSSE(t *testing.T) {
+	a := &fakeAgent{generate: func(_ context.Context, u users.User, h []buddy.Message, emit func(buddy.Event) error) (buddy.Answer, error) {
+		if u.ID != "intern" || !reflect.DeepEqual(h, []buddy.Message{{Role: "assistant", Content: "second"}, {Role: "user", Content: " third "}}) {
+			t.Fatalf("context: %+v %+v", u, h)
+		}
+		if err := emit(buddy.Event{Type: "state", State: "thinking"}); err != nil {
+			return buddy.Answer{}, err
+		}
+		if err := emit(buddy.Event{Type: "text", Text: "reply"}); err != nil {
+			return buddy.Answer{}, err
+		}
+		return buddy.Answer{Content: "reply", Source: &buddy.Source{DocumentID: "doc"}, Ticket: &buddy.Ticket{Title: "title", Description: "description", Recipient: buddy.Recipient{ID: "mentor", Name: "Mentor"}}}, nil
+	}}
+	w := send(NewHandler(a, 2), `{"messages":[{"role":"user","content":"first"},{"role":"assistant","content":"second"},{"role":"user","content":" third "}]}`, "intern")
 	body := w.Body.String()
+	if w.Code != 200 || w.Header().Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("response: %d %s", w.Code, body)
+	}
 	last := -1
-	for _, part := range []string{`"state":"thinking"`, `"state":"progress","progress":"search_documents"`, `"state":"answering"`, `event: text`, `"text":"Ответ\nновая строка"`, `event: done`, `"id":7`} {
-		index := strings.Index(body, part)
-		if index < last || index < 0 {
-			t.Fatalf("missing/out of order %s: %s", part, body)
+	for _, event := range []string{"state", "text", "source", "ticket", "done"} {
+		pos := strings.Index(body, "event: "+event+"\n")
+		if pos <= last {
+			t.Fatalf("event order: %s", body)
 		}
-		last = index
+		last = pos
+	}
+	for _, field := range []string{`"status"`, `"ticket_id"`, `"chat_id"`, `"created_at"`, "event: chat"} {
+		if strings.Contains(body, field) {
+			t.Fatalf("legacy field %s: %s", field, body)
+		}
+	}
+	if !strings.Contains(body, `data: {"content":"reply","source":{"document_id":"doc"`) {
+		t.Fatal(body)
 	}
 }
 
-func TestSendValidation(t *testing.T) {
-	for _, body := range []string{`broken`, `{}`, `{"content":" "}`, `{"content":3}`, `{"content":"q"} {}`, `{"content":"q"} trailing`} {
-		service := &fakeDialog{}
-		w := request(t, service, body, true)
-		if w.Code != 400 || service.calls != 0 {
-			t.Fatalf("%s: %d, %d", body, w.Code, service.calls)
-		}
-	}
-	service := &fakeDialog{}
-	if w := request(t, service, `{"content":"q"}`, false); w.Code != 401 || service.calls != 0 {
-		t.Fatal(w.Code)
-	}
-}
-
-func TestSendErrors(t *testing.T) {
-	for _, test := range []struct {
-		err    error
-		status int
-	}{{dialog.ErrNotFound, 404}, {dialog.ErrBusy, 409}, {errors.New("database secret"), 500}} {
-		service := &fakeDialog{send: func(context.Context, users.User, string, string, func(buddy.Event) error) (buddy.Message, error) {
-			return buddy.Message{}, test.err
-		}}
-		w := request(t, service, `{"content":"q"}`, true)
-		if w.Code != test.status || strings.Contains(w.Body.String(), "secret") {
-			t.Fatalf("%d: %s", w.Code, w.Body.String())
-		}
-	}
-	service := &fakeDialog{send: func(_ context.Context, _ users.User, _, _ string, emit func(buddy.Event) error) (buddy.Message, error) {
-		if err := emit(buddy.Event{Type: "text", Text: "partial"}); err != nil {
-			return buddy.Message{}, err
-		}
-		return buddy.Message{}, errors.New("internal secret")
-	}}
-	w := request(t, service, `{"content":"q"}`, true)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "event: error") || strings.Contains(w.Body.String(), "event: done") || strings.Contains(w.Body.String(), "event: source") || strings.Contains(w.Body.String(), "secret") {
-		t.Fatal(w.Body.String())
-	}
-}
-
-func TestSourceStream(t *testing.T) {
-	source := &buddy.Source{DocumentID: "doc", Ordinal: 2, Title: "Памятка", Anchor: "экватор", Quote: "Full quote\nSecond line"}
-	for _, attached := range []bool{false, true} {
-		service := &fakeDialog{send: func(_ context.Context, _ users.User, id, _ string, emit func(buddy.Event) error) (buddy.Message, error) {
-			if err := emit(buddy.Event{Type: "text", Text: "Answer"}); err != nil {
-				return buddy.Message{}, err
+func TestStreamErrors(t *testing.T) {
+	for _, stage := range []string{"before", "after", "cancel", "write", "flush", "unknown"} {
+		t.Run(stage, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			a := &fakeAgent{generate: func(_ context.Context, _ users.User, _ []buddy.Message, emit func(buddy.Event) error) (buddy.Answer, error) {
+				if stage == "cancel" {
+					cancel()
+					return buddy.Answer{}, ctx.Err()
+				}
+				if stage == "unknown" {
+					return buddy.Answer{}, emit(buddy.Event{Type: "chat"})
+				}
+				if stage != "before" {
+					if err := emit(buddy.Event{Type: "text", Text: "partial"}); err != nil {
+						return buddy.Answer{}, err
+					}
+				}
+				return buddy.Answer{Source: &buddy.Source{}, Ticket: &buddy.Ticket{}}, errors.New("private details")
+			}}
+			r := httptest.NewRequest("POST", "/api/buddy/messages", strings.NewReader(`{"messages":[{"role":"user","content":"x"}]}`)).WithContext(ctx)
+			r.AddCookie(&http.Cookie{Name: "demo_user", Value: "intern"})
+			w := &failingStreamWriter{ResponseRecorder: httptest.NewRecorder()}
+			if stage == "write" {
+				w.writeErr = errors.New("write")
 			}
-			var selected *buddy.Source
-			if attached {
-				selected = source
-				if err := emit(buddy.Event{Type: "source", Source: selected}); err != nil {
-					return buddy.Message{}, err
+			if stage == "flush" {
+				w.flushErr = errors.New("flush")
+			}
+			middleware.Middleware(userRepository{})(http.HandlerFunc(NewHandler(a, 6).Send)).ServeHTTP(w, r)
+			body := w.Body.String()
+			for _, event := range []string{"source", "ticket", "done"} {
+				if strings.Contains(body, "event: "+event) {
+					t.Fatal(body)
 				}
 			}
-			return buddy.Message{ID: 42, ChatID: id, Role: buddy.RoleAssistant, Content: "Answer", Source: selected}, nil
-		}}
-		body := request(t, service, `{"content":"q"}`, true).Body.String()
-		parts := strings.Split(strings.TrimSpace(body), "\n\n")
-		if attached {
-			if len(parts) != 3 || !strings.HasPrefix(parts[0], "event: text\n") || !strings.HasPrefix(parts[1], "event: source\n") || !strings.HasPrefix(parts[2], "event: done\n") {
+			if strings.Contains(body, "private") {
 				t.Fatal(body)
 			}
-			var card sourceResponse
-			var reply messageResponse
-			if err := json.Unmarshal([]byte(strings.TrimPrefix(parts[1], "event: source\ndata: ")), &card); err != nil {
-				t.Fatal(err)
+			if (stage == "before" || stage == "unknown") && w.Code != 500 {
+				t.Fatalf("before: %d %s", w.Code, body)
 			}
-			if err := json.Unmarshal([]byte(strings.TrimPrefix(parts[2], "event: done\ndata: ")), &reply); err != nil {
-				t.Fatal(err)
-			}
-			if reply.Source == nil || card != *reply.Source || card != *sourceView(source) {
+			if stage == "after" && !strings.Contains(body, "event: error") {
 				t.Fatal(body)
 			}
-		} else if len(parts) != 2 || strings.Contains(body, "event: source") || !strings.Contains(body, `"source":null`) {
-			t.Fatal(body)
-		}
+			if stage == "cancel" && body != "" {
+				t.Fatal(body)
+			}
+		})
 	}
 }
 
-func TestFirstMessageStream(t *testing.T) {
-	for _, failure := range []bool{false, true} {
-		service := &fakeDialog{send: func(_ context.Context, user users.User, id, text string, emit func(buddy.Event) error) (buddy.Message, error) {
-			if user.ID != "user" || id != "" || text != "Первый вопрос" {
-				t.Fatal("wrong new chat inputs")
-			}
-			if err := emit(buddy.Event{Type: "chat", Chat: &buddy.Chat{ID: "created", UserID: user.ID, Title: text}}); err != nil {
-				return buddy.Message{}, err
-			}
-			if failure {
-				return buddy.Message{}, errors.New("internal secret")
-			}
-			if err := emit(buddy.Event{Type: "text", Text: "Ответ"}); err != nil {
-				return buddy.Message{}, err
-			}
-			return buddy.Message{ID: 2, ChatID: "created", Role: buddy.RoleAssistant, Content: "Ответ"}, nil
-		}}
-		w := messageRequestAt(service, "/api/chats/messages", `{"content":"Первый вопрос"}`, true)
-		body := w.Body.String()
-		if w.Code != 200 || w.Header().Get("Content-Type") != "text/event-stream" || !w.Flushed || !strings.HasPrefix(body, "event: chat\n") || !strings.Contains(body, `"id":"created","user_id":"user","title":"Первый вопрос"`) {
-			t.Fatalf("new chat stream: %d %s", w.Code, body)
+func TestNoAttachmentsOrHistory(t *testing.T) {
+	a := &fakeAgent{generate: func(_ context.Context, _ users.User, h []buddy.Message, _ func(buddy.Event) error) (buddy.Answer, error) {
+		if len(h) != 1 || h[0].Content != "new" {
+			t.Fatal(h)
 		}
-		if failure {
-			if !strings.Contains(body, "event: error") || strings.Contains(body, "event: done") || strings.Contains(body, "secret") {
-				t.Fatal(body)
-			}
-		} else if !strings.Contains(body, "event: done") || !strings.Contains(body, `"chat_id":"created"`) {
-			t.Fatal(body)
+		return buddy.Answer{Content: "answer"}, nil
+	}}
+	for range 2 {
+		w := send(NewHandler(a, 6), `{"messages":[{"role":"user","content":"new"}]}`, "intern")
+		if w.Body.String() != "event: done\ndata: {\"content\":\"answer\",\"source\":null,\"ticket\":null}\n\n" {
+			t.Fatal(w.Body)
 		}
 	}
-}
-
-func TestFirstMessageValidation(t *testing.T) {
-	for _, body := range []string{`broken`, `{}`, `{"content":" "}`, `{"content":3}`, `{"content":"q"} {}`} {
-		service := &fakeDialog{}
-		w := messageRequestAt(service, "/api/chats/messages", body, true)
-		if w.Code != 400 || service.calls != 0 {
-			t.Fatalf("invalid new chat: %d calls %d", w.Code, service.calls)
-		}
-	}
-	service := &fakeDialog{}
-	if w := messageRequestAt(service, "/api/chats/messages", `{"content":"q"}`, false); w.Code != 401 || service.calls != 0 {
-		t.Fatalf("unauthorized new chat: %d calls %d", w.Code, service.calls)
-	}
-}
-
-func (d *fakeDialog) ConfirmTicket(ctx context.Context, user users.User, chatID string, messageID int64, title, description string) (buddy.Ticket, bool, error) {
-	d.calls++
-	return d.confirm(ctx, user, chatID, messageID, title, description)
 }

@@ -73,9 +73,35 @@ func testRepository(t *testing.T) (*Repository, context.Context) {
 	return NewRepository(db), ctx
 }
 
+func TestSchemaLifecycle(t *testing.T) {
+	repo, ctx := testRepository(t)
+	var tables string
+	if err := repo.db.QueryRowContext(ctx, `SELECT string_agg(tablename, ',' ORDER BY tablename) FROM pg_tables WHERE schemaname=current_schema()`).Scan(&tables); err != nil {
+		t.Fatal(err)
+	}
+	if tables != "chunks,documents,goose_db_version,mentorships,tickets,users" {
+		t.Fatalf("unexpected tables: %s", tables)
+	}
+	if err := goose.DownToContext(ctx, repo.db, "../../../migrations", 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.db.QueryRowContext(ctx, `SELECT string_agg(tablename, ',' ORDER BY tablename) FROM pg_tables WHERE schemaname=current_schema()`).Scan(&tables); err != nil {
+		t.Fatal(err)
+	}
+	if tables != "goose_db_version" {
+		t.Fatalf("rollback left tables: %s", tables)
+	}
+	if err := goose.UpContext(ctx, repo.db, "../../../migrations"); err != nil {
+		t.Fatal(err)
+	}
+	if err := users.Seed(ctx, repo.db); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestTickets(t *testing.T) {
 	repo, ctx := testRepository(t)
-	if err := users.Seed(ctx, repo.db.(*sql.DB)); err != nil {
+	if err := users.Seed(ctx, repo.db); err != nil {
 		t.Fatal(err)
 	}
 	intern := users.User{ID: "intern.backend.1", Role: users.RoleIntern}
@@ -111,10 +137,10 @@ func TestTickets(t *testing.T) {
 		values[i] = added
 	}
 	// Force equal timestamps for the ID tie-break, then a newer ticket with a smaller ID.
-	if _, err := repo.db.(*sql.DB).ExecContext(ctx, `UPDATE tickets SET created_at = '2026-01-01Z'`); err != nil {
+	if _, err := repo.db.ExecContext(ctx, `UPDATE tickets SET created_at = '2026-01-01Z'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.db.(*sql.DB).ExecContext(ctx, `UPDATE tickets SET created_at = '2026-01-02Z' WHERE id = 'a'`); err != nil {
+	if _, err := repo.db.ExecContext(ctx, `UPDATE tickets SET created_at = '2026-01-02Z' WHERE id = 'a'`); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
@@ -161,7 +187,7 @@ func TestTickets(t *testing.T) {
 		t.Fatal("orphan accepted")
 	}
 	// Access follows current assignments, independently of team membership.
-	if _, err := repo.db.(*sql.DB).ExecContext(ctx, `UPDATE mentorships SET mentor_id='mentor.platform' WHERE intern_id=$1`, intern.ID); err != nil {
+	if _, err := repo.db.ExecContext(ctx, `UPDATE mentorships SET mentor_id='mentor.platform' WHERE intern_id=$1`, intern.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := repo.Get(ctx, mentor, "a"); !errors.Is(err, sql.ErrNoRows) {
@@ -170,17 +196,17 @@ func TestTickets(t *testing.T) {
 	if _, err := repo.Get(ctx, users.User{ID: "mentor.platform", Role: users.RoleMentor}, "a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := goose.DownToContext(ctx, repo.db.(*sql.DB), "../../../migrations", 3); err != nil {
+	if err := goose.DownToContext(ctx, repo.db, "../../../migrations", 2); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := repo.List(ctx, intern); err == nil {
 		t.Fatal("table survived rollback")
 	}
 	var count int
-	if err := repo.db.(*sql.DB).QueryRowContext(ctx, `SELECT count(*) FROM users`).Scan(&count); err != nil || count != 6 {
+	if err := repo.db.QueryRowContext(ctx, `SELECT count(*) FROM users`).Scan(&count); err != nil || count != 6 {
 		t.Fatalf("rollback changed users: %d %v", count, err)
 	}
-	if err := goose.UpContext(ctx, repo.db.(*sql.DB), "../../../migrations"); err != nil {
+	if err := goose.UpContext(ctx, repo.db, "../../../migrations"); err != nil {
 		t.Fatal(err)
 	}
 	if list, err := repo.List(ctx, intern); err != nil || len(list) != 0 {
@@ -190,13 +216,14 @@ func TestTickets(t *testing.T) {
 
 func TestHTTPAccess(t *testing.T) {
 	repo, ctx := testRepository(t)
-	if err := users.Seed(ctx, repo.db.(*sql.DB)); err != nil {
+	if err := users.Seed(ctx, repo.db); err != nil {
 		t.Fatal(err)
 	}
 	h := handler.NewHandler(repo)
-	selected := middleware.Middleware(usersrepository.NewRepository(repo.db.(*sql.DB)))
+	selected := middleware.Middleware(usersrepository.NewRepository(repo.db))
 	mux := http.NewServeMux()
 
+	mux.Handle("POST /api/tickets", selected(http.HandlerFunc(h.Create)))
 	mux.Handle("GET /api/tickets", selected(http.HandlerFunc(h.List)))
 	mux.Handle("GET /api/tickets/{id}", selected(http.HandlerFunc(h.Get)))
 	request := func(method, path, user, body string, status int) *httptest.ResponseRecorder {
@@ -213,15 +240,42 @@ func TestHTTPAccess(t *testing.T) {
 		return w
 	}
 	for _, user := range []string{"", "missing"} {
-		request("POST", "/api/tickets", user, `{"title":"x","description":"y"}`, 405)
+		request("POST", "/api/tickets", user, `{"title":"x","description":"y"}`, 401)
 		request("GET", "/api/tickets", user, "", 401)
 		request("GET", "/api/tickets/missing", user, "", 401)
 	}
-	request("POST", "/api/tickets", "mentor.backend", `{"title":"x","description":"y"}`, 405)
-	if _, err := repo.Add(ctx, ticket.Ticket{ID: "created", UserID: "intern.backend.1", Title: "Помогите", Description: "Нет доступа 🔑"}); err != nil {
+	request("POST", "/api/tickets", "mentor.backend", `{"title":"x","description":"y"}`, 403)
+	for _, body := range []string{``, `null`, `{}`, `{"title":" ","description":"x"}`, `{"title":"x","description":" "}`, `{"title":"x","description":"y"} {}`, `{"title":"x","description":"y"} rubbish`, `{"title":"` + strings.Repeat("x", 1<<20) + `","description":"y"}`} {
+		request("POST", "/api/tickets", "intern.backend.1", body, 400)
+	}
+	var first, second ticketResponseForTest
+	for i := range 2 {
+		response := request("POST", "/api/tickets", "intern.backend.1", `{"title":"  Помогите  ","description":" Нет доступа 🔑 ","user_id":"intern.platform.1"}`, 201)
+		var value ticketResponseForTest
+		if err := json.Unmarshal(response.Body.Bytes(), &value); err != nil {
+			t.Fatal(err)
+		}
+		if value.ID == "" || value.UserID != "intern.backend.1" || value.Title != "Помогите" || value.Description != "Нет доступа 🔑" || value.CreatedAt.IsZero() {
+			t.Fatalf("created: %+v", value)
+		}
+		stored, err := repo.Get(ctx, users.User{ID: value.UserID, Role: users.RoleIntern}, value.ID)
+		if err != nil || stored.Title != value.Title || stored.Description != value.Description {
+			t.Fatalf("stored: %+v %v", stored, err)
+		}
+		if i == 0 {
+			first = value
+		} else {
+			second = value
+		}
+	}
+	if first.ID == second.ID {
+		t.Fatal("duplicate POST reused ticket")
+	}
+	if _, err := repo.db.ExecContext(ctx, `DELETE FROM tickets WHERE id=$1`, second.ID); err != nil {
 		t.Fatal(err)
 	}
-	w := request("GET", "/api/tickets/created", "intern.backend.1", "", 200)
+
+	w := request("GET", "/api/tickets/"+first.ID, "intern.backend.1", "", 200)
 	var created ticketResponseForTest
 	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
 		t.Fatal(err)

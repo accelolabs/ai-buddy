@@ -41,7 +41,7 @@ func (s userRepository) Get(context.Context, string) (users.User, error) {
 }
 
 func TestErrors(t *testing.T) {
-	for _, method := range []string{"list", "get"} {
+	for _, method := range []string{"create", "list", "get"} {
 		for _, tc := range []struct {
 			role     string
 			selected bool
@@ -49,15 +49,21 @@ func TestErrors(t *testing.T) {
 			status   int
 		}{
 			{users.RoleIntern, false, nil, 401},
+			{users.RoleMentor, true, nil, 403},
 			{users.RoleIntern, true, errors.New("private database details"), 500},
 			{users.RoleMentor, true, errors.New("private database details"), 500},
 			{users.RoleIntern, true, fmt.Errorf("wrapped: %w", sql.ErrNoRows), 404},
 		} {
+			if tc.status == 403 && method != "create" {
+				continue
+			}
 			t.Run(fmt.Sprintf("%s-%s-%d", method, tc.role, tc.status), func(t *testing.T) {
 				repo := &failingRepository{err: tc.err}
 				h := NewHandler(repo)
 				f := h.Get
 				switch method {
+				case "create":
+					f = h.Create
 				case "list":
 					f = h.List
 				}
@@ -72,6 +78,9 @@ func TestErrors(t *testing.T) {
 				want := tc.status
 				if tc.status == 404 && method != "get" {
 					want = 500
+				}
+				if method == "create" && tc.role == users.RoleMentor {
+					want = 403
 				}
 				if w.Code != want || strings.Contains(w.Body.String(), "private") || strings.Contains(w.Body.String(), "wrapped") {
 					t.Fatalf("error: %d %s", w.Code, w.Body)
