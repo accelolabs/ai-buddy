@@ -46,8 +46,7 @@ export function ChatMessageItem({
             to={`/wiki/${encodeURIComponent(message.source.document_id)}#${encodeURIComponent(message.source.anchor)}`}
           >
             <strong>{message.source.title}</strong>
-            <blockquote className="mt-2 text-sm text-slate-600">{message.source.quote}</blockquote>
-            <span className="text-sm text-sky-700">Читать статью →</span>
+            <span className="mt-2 block text-sm text-sky-700">Читать статью →</span>
           </Link>
         )}
         {message.ticket && <ActionCard kind="ticket" draft={message.ticket} />}
