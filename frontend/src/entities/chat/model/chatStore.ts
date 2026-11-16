@@ -102,8 +102,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     try {
       await streamChat(
         history
-          .filter((m) => m.content.trim() && (m.role === 'user' || m.status === 'completed'))
-          .map(({ role, content }) => ({ role, content })),
+          .filter((m) => m.role === 'user' || m.status === 'completed')
+          .map((m) => {
+            const tasks = m.tasks ?? (m.task_completion ? [m.task_completion] : undefined);
+            const content =
+              m.role === 'assistant' && tasks
+                ? `${m.content}\n\nЗадачи в карточке:\n${JSON.stringify(tasks.map(({ id, description, status }) => ({ id, description, status })))}`
+                : m.content;
+
+            return { role: m.role, content };
+          })
+          .filter((m) => m.content.trim()),
         onEvent,
         active.signal,
       );

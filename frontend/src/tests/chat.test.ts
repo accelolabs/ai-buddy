@@ -101,13 +101,60 @@ describe('SSE and in-memory chat', () => {
     expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
       messages: [
         { role: 'user', content: 'Вопрос' },
-        { role: 'assistant', content: 'Ответ' },
+        {
+          role: 'assistant',
+          content: `Ответ\n\nЗадачи в карточке:\n${JSON.stringify([{ id: completion.id, description: completion.description, status: completion.status }])}`,
+        },
         { role: 'user', content: 'да' },
       ],
     });
     useChatStore.getState().startNewChat();
     expect(useChatStore.getState().messages).toEqual([]);
   });
+  it.each(['tasks', 'task_completion'] as const)(
+    'passes actual task IDs from %s cards to the next model request',
+    async (card) => {
+      const task = {
+        id: 'ZX66BRN6SKY6CMOZN6BBEZ3O3K',
+        user_id: 'intern',
+        description: 'Украсть Фобос',
+        status: 'pending' as const,
+        deadline: '2027-01-01T12:00:00Z',
+        created_at: '',
+      };
+      const fetch = vi
+        .fn()
+        .mockResolvedValue(
+          response(frame('done', { content: 'Подтвердите кнопкой', task_completion: task })),
+        );
+      vi.stubGlobal('fetch', fetch);
+      useChatStore.setState({
+        messages: [
+          {
+            id: 'card',
+            role: 'assistant',
+            content: '',
+            status: 'completed',
+            stages: [],
+            [card]: card === 'tasks' ? [task] : task,
+          },
+        ],
+      });
+      await useChatStore.getState().sendMessage('Я украл Фобос');
+      const messages = JSON.parse(fetch.mock.calls[0][1].body).messages;
+      expect(messages).toEqual([
+        {
+          role: 'assistant',
+          content: `\n\nЗадачи в карточке:\n${JSON.stringify([{ id: task.id, description: task.description, status: task.status }])}`,
+        },
+        { role: 'user', content: 'Я украл Фобос' },
+      ]);
+      expect(useChatStore.getState().messages[0].content).toBe('');
+      expect(useChatStore.getState().messages.at(-1)?.task_completion?.id).toBe(task.id);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fetch.mock.calls[0][0]).toBe('/api/buddy/messages');
+    },
+  );
   it('appends repeated states and tool calls below the completed steps', async () => {
     const states = [
       { state: 'thinking' },
