@@ -42,6 +42,7 @@ func (s *Service) List(ctx context.Context, user users.User) ([]wiki.Document, e
 	}
 
 	values := make([]wiki.Document, 0, len(documents))
+
 	for _, document := range documents {
 		if document.Team == "" || document.Team == user.Team {
 			values = append(values, document)
@@ -69,6 +70,7 @@ func (s *Service) Get(ctx context.Context, user users.User, id string) ([]byte, 
 	if err != nil {
 		return nil, fmt.Errorf("%w: open knowledge base: %w", ErrReadFile, err)
 	}
+
 	defer func() {
 		_ = root.Close()
 	}()

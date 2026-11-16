@@ -23,18 +23,21 @@ type repositoryStub struct {
 func (r *repositoryStub) Add(_ context.Context, value tracker.Task) (tracker.Task, error) {
 	r.calls++
 	r.value = value
+
 	return value, r.err
 }
 
 func (r *repositoryStub) List(_ context.Context, user users.User, id string) ([]tracker.Task, error) {
 	r.calls++
 	r.user, r.id = user, id
+
 	return nil, r.err
 }
 
 func (r *repositoryStub) Complete(_ context.Context, user users.User, id string) (tracker.Task, error) {
 	r.calls++
 	r.user, r.id = user, id
+
 	return r.value, r.err
 }
 
@@ -50,10 +53,12 @@ func TestCreate(t *testing.T) {
 		first.Deadline.Format("2006-01-02T15:04:05Z07:00") != "2000-01-01T12:00:00+03:00" {
 		t.Fatalf("created: %+v, %v", first, err)
 	}
+
 	second, err := service.Create(t.Context(), user, "задача", "2000-01-01T12:00:00+03:00")
 	if err != nil || first.ID == second.ID {
 		t.Fatalf("IDs: %q %q; %v", first.ID, second.ID, err)
 	}
+
 	for _, input := range [][2]string{
 		{" ", "2000-01-01T00:00:00Z"},
 		{"task", ""},
@@ -66,6 +71,7 @@ func TestCreate(t *testing.T) {
 			t.Fatalf("validation: %v", err)
 		}
 	}
+
 	repo.err = fmt.Errorf("insert: %w", sql.ErrNoRows)
 	if _, err := service.Create(t.Context(), user, "task", "2000-01-01T00:00:00Z"); !errors.Is(err, sql.ErrNoRows) ||
 		errors.Is(err, ErrNotFound) {
@@ -78,13 +84,16 @@ func TestAccessAndErrors(t *testing.T) {
 	service := NewService(repo)
 	intern := users.User{ID: "intern", Role: users.RoleIntern}
 	mentor := users.User{ID: "mentor", Role: users.RoleMentor}
+
 	for _, user := range []users.User{mentor, {}} {
 		if _, err := service.Create(t.Context(), user, "", ""); !errors.Is(err, ErrForbidden) {
 			t.Fatal(err)
 		}
+
 		if _, err := service.List(t.Context(), user); !errors.Is(err, ErrForbidden) {
 			t.Fatal(err)
 		}
+
 		if _, err := service.Complete(t.Context(), user, "task"); !errors.Is(err, ErrForbidden) {
 			t.Fatal(err)
 		}
@@ -111,8 +120,10 @@ func TestAccessAndErrors(t *testing.T) {
 	if _, err := service.Complete(t.Context(), intern, "task"); err != nil || repo.user != intern || repo.id != "task" {
 		t.Fatal("completion identity")
 	}
+
 	for _, cause := range []error{fmt.Errorf("read: %w", sql.ErrNoRows), errors.New("database unavailable")} {
 		repo.err = cause
+
 		for _, call := range []func() error{
 			func() error { _, err := service.List(t.Context(), intern); return err },
 			func() error { _, err := service.ListIntern(t.Context(), mentor, "selected"); return err },

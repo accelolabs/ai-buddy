@@ -27,6 +27,7 @@ func Seed(ctx context.Context, db *sql.DB) error {
 			completed:   true,
 		},
 	}
+
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tracker seed: %w", err)

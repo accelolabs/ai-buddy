@@ -133,6 +133,7 @@ func TestGetChunksAnchors(t *testing.T) {
 		"c",
 		"конец",
 	}
+
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("anchors=%v, want %v", got, want)
 	}

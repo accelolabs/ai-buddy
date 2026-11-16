@@ -88,6 +88,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, service.ErrReadFile) {
 			message = "failed to read article"
 		}
+
 		http.Error(w, message, http.StatusInternalServerError)
 
 		return

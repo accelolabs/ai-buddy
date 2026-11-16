@@ -86,6 +86,7 @@ func TestMiddleware(t *testing.T) {
 					Role: users.RoleIntern,
 					Team: "backend",
 				}
+
 				getCalled := false
 				repository := getFunc(func(ctx context.Context, id string) (users.User, error) {
 					getCalled = true

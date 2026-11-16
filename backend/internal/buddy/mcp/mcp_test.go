@@ -39,6 +39,7 @@ func TestSearch(t *testing.T) {
 			},
 		}},
 	}
+
 	h := NewHandler(source, users.User{Team: "backend"}, nil, nil)
 	_, found, err := h.Search(ctx, nil, SearchArgs{Query: "question"})
 	if err != nil || len(found.Chunks) != 1 || source.query != "question" || source.team != "backend" {
@@ -52,6 +53,7 @@ func TestSearch(t *testing.T) {
 		Anchor:     "setup",
 		Text:       "Setup",
 	}
+
 	if found.Chunks[0] != want {
 		t.Fatalf("chunk: %+v", found.Chunks[0])
 	}
@@ -134,6 +136,7 @@ func TestMCPTools(t *testing.T) {
 
 		return result
 	}
+
 	call("search_documents", map[string]any{}, true)
 	call("attach_source", map[string]any{
 		"document_id": "doc",
@@ -178,6 +181,7 @@ func TestAttachSessionResults(t *testing.T) {
 			},
 		}},
 	}
+
 	h := NewHandler(search, users.User{Team: "backend"}, nil, nil)
 	attach := func(id string, ordinal int, wantError bool) {
 		t.Helper()
@@ -189,6 +193,7 @@ func TestAttachSessionResults(t *testing.T) {
 			t.Fatalf("attach: %+v, %v", result, err)
 		}
 	}
+
 	attach("a", 2, true)
 	if _, _, err := h.Search(ctx, nil, SearchArgs{Query: "one"}); err != nil {
 		t.Fatal(err)

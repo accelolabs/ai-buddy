@@ -89,6 +89,7 @@ func parseDocument(name, content string) wiki.Document {
 		Path:  name,
 		Title: strings.TrimSuffix(path.Base(name), ".md"),
 	}
+
 	if team, _, nested := strings.Cut(name, "/"); nested {
 		document.Team = team
 	}

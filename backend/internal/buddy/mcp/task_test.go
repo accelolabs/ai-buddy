@@ -32,7 +32,8 @@ func TestPrepareTask(t *testing.T) {
 	}
 
 	encoded, err := json.Marshal(names)
-	if err != nil || string(encoded) != `["attach_source","list_tasks","prepare_task","prepare_task_completion","prepare_ticket","search_documents"]` {
+	if err != nil || string(encoded) != `["attach_source","list_tasks","prepare_task",`+
+		`"prepare_task_completion","prepare_ticket","search_documents"]` {
 		t.Fatalf("tools: %s %v", encoded, err)
 	}
 
@@ -53,6 +54,7 @@ func TestPrepareTask(t *testing.T) {
 			}
 		}
 	}
+
 	call(map[string]any{
 		"description": " \nЗадача 🔑\t",
 		"deadline":    "2020-01-01T12:00:00+03:00",

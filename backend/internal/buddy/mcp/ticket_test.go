@@ -34,6 +34,7 @@ func TestPrepareTicket(t *testing.T) {
 		ID:   "intern",
 		Role: users.RoleIntern,
 	}
+
 	h := NewHandler(&fakeRAG{}, user, store, nil)
 	session, closeSession, err := h.OpenSession(t.Context())
 	if err != nil {
@@ -57,6 +58,7 @@ func TestPrepareTicket(t *testing.T) {
 			t.Fatalf("result: %+v %v", result, err)
 		}
 	}
+
 	call(map[string]any{
 		"title":       "  Тема 🔑 ",
 		"description": "\nОписание\t",
@@ -69,6 +71,7 @@ func TestPrepareTicket(t *testing.T) {
 			Name: "Ментор",
 		},
 	}
+
 	if !reflect.DeepEqual(h.Ticket(), want) || store.intern != user.ID {
 		t.Fatalf("card: %+v", h.Ticket())
 	}

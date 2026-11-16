@@ -22,6 +22,7 @@ func TestEmbed(t *testing.T) {
 			Input    string `json:"input"`
 			Truncate *bool  `json:"truncate"`
 		}
+
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
@@ -99,6 +100,7 @@ func TestEmbedCancellation(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("request not started")
 	}
+
 	cancel()
 	select {
 	case err := <-done:

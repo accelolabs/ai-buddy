@@ -16,6 +16,7 @@ type TicketArgs struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 }
+
 type TicketResult struct {
 	Prepared bool `json:"prepared"`
 }

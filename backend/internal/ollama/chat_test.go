@@ -48,6 +48,7 @@ func TestChat(t *testing.T) {
 				if stream {
 					emit = func(part string) error {
 						text += part
+
 						return nil
 					}
 				}

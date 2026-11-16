@@ -64,6 +64,7 @@ func TestSearch(t *testing.T) {
 				Text:       "Setup",
 			}},
 		}
+
 		embed := &fakeEmbedder{}
 		got, err := NewRAG(repo, embed, count).Search(t.Context(), "Как начать?", "backend")
 		if err != nil || !reflect.DeepEqual(got, []Match{{

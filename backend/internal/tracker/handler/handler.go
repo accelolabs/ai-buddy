@@ -184,6 +184,7 @@ func (h *Handler) Complete(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+
 	// Completion is a button action with no request body.
 	var body [1]byte
 	if n, err := r.Body.Read(body[:]); n != 0 || err != io.EOF {

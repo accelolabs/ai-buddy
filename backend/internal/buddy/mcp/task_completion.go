@@ -60,5 +60,6 @@ func (h *Handler) TaskCompletion() *tracker.Task {
 	}
 
 	value := *h.taskCompletion
+
 	return &value
 }

@@ -45,6 +45,7 @@ func (h *Handler) ListTasks(
 	tasks := make([]tracker.Task, len(values))
 	copy(tasks, values)
 	result := ListTasksResult{Tasks: make([]ListedTask, 0, len(tasks))}
+
 	for _, value := range tasks {
 		result.Tasks = append(result.Tasks, ListedTask{
 			ID:          value.ID,

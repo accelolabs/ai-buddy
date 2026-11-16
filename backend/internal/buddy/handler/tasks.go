@@ -22,6 +22,7 @@ func tasksView(tasks []tracker.Task) []listedTaskResponse {
 	}
 
 	response := make([]listedTaskResponse, 0, len(tasks))
+
 	for _, value := range tasks {
 		response = append(response, listedTaskView(value))
 	}
@@ -46,5 +47,6 @@ func taskCompletionView(value *tracker.Task) *listedTaskResponse {
 	}
 
 	response := listedTaskView(*value)
+
 	return &response
 }

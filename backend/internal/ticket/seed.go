@@ -22,6 +22,7 @@ func Seed(ctx context.Context, db *sql.DB) error {
 				" приложения и необходимые настройки.",
 		},
 	}
+
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin ticket seed: %w", err)

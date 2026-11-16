@@ -14,10 +14,12 @@ type key struct {
 	documentID string
 	ordinal    int
 }
+
 type AttachArgs struct {
 	DocumentID string `json:"document_id"`
 	Ordinal    int    `json:"ordinal"`
 }
+
 type AttachResult struct {
 	Attached bool `json:"attached"`
 }
