@@ -1,0 +1,55 @@
+{
+  "tickets": [
+    {
+      "id": "TCK-1042",
+      "subject": "Можно ли перенести график 1:1 со среды на четверг?",
+      "description": "В среду в 15:00 пересекается университетский семинар по дипломной практике. Хотела бы перенести нашу еженедельную встречу 1:1 на четверг в любое удобное время.",
+      "status": "in_review",
+      "createdAt": "2026-11-15T11:40:00.000Z",
+      "author": {
+        "name": "Даша",
+        "role": "Стажёр",
+        "department": "Frontend Platform"
+      },
+      "recipient": {
+        "name": "Катя",
+        "role": "Наставник команды"
+      },
+      "url": "https://tickets.ai-buddy.local/t/TCK-1042"
+    },
+    {
+      "id": "TCK-1039",
+      "subject": "Доступ к staging-стенду дизайн-системы",
+      "description": "Не могу зайти на staging-стенд дизайн-системы, выдает 403. Нужен доступ для проверки верстки.",
+      "status": "resolved",
+      "createdAt": "2026-11-13T14:20:00.000Z",
+      "author": {
+        "name": "Даша",
+        "role": "Стажёр",
+        "department": "Frontend Platform"
+      },
+      "recipient": {
+        "name": "Катя",
+        "role": "Наставник команды"
+      },
+      "url": "https://tickets.ai-buddy.local/t/TCK-1039"
+    },
+    {
+      "id": "TCK-1034",
+      "subject": "Выбор темы для итоговой презентации к экватору",
+      "description": "Подготовила 3 темы для итоговой презентации на экваторе практики, нужно обсудить и утвердить одну из них.",
+      "status": "resolved",
+      "createdAt": "2026-11-10T10:15:00.000Z",
+      "author": {
+        "name": "Даша",
+        "role": "Стажёр",
+        "department": "Frontend Platform"
+      },
+      "recipient": {
+        "name": "Катя",
+        "role": "Наставник команды"
+      },
+      "url": "https://tickets.ai-buddy.local/t/TCK-1034"
+    }
+  ]
+}
