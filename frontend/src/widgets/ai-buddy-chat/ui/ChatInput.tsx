@@ -1,5 +1,6 @@
 import { memo } from 'react';
-import { Send } from 'lucide-react';
+import { Send, Square } from 'lucide-react';
+import { useChatStore } from '@/entities/chat';
 import { useChatInput } from '../model/useChatInput';
 
 export interface ChatInputProps {
@@ -8,6 +9,13 @@ export interface ChatInputProps {
 }
 
 export const ChatInput = memo(function ChatInput({ onSubmit, className = '' }: ChatInputProps) {
+  const busy = useChatStore((state) => state.busy);
+  const stop = useChatStore((state) => state.stop);
+  const icon = busy ? (
+    <Square className="h-4 w-4 text-white" fill="currentColor" />
+  ) : (
+    <Send className="h-4 w-4 text-white" />
+  );
   const {
     textareaRef,
     draft,
@@ -50,29 +58,31 @@ export const ChatInput = memo(function ChatInput({ onSubmit, className = '' }: C
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              handleExpand();
+              if (busy) stop();
+              else handleExpand();
             }}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#00AAFF] transition-all duration-200 hover:bg-[#0096e6]"
-            title="Начать ввод"
+            title={busy ? 'Остановить ответ' : 'Начать ввод'}
           >
-            <Send className="h-4 w-4 text-white" />
+            {icon}
           </button>
         )}
       </div>
 
       {isExpanded && (
-        <div className="flex items-center justify-between pt-1">
+        <div className="flex items-center justify-end pt-1">
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              handleSend();
+              if (busy) stop();
+              else handleSend();
             }}
-            disabled={!draft.trim()}
+            disabled={!busy && !draft.trim()}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#00AAFF] transition-all duration-200 hover:bg-[#0096e6] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
-            title="Отправить сообщение"
+            title={busy ? 'Остановить ответ' : 'Отправить сообщение'}
           >
-            <Send className="h-4 w-4 text-white" />
+            {icon}
           </button>
         </div>
       )}

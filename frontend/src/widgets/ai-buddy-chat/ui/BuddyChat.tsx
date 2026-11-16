@@ -7,11 +7,13 @@ import { ChatInput } from './ChatInput';
 import { ChatMessageItem } from './ChatMessageItem';
 
 export function BuddyChat() {
-  const { messages, busy, retryMessage, applyPrompt, stop } = useChatStore();
-  const end = useRef<HTMLDivElement>(null);
+  const { messages, busy, retryMessage, applyPrompt, isExpanded } = useChatStore();
+  const input = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    end.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (messages.length || isExpanded) {
+      input.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, [messages, isExpanded]);
   return (
     <div className="relative z-10 flex flex-1 flex-col">
       {messages.length ? (
@@ -24,7 +26,6 @@ export function BuddyChat() {
               busy={busy}
             />
           ))}
-          <div ref={end} />
         </div>
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-8 px-4 py-12">
@@ -47,14 +48,16 @@ export function BuddyChat() {
           </div>
         </div>
       )}
-      <div className="mx-auto w-full max-w-[760px] px-4 pb-6">
-        {busy ? (
-          <button className="mb-3 rounded-lg border px-3 py-2 text-sm" onClick={stop}>
-            Остановить ответ
-          </button>
-        ) : (
-          <ChatInput />
-        )}
+      <div
+        ref={input}
+        onTransitionEnd={(event) => {
+          if (event.propertyName === 'height') {
+            input.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+          }
+        }}
+        className="mx-auto w-full max-w-[760px] px-4 pb-6"
+      >
+        <ChatInput />
       </div>
     </div>
   );
