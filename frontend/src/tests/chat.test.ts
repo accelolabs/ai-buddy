@@ -108,6 +108,75 @@ describe('SSE and in-memory chat', () => {
     useChatStore.getState().startNewChat();
     expect(useChatStore.getState().messages).toEqual([]);
   });
+  it('appends repeated states and tool calls below the completed steps', async () => {
+    const states = [
+      { state: 'thinking' },
+      { state: 'progress', progress: 'search_documents' },
+      { state: 'thinking' },
+      { state: 'progress', progress: 'attach_source' },
+      { state: 'thinking' },
+      { state: 'answering' },
+    ];
+    const snapshots: { label: string; status: string }[][] = [];
+    const unsubscribe = useChatStore.subscribe((s) => {
+      const stages = s.messages.at(-1)?.stages;
+      if (stages?.at(-1)?.status === 'in_progress') snapshots.push(stages);
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          response(
+            states.map((state) => frame('state', state)).join('') +
+              frame('done', { content: 'Ответ' }),
+          ),
+        ),
+    );
+    try {
+      await useChatStore.getState().sendMessage('Вопрос');
+    } finally {
+      unsubscribe();
+    }
+    expect(snapshots.map((stages) => stages.length)).toEqual([1, 2, 3, 4, 5, 6]);
+    snapshots.forEach((stages) => {
+      expect(stages.slice(0, -1).every((stage) => stage.status === 'completed')).toBe(true);
+      expect(stages.at(-1)?.status).toBe('in_progress');
+    });
+    const stages = useChatStore.getState().messages[1].stages;
+    expect(stages.map((stage) => stage.label)).toEqual([
+      'Обдумываю запрос',
+      'Выполняю действие · Ищу в базе знаний',
+      'Обдумываю запрос',
+      'Выполняю действие · Добавляю источник',
+      'Обдумываю запрос',
+      'Формулирую ответ',
+    ]);
+    expect(new Set(stages.map((stage) => stage.id)).size).toBe(6);
+    expect(stages.every((stage) => stage.status === 'completed')).toBe(true);
+  });
+  it.each([{}, { source: null }])(
+    'keeps the streamed source when done has no attachment: %j',
+    async (final) => {
+      const source = {
+        document_id: 'wiki-1',
+        ordinal: 1,
+        title: 'Статья',
+        anchor: 'раздел',
+        quote: 'Цитата',
+      };
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            response(frame('source', source) + frame('done', { content: 'Ответ', ...final })),
+          ),
+      );
+      await useChatStore.getState().sendMessage('Вопрос');
+      expect(useChatStore.getState().messages[1].source).toEqual(source);
+    },
+  );
   it('clears state and cache, aborting all requests on user changes', async () => {
     changeUser('first');
     queryClient.setQueryData(['tasks'], ['private']);

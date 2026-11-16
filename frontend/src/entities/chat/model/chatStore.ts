@@ -72,7 +72,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             status: 'completed' as const,
           }));
           const stage = {
-            id: state,
+            id: `${state}-${m.stages.length}`,
             label:
               ({
                 thinking: 'Обдумываю запрос',
@@ -84,9 +84,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 : ''),
             status: 'in_progress' as const,
           };
-          const index = stages.findIndex((s) => s.id === state);
-          if (index >= 0) stages[index] = stage;
-          else stages.push(stage);
+          stages.push(stage);
           return { ...m, stages };
         }
         if (event.type === 'text') return { ...m, content: m.content + event.data.text };
@@ -94,6 +92,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           return {
             ...m,
             ...event.data,
+            source: event.data.source ?? m.source,
             status: 'completed',
             stages: m.stages.map((s) => ({ ...s, status: 'completed' })),
           };
