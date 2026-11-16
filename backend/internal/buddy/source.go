@@ -1,0 +1,20 @@
+package buddy
+
+import "backend/internal/tracker"
+
+type Source struct {
+	DocumentID string
+	Ordinal    int
+	Title      string
+	Anchor     string
+	Quote      string
+}
+
+type Answer struct {
+	Content        string
+	Source         *Source
+	Ticket         *Ticket
+	Task           *Task
+	Tasks          []tracker.Task
+	TaskCompletion *tracker.Task
+}
