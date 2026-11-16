@@ -74,15 +74,36 @@ export const CardCircuit = memo(function CardCircuit({
             style={{ animationDuration: '3.4s', animationDelay: '0.4s' }}
           />
 
-          <circle cx="975" cy="216.31" r="5" fill="currentColor" opacity="0.35" filter={`url(#cardGlow-${ticketId})`} />
+          <circle
+            cx="975"
+            cy="216.31"
+            r="5"
+            fill="currentColor"
+            opacity="0.35"
+            filter={`url(#cardGlow-${ticketId})`}
+          />
           <circle cx="975" cy="216.31" r="3" fill="currentColor" />
           <circle cx="975" cy="216.31" r="1.2" fill="#FFFFFF" opacity="0.9" />
 
-          <circle cx="991" cy="224.31" r="5" fill="currentColor" opacity="0.35" filter={`url(#cardGlow-${ticketId})`} />
+          <circle
+            cx="991"
+            cy="224.31"
+            r="5"
+            fill="currentColor"
+            opacity="0.35"
+            filter={`url(#cardGlow-${ticketId})`}
+          />
           <circle cx="991" cy="224.31" r="3" fill="currentColor" />
           <circle cx="991" cy="224.31" r="1.2" fill="#FFFFFF" opacity="0.9" />
 
-          <circle cx="1046" cy="212.31" r="5" fill="currentColor" opacity="0.35" filter={`url(#cardGlow-${ticketId})`} />
+          <circle
+            cx="1046"
+            cy="212.31"
+            r="5"
+            fill="currentColor"
+            opacity="0.35"
+            filter={`url(#cardGlow-${ticketId})`}
+          />
           <circle cx="1046" cy="212.31" r="3" fill="currentColor" />
           <circle cx="1046" cy="212.31" r="1.2" fill="#FFFFFF" opacity="0.9" />
         </g>
@@ -116,7 +137,11 @@ export const CardCircuit = memo(function CardCircuit({
           <path d="M1063 305.62H1031L1013 323.62H981" />
           <path d="M1063 314.62H1035L1019 330.62V345.62" />
           <path d="M965 345.62L977 333.62H1003" />
-          <path d="M1063 305.62H1061H1059H1057H1049H1047" stroke={isActive ? '#0EA5E9' : '#64748B'} strokeWidth="1.4" />
+          <path
+            d="M1063 305.62H1061H1059H1057H1049H1047"
+            stroke={isActive ? '#0EA5E9' : '#64748B'}
+            strokeWidth="1.4"
+          />
         </g>
 
         <g
@@ -151,11 +176,25 @@ export const CardCircuit = memo(function CardCircuit({
             style={{ animationDuration: '3.2s', animationDelay: '0.4s' }}
           />
 
-          <circle cx="981" cy="323.62" r="5" fill="currentColor" opacity="0.35" filter={`url(#cardGlow-${ticketId})`} />
+          <circle
+            cx="981"
+            cy="323.62"
+            r="5"
+            fill="currentColor"
+            opacity="0.35"
+            filter={`url(#cardGlow-${ticketId})`}
+          />
           <circle cx="981" cy="323.62" r="3" fill="currentColor" />
           <circle cx="981" cy="323.62" r="1.2" fill="#FFFFFF" opacity="0.9" />
 
-          <circle cx="1003" cy="333.62" r="5" fill="currentColor" opacity="0.35" filter={`url(#cardGlow-${ticketId})`} />
+          <circle
+            cx="1003"
+            cy="333.62"
+            r="5"
+            fill="currentColor"
+            opacity="0.35"
+            filter={`url(#cardGlow-${ticketId})`}
+          />
           <circle cx="1003" cy="333.62" r="3" fill="currentColor" />
           <circle cx="1003" cy="333.62" r="1.2" fill="#FFFFFF" opacity="0.9" />
         </g>
@@ -188,7 +227,11 @@ export const CardCircuit = memo(function CardCircuit({
         <path d="M1063 415.93H1023L1004 434.93H973" />
         <path d="M991 454.93L1005 440.93H1039L1051 428.93H1063" />
         <path d="M1027 454.93V444.93L1035 436.93" />
-        <path d="M1063 415.93H1061H1051H1049H1047" stroke={isActive ? '#0EA5E9' : '#64748B'} strokeWidth="1.4" />
+        <path
+          d="M1063 415.93H1061H1051H1049H1047"
+          stroke={isActive ? '#0EA5E9' : '#64748B'}
+          strokeWidth="1.4"
+        />
       </g>
 
       <g
@@ -223,11 +266,25 @@ export const CardCircuit = memo(function CardCircuit({
           style={{ animationDuration: '3s', animationDelay: '0.3s' }}
         />
 
-        <circle cx="973" cy="434.93" r="5" fill="currentColor" opacity="0.35" filter={`url(#cardGlow-${ticketId})`} />
+        <circle
+          cx="973"
+          cy="434.93"
+          r="5"
+          fill="currentColor"
+          opacity="0.35"
+          filter={`url(#cardGlow-${ticketId})`}
+        />
         <circle cx="973" cy="434.93" r="3" fill="currentColor" />
         <circle cx="973" cy="434.93" r="1.2" fill="#FFFFFF" opacity="0.9" />
 
-        <circle cx="1035" cy="436.93" r="5" fill="currentColor" opacity="0.35" filter={`url(#cardGlow-${ticketId})`} />
+        <circle
+          cx="1035"
+          cy="436.93"
+          r="5"
+          fill="currentColor"
+          opacity="0.35"
+          filter={`url(#cardGlow-${ticketId})`}
+        />
         <circle cx="1035" cy="436.93" r="3" fill="currentColor" />
         <circle cx="1035" cy="436.93" r="1.2" fill="#FFFFFF" opacity="0.9" />
       </g>

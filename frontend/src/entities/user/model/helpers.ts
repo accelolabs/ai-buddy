@@ -4,7 +4,7 @@ export function getUserRoleLabel(role?: UserRole): string {
   switch (role) {
     case 'mentor':
       return 'Наставник';
-    case 'trainee':
+    case 'intern':
     default:
       return 'Стажер';
   }

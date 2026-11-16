@@ -31,9 +31,7 @@ export const ExecutionStages = memo(function ExecutionStages({
             <Check className="h-3 w-3 text-[#04E061]" />
           </span>
           <span>
-            {stages.length === 1
-              ? 'Выполнен 1 этап'
-              : `Выполнено этапов: ${stages.length}`}
+            {stages.length === 1 ? 'Выполнен 1 этап' : `Выполнено этапов: ${stages.length}`}
           </span>
           <ChevronDown
             className={`h-3.5 w-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}

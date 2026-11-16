@@ -1,29 +1,44 @@
+import { changeUser, sessionSignal } from './session';
+
 export class ApiError extends Error {
   readonly status: number;
-  readonly data?: unknown;
-
-  constructor(status: number, message: string, data?: unknown) {
+  constructor(status: number, message: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
-    this.data = data;
   }
 }
 
-export async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const baseUrl = (import.meta.env.VITE_API_URL as string | undefined) || '';
-  const response = await fetch(`${baseUrl}${endpoint}`, {
+export async function fetchApi(endpoint: string, options: RequestInit = {}): Promise<Response> {
+  const signal = AbortSignal.any([sessionSignal(), ...(options.signal ? [options.signal] : [])]);
+  const headers = new Headers(options.headers);
+  if (options.body) headers.set('Content-Type', 'application/json');
+  const response = await fetch(`${import.meta.env.VITE_API_URL || ''}${endpoint}`, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
+    signal,
+    credentials: 'include',
   });
-
+  signal.throwIfAborted();
   if (!response.ok) {
-    const errorData = await response.json().catch(() => null);
-    throw new ApiError(response.status, `HTTP error ${response.status}`, errorData);
+    const text = await response.text();
+    signal.throwIfAborted();
+    let message = text.trim() || `HTTP ${response.status}`;
+    try {
+      message = JSON.parse(text).error || message;
+    } catch {
+      /* Plain text errors are part of the API. */
+    }
+    if (response.status === 401) changeUser(null);
+    throw new ApiError(response.status, message);
   }
+  return response;
+}
 
-  return response.json();
+export async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetchApi(endpoint, options);
+  if (response.status === 204) return undefined as T;
+  return response.headers.get('Content-Type')?.includes('application/json')
+    ? response.json()
+    : (response.text() as Promise<T>);
 }

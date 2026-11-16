@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { useQueryClient } from '@tanstack/react-query';
+import { changeUser } from '@/shared/api/session';
+import { RequestState } from '@/shared/ui/RequestState';
 import {
   User as UserIcon,
   ChevronDown,
@@ -11,16 +12,14 @@ import {
   Check,
 } from 'lucide-react';
 import chipLogo from '@/assets/chip-logo.svg';
-import { MOCK_USERS, type MockUserMeta, setUserIdCookie, getUserIdCookie } from '@/entities/user';
+import { useUsers, getUserRoleLabel, type User } from '@/entities/user';
 
 export function LoginForm() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const users = useUsers();
+  const [selectedId, setSelectedId] = useState('');
+  const selectedUser = users.data?.find((u) => u.id === selectedId) ?? users.data?.[0];
 
-  const currentCookieId = getUserIdCookie();
-  const initialUser = MOCK_USERS.find((u) => u.id === currentCookieId) ?? MOCK_USERS[0];
-
-  const [selectedUser, setSelectedUser] = useState<MockUserMeta>(initialUser);
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -31,20 +30,31 @@ export function LoginForm() {
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
+
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSelectUser = (user: MockUserMeta) => {
-    setSelectedUser(user);
+  const handleSelectUser = (user: User) => {
+    setSelectedId(user.id);
     setIsOpen(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setUserIdCookie(selectedUser.id);
-    await queryClient.invalidateQueries({ queryKey: ['user'] });
-    navigate(selectedUser.targetRoute);
+    if (!selectedUser) return;
+    changeUser(selectedUser.id);
+    navigate(selectedUser.role === 'mentor' ? '/route' : '/');
   };
+
+  if (!selectedUser)
+    return (
+      <RequestState
+        loading={users.isPending}
+        error={users.error}
+        retry={() => void users.refetch()}
+        empty="Нет пользователей"
+      />
+    );
 
   return (
     <div className="relative w-full max-w-[440px]">
@@ -87,7 +97,9 @@ export function LoginForm() {
                 <div className="flex items-center gap-2 text-[15px]">
                   <span className="font-bold text-[#0F172A]">{selectedUser.name}</span>
                   <span className="text-[#94A3B8]">—</span>
-                  <span className="text-[14px] text-[#64748B]">{selectedUser.roleLabel}</span>
+                  <span className="text-[14px] text-[#64748B]">
+                    {getUserRoleLabel(selectedUser.role)}
+                  </span>
                 </div>
               </div>
 
@@ -103,7 +115,7 @@ export function LoginForm() {
                 role="listbox"
                 className="absolute z-20 mt-1.5 w-full overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
               >
-                {MOCK_USERS.map((user) => {
+                {users.data?.map((user) => {
                   const isSelected = user.id === selectedUser.id;
                   return (
                     <button
@@ -127,7 +139,9 @@ export function LoginForm() {
                         <div className="flex items-center gap-2 text-[15px]">
                           <span className="font-bold text-[#0F172A]">{user.name}</span>
                           <span className="text-[#94A3B8]">—</span>
-                          <span className="text-[14px] text-[#64748B]">{user.roleLabel}</span>
+                          <span className="text-[14px] text-[#64748B]">
+                            {getUserRoleLabel(user.role)}
+                          </span>
                         </div>
                       </div>
 
@@ -145,7 +159,9 @@ export function LoginForm() {
                 <Hexagon className="h-3 w-3 stroke-[2] text-[#94A3B8]" />
                 <span>Роль</span>
               </div>
-              <div className="text-[14px] font-bold text-[#0F172A]">{selectedUser.roleTitle}</div>
+              <div className="text-[14px] font-bold text-[#0F172A]">
+                {getUserRoleLabel(selectedUser.role)}
+              </div>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -161,7 +177,11 @@ export function LoginForm() {
 
           <div className="mb-6 flex items-start gap-2.5 text-[11.5px] leading-relaxed text-[#64748B]">
             <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#00A3FF]" />
-            <p>{selectedUser.infoNote}</p>
+            <p>
+              {selectedUser.role === 'mentor'
+                ? 'Просмотр маршрута назначенных стажёров'
+                : 'Чат, задачи и база знаний команды'}
+            </p>
           </div>
 
           <button

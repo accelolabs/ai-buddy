@@ -16,11 +16,6 @@ export const PROMPT_ACTIONS: PromptAction[] = [
     promptText: 'Защита данных и КИ',
   },
   {
-    title: 'Мой прогресс',
-    subtitle: 'открытие карты прогресса',
-    promptText: '/progress',
-  },
-  {
     title: 'Покажи памятку',
     subtitle: 'о закрытии практики',
     promptText: 'Покажи памятку о закрытии практики',

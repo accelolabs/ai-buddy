@@ -7,6 +7,7 @@ import { ChatPage } from '@/pages/chat';
 import { RoutePage } from '@/pages/route';
 import { TicketsPage } from '@/pages/tickets';
 import { LoginPage } from '@/pages/login';
+import { WikiPage } from '@/pages/wiki/WikiPage';
 
 function App() {
   return (
@@ -19,7 +20,7 @@ function App() {
               path="/"
               element={
                 <TraineeRoute>
-                   <ChatPage />
+                  <ChatPage />
                 </TraineeRoute>
               }
             />
@@ -33,9 +34,11 @@ function App() {
             />
             <Route path="/route" element={<RoutePage />} />
             <Route path="/dashboard" element={<RoutePage />} />
+            <Route path="/wiki" element={<WikiPage />} />
+            <Route path="/wiki/:documentId" element={<WikiPage />} />
+            <Route path="/tickets" element={<TicketsPage />} />
+            <Route path="/tickets/:ticketId" element={<TicketsPage />} />
           </Route>
-          <Route path="/tickets" element={<TicketsPage />} />
-          <Route path="/tickets/:ticketId" element={<TicketsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

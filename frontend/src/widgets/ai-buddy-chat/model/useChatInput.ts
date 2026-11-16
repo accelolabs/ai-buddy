@@ -4,6 +4,7 @@ import { useChatStore, type ChatStore } from '@/entities/chat';
 export function useChatInput(onSubmit?: (value: string) => void) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const busy = useChatStore((s) => s.busy);
   const draft = useChatStore((state: ChatStore) => state.draft);
   const isExpanded = useChatStore((state: ChatStore) => state.isExpanded);
   const setDraft = useChatStore((state: ChatStore) => state.setDraft);
@@ -26,6 +27,7 @@ export function useChatInput(onSubmit?: (value: string) => void) {
   };
 
   const submitValue = (val: string) => {
+    if (busy) return;
     if (onSubmit) {
       onSubmit(val);
     } else {
@@ -57,11 +59,6 @@ export function useChatInput(onSubmit?: (value: string) => void) {
     }
   };
 
-  const handleInsertProgress = () => {
-    setDraft('/progress');
-    textareaRef.current?.focus();
-  };
-
   return {
     textareaRef,
     draft,
@@ -71,6 +68,5 @@ export function useChatInput(onSubmit?: (value: string) => void) {
     handleKeyDown,
     handleSend,
     handleExpand,
-    handleInsertProgress,
   };
 }

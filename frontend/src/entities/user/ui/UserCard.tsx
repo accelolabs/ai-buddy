@@ -1,8 +1,7 @@
 import { LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router';
-import { useQueryClient } from '@tanstack/react-query';
+import { changeUser } from '@/shared/api/session';
 import { getUserInitials, getUserRoleLabel } from '@/entities/user/model/helpers';
-import { clearUserIdCookie } from '../lib/cookies';
 import { useUser } from '../api/useUser';
 import type { User } from '../model/types';
 
@@ -22,7 +21,6 @@ export function UserCard({
   onLogout,
 }: UserCardProps) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { data: queryUser, isLoading } = useUser();
   const user = propUser ?? queryUser;
 
@@ -32,8 +30,7 @@ export function UserCard({
       onLogout();
       return;
     }
-    clearUserIdCookie();
-    await queryClient.invalidateQueries({ queryKey: ['user'] });
+    changeUser(null);
     navigate('/login');
   };
 
@@ -65,9 +62,7 @@ export function UserCard({
             {user?.name ?? 'Пользователь'}
           </span>
           {showRole && (
-            <span className="truncate text-xs text-sidebar-foreground/60">
-              {roleLabel}
-            </span>
+            <span className="truncate text-xs text-sidebar-foreground/60">{roleLabel}</span>
           )}
         </div>
       </div>

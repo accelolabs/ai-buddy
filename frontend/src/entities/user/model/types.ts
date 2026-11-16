@@ -1,4 +1,4 @@
-export type UserRole = 'trainee' | 'mentor';
+export type UserRole = 'intern' | 'mentor';
 
 export interface User {
   id: string;
@@ -10,7 +10,7 @@ export interface User {
 
 export function isTrainee(user?: User | null): boolean {
   if (!user) return false;
-  return user.role === 'trainee';
+  return user.role === 'intern';
 }
 
 export function isMentor(user?: User | null): boolean {

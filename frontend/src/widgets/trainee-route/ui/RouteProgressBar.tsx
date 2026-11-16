@@ -1,19 +1,15 @@
 import { memo } from 'react';
-import {
-  useRouteStore,
-  selectCompletedCount,
-  selectTotalCount,
-  selectProgressPercentage,
-  selectFilledSegments,
-} from '@/entities/trainee-route';
-
 const SEGMENT_COUNT = 24;
 
-export const RouteProgressBar = memo(function RouteProgressBar() {
-  const completedCount = useRouteStore(selectCompletedCount);
-  const totalCount = useRouteStore(selectTotalCount);
-  const percentage = useRouteStore(selectProgressPercentage);
-  const filledSegments = useRouteStore(selectFilledSegments);
+export const RouteProgressBar = memo(function RouteProgressBar({
+  completedCount,
+  totalCount,
+}: {
+  completedCount: number;
+  totalCount: number;
+}) {
+  const percentage = totalCount ? Math.round((completedCount / totalCount) * 100) : 0;
+  const filledSegments = Math.round((percentage / 100) * SEGMENT_COUNT);
 
   return (
     <div className="w-full">

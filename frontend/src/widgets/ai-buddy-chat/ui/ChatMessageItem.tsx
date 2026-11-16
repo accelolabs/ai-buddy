@@ -1,152 +1,97 @@
-import { memo, useState } from 'react';
+import { useState } from 'react';
+import { Link } from 'react-router';
 import { Copy, Check, RotateCcw } from 'lucide-react';
-import type { ChatMessage, MentorPayload, TicketDraftPayload } from '@/entities/chat';
+import type { ChatMessage } from '@/entities/chat';
 import { BuddyAvatar } from './BuddyAvatar';
 import { ExecutionStages } from './ExecutionStages';
-import { SourceCard } from './SourceCard';
-import { MentorCard } from './MentorCard';
-import { TicketDraftCard } from './TicketDraftCard';
-import { TicketSuccessCard } from './TicketSuccessCard';
+import { ActionCard } from './ActionCard';
+import { dateTime, taskStatus } from '@/shared/api/contracts';
 
-export interface ChatMessageItemProps {
-  message: ChatMessage;
-  onRetry?: (messageId: string) => void;
-  onContactMentor?: (mentor: MentorPayload) => void;
-  onApproveDraft?: (draft: TicketDraftPayload) => void;
-  onUpdateDraft?: (updated: Partial<TicketDraftPayload>) => void;
-}
-
-export const ChatMessageItem = memo(function ChatMessageItem({
+export function ChatMessageItem({
   message,
   onRetry,
-  onContactMentor,
-  onApproveDraft,
-  onUpdateDraft,
-}: ChatMessageItemProps) {
+  busy,
+}: {
+  message: ChatMessage;
+  onRetry: (id: string) => void;
+  busy: boolean;
+}) {
   const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    if (!message.text) return;
-    try {
-      await navigator.clipboard.writeText(message.text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      void 0;
-    }
-  };
-
-  if (message.sender === 'user') {
+  const [copyError, setCopyError] = useState('');
+  if (message.role === 'user')
     return (
-      <div className="flex w-full justify-end py-2">
-        <div className="max-w-[85%] rounded-[20px] rounded-tr-[4px] bg-[#F1F5F9] px-5 py-3 text-[15px] leading-relaxed text-[#0F172A] shadow-xs sm:max-w-[70%]">
-          {message.text}
+      <div className="flex justify-end py-2">
+        <div className="max-w-[85%] whitespace-pre-wrap rounded-[20px] rounded-tr-sm bg-[#F1F5F9] px-5 py-3 text-[15px]">
+          {message.content}
         </div>
       </div>
     );
-  }
-
-  const isInProgress = message.status === 'in_progress';
-  const hasStages = message.stages && message.stages.length > 0;
-  const hasText = Boolean(message.text);
-  const hasCards = message.cards && message.cards.length > 0;
-
   return (
-    <div className="flex w-full gap-3 py-3">
-      <BuddyAvatar className="h-8 w-8 mt-0.5" />
-
-      <div className="flex flex-1 flex-col gap-3.5">
-        {hasStages && (
-          <ExecutionStages
-            stages={message.stages!}
-            showSkeleton={isInProgress && !hasText}
-            isCompleted={message.status === 'completed'}
-          />
+    <div className="flex gap-3 py-3">
+      <BuddyAvatar className="h-8 w-8 shrink-0" />
+      <div className="min-w-0 flex-1 space-y-3.5">
+        <ExecutionStages
+          stages={message.stages}
+          showSkeleton={message.status === 'in_progress' && !message.content}
+          isCompleted={message.status === 'completed'}
+        />
+        <div className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-[#0F172A]">
+          {message.content}
+        </div>
+        {message.source && (
+          <Link
+            className="block rounded-2xl border border-sky-200 bg-sky-50/50 p-4"
+            to={`/wiki/${encodeURIComponent(message.source.document_id)}#${encodeURIComponent(message.source.anchor)}`}
+          >
+            <strong>{message.source.title}</strong>
+            <blockquote className="mt-2 text-sm text-slate-600">{message.source.quote}</blockquote>
+            <span className="text-sm text-sky-700">Читать статью →</span>
+          </Link>
         )}
-
-        {hasText && (
-          <div className="text-[15px] leading-relaxed text-[#0F172A]">
-            <span className="whitespace-pre-wrap">{message.text}</span>
-            {isInProgress && (
-              <span
-                className="ml-1 inline-block h-4 w-1.5 animate-pulse rounded-xs bg-[#00AAFF] align-middle"
-                aria-label="Генерация текста"
-              />
+        {message.ticket && <ActionCard kind="ticket" draft={message.ticket} />}
+        {message.task && <ActionCard kind="task" draft={message.task} />}
+        {message.tasks && (
+          <div className="rounded-xl border p-4">
+            <h3 className="font-bold">Задачи</h3>
+            {message.tasks.length ? (
+              message.tasks.map((task) => (
+                <p key={task.id} className="mt-2">
+                  {task.description} · {taskStatus(task.status)} · {dateTime(task.deadline)}
+                </p>
+              ))
+            ) : (
+              <p>Задач пока нет</p>
             )}
           </div>
         )}
-
-        {hasCards && (
-          <div className="flex flex-col gap-3">
-            {message.cards!.map((card, idx) => {
-              if (card.type === 'wiki_source') {
-                return <SourceCard key={idx} source={card.payload} />;
-              }
-              if (card.type === 'mentor_fallback') {
-                return <MentorCard key={idx} mentor={card.payload} onContact={onContactMentor} />;
-              }
-              if (card.type === 'ticket_draft') {
-                return (
-                  <TicketDraftCard
-                    key={idx}
-                    draft={card.payload}
-                    onApprove={onApproveDraft}
-                    onUpdate={onUpdateDraft}
-                  />
-                );
-              }
-              if (card.type === 'ticket_success') {
-                return <TicketSuccessCard key={idx} ticket={card.payload} />;
-              }
-              return null;
-            })}
-          </div>
+        {message.task_completion && <ActionCard kind="complete" draft={message.task_completion} />}
+        {message.error && (
+          <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">
+            {message.error}
+          </p>
         )}
-
-        {message.status === 'error' && (
-          <div className="flex flex-col gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-            <p>{message.error || 'Произошла ошибка при обработке запроса.'}</p>
-            {onRetry && (
-              <button
-                type="button"
-                onClick={() => onRetry(message.id)}
-                className="self-start rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700"
-              >
-                Повторить
-              </button>
-            )}
-          </div>
-        )}
-
-        {message.status === 'completed' && hasText && (
-          <div className="flex items-center gap-2 pt-1 text-[#64748B]">
+        {message.status !== 'in_progress' && (
+          <div className="flex gap-3 text-slate-500">
             <button
-              type="button"
-              onClick={handleCopy}
-              className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-slate-100 hover:text-[#0F172A]"
-              title={copied ? 'Скопировано!' : 'Копировать'}
+              aria-label="Копировать"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(message.content);
+                  setCopied(true);
+                } catch {
+                  setCopyError('Не удалось скопировать текст');
+                }
+              }}
             >
-              {copied ? (
-                <Check className="h-4 w-4 text-[#04E061]" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
+              {copied ? <Check size={16} /> : <Copy size={16} />}
             </button>
-            {onRetry && (
-              <button
-                type="button"
-                onClick={() => onRetry(message.id)}
-                className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-slate-100 hover:text-[#0F172A]"
-                title="Перегенерировать ответ"
-              >
-                <RotateCcw className="h-4 w-4" />
-              </button>
-            )}
+            <button disabled={busy} title="Повторить ответ" onClick={() => onRetry(message.id)}>
+              <RotateCcw size={16} />
+            </button>
           </div>
         )}
+        {copyError && <p role="alert">{copyError}</p>}
       </div>
     </div>
   );
-});
-
-export default ChatMessageItem;
+}

@@ -1,4 +1,4 @@
-export const USER_ID_COOKIE = 'user_id';
+export const USER_ID_COOKIE = 'demo_user';
 const DEFAULT_MAX_AGE = 60 * 60 * 24 * 30;
 
 export function getUserIdCookie(): string | null {

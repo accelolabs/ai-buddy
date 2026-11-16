@@ -1,18 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
+import { request } from '@/shared/api';
+import { useSession } from '@/shared/api/session';
 import type { User } from '../model/types';
-import { MOCK_USERS, DEFAULT_USER } from '../constants/mockUsers';
-import { getUserIdCookie } from '../lib/cookies';
+
+export function useUsers() {
+  const revision = useSession((s) => s.revision);
+  return useQuery({
+    queryKey: ['users', revision],
+    queryFn: ({ signal }) => request<User[]>('/api/users', { signal }),
+  });
+}
 
 export function useUser() {
-  return useQuery<User>({
-    queryKey: ['user'],
-    queryFn: async () => {
-      const cookieUserId = getUserIdCookie();
-      if (!cookieUserId) {
-        return DEFAULT_USER;
-      }
-      const found = MOCK_USERS.find((u) => u.id === cookieUserId);
-      return found || DEFAULT_USER;
-    },
-  });
+  const userId = useSession((s) => s.userId);
+  const result = useUsers();
+  return { ...result, data: result.data?.find((user) => user.id === userId) };
 }

@@ -17,7 +17,6 @@ export const ChatInput = memo(function ChatInput({ onSubmit, className = '' }: C
     handleKeyDown,
     handleSend,
     handleExpand,
-    handleInsertProgress,
   } = useChatInput(onSubmit);
 
   return (
@@ -63,18 +62,6 @@ export const ChatInput = memo(function ChatInput({ onSubmit, className = '' }: C
 
       {isExpanded && (
         <div className="flex items-center justify-between pt-1">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleInsertProgress();
-            }}
-            className="text-left text-[13px] text-[#677891] transition-colors hover:text-[#00AAFF]"
-          >
-            Используйте <span className="font-medium text-[#00AAFF]">/progress</span>, чтобы перейти
-            к просмотру карты прогресса
-          </button>
-
           <button
             type="button"
             onClick={(e) => {
