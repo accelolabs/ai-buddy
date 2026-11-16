@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -106,6 +107,7 @@ func TestGenerate(t *testing.T) {
 
 		return ollama.Response{Message: ollama.Message{Content: "Ответ"}}, nil
 	}
+
 	history := make([]buddy.Message, 1, 10)
 	history[0] = buddy.Message{
 		Role:    "user",
@@ -267,6 +269,7 @@ func TestGenerateSearchAttachStream(t *testing.T) {
 				) {
 				t.Fatal(last)
 			}
+
 			return ollama.Response{
 				Message: ollama.Message{
 					Content: "Нашёл. ",
@@ -282,9 +285,11 @@ func TestGenerateSearchAttachStream(t *testing.T) {
 			if last := messages[len(messages)-1]; last.ToolName != "attach_source" || last.Content != `{"attached":true}` {
 				t.Fatal(last)
 			}
+
 			return ollama.Response{Message: ollama.Message{Content: "Ответ"}}, nil
 		default:
 			t.Fatal("answer regenerated")
+
 			return ollama.Response{}, nil
 		}
 	}
@@ -453,6 +458,7 @@ func TestGenerateSourceDoesNotLeak(t *testing.T) {
 			return ollama.Response{Message: ollama.Message{Content: "Answer"}}, nil
 		}
 	}
+
 	agent := testAgent(t, model, &fakeRAG{})
 	first, err := agent.Generate(t.Context(), users.User{
 		ID:   "first",
@@ -498,6 +504,7 @@ func TestGeneratePreparedHistory(t *testing.T) {
 
 			return ollama.Response{Message: ollama.Message{Content: "Ответ"}}, nil
 		}
+
 		if _, err := agent.Generate(t.Context(), users.User{}, history, nil); err != nil {
 			t.Fatal(err)
 		}
@@ -550,6 +557,7 @@ func TestGenerateToolErrors(t *testing.T) {
 						},
 					}, nil
 				}
+
 				answer, err := testAgent(t, model, &fakeRAG{}).Generate(t.Context(), users.User{}, nil, nil)
 				if err != nil || model.calls != 2 || answer.Content != "Инструмент не может быть вызван." ||
 					answer.Source != nil {
@@ -612,12 +620,14 @@ func TestTicketGeneration(t *testing.T) {
 
 		return ollama.Response{Message: ollama.Message{Content: "Подтвердите карточку"}}, nil
 	}
+
 	a := testAgent(t, model, &fakeRAG{})
 	a.users = mentorStore{}
 	user := users.User{
 		ID:   "intern",
 		Role: users.RoleIntern,
 	}
+
 	answer, err := a.Generate(t.Context(), user, nil, nil)
 	if err != nil || answer.Ticket == nil || answer.Ticket.Title != "Тема" || answer.Ticket.Recipient.ID != "mentor" {
 		t.Fatalf("answer: %+v %v", answer, err)
@@ -680,17 +690,20 @@ func TestAttachmentsTogether(t *testing.T) {
 			} else if len(messages) != 2 || messages[0].Role != "system" || messages[1].Content != "new request" {
 				t.Fatalf("previous context leaked: %+v", messages)
 			}
+
 			return ollama.Response{Message: ollama.Message{Content: "Ответ"}}, nil
 		}
 
 		return ollama.Response{Message: ollama.Message{Calls: calls}}, nil
 	}
+
 	a := testAgent(t, model, &fakeRAG{})
 	a.users = mentorStore{}
 	u := users.User{
 		ID:   "intern",
 		Role: users.RoleIntern,
 	}
+
 	answer, err := a.Generate(t.Context(), u, []buddy.Message{{
 		Role:    buddy.RoleUser,
 		Content: "first request",
@@ -754,9 +767,11 @@ func TestTaskGenerationAndSharedLimit(t *testing.T) {
 						if len(tools) != 0 {
 							t.Fatal("shared tool limit lost")
 						}
+
 						if !strings.Contains(messages[len(messages)-4].Content, "error") {
 							t.Fatal("missing validation error")
 						}
+
 						if overflow {
 							return ollama.Response{
 								Message: ollama.Message{
@@ -773,6 +788,7 @@ func TestTaskGenerationAndSharedLimit(t *testing.T) {
 
 					return ollama.Response{Message: ollama.Message{Content: "Подтвердите кнопкой"}}, nil
 				}
+
 				a := testAgent(t, model, &fakeRAG{})
 				a.users = mentorStore{}
 				answer, err := a.Generate(t.Context(), users.User{Role: users.RoleIntern}, nil, nil)
@@ -798,13 +814,15 @@ func TestTaskGenerationAndSharedLimit(t *testing.T) {
 }
 
 type taskStore struct {
+	err    error
 	values []tracker.Task
 	user   users.User
 }
 
 func (s *taskStore) List(_ context.Context, user users.User) ([]tracker.Task, error) {
 	s.user = user
-	return s.values, nil
+
+	return s.values, s.err
 }
 
 func TestTasksGeneration(t *testing.T) {
@@ -815,6 +833,7 @@ func TestTasksGeneration(t *testing.T) {
 				Name: "list_tasks", Arguments: []byte(`{}`),
 			}}}}}, nil
 		}
+
 		if model.calls == 2 {
 			last := messages[len(messages)-1]
 			if last.Role != "tool" || last.ToolName != "list_tasks" ||
@@ -822,8 +841,10 @@ func TestTasksGeneration(t *testing.T) {
 				t.Fatalf("model did not receive tasks: %+v", last)
 			}
 		}
+
 		return ollama.Response{Message: ollama.Message{Content: "Вот ваши задачи"}}, nil
 	}
+
 	a := testAgent(t, model, &fakeRAG{})
 	store := &taskStore{values: []tracker.Task{{ID: "saved", Status: "overdue"}}}
 	a.tracker = store
@@ -833,12 +854,14 @@ func TestTasksGeneration(t *testing.T) {
 		if event.Progress != "" {
 			progress = append(progress, event.Progress)
 		}
+
 		return nil
 	})
 	if err != nil || !reflect.DeepEqual(answer.Tasks, store.values) || store.user != user ||
 		!reflect.DeepEqual(progress, []string{"list_tasks"}) {
 		t.Fatalf("answer: %+v; progress: %v; %v", answer, progress, err)
 	}
+
 	answer, err = a.Generate(t.Context(), user, nil, nil)
 	if err != nil || answer.Tasks != nil {
 		t.Fatalf("tasks leaked: %+v; %v", answer, err)
@@ -853,11 +876,14 @@ func TestTaskCompletionGeneration(t *testing.T) {
 				Name: "prepare_task_completion", Arguments: []byte(`{"task_id":"saved"}`),
 			}}}}}, nil
 		}
+
 		if model.calls == 2 && !strings.Contains(messages[len(messages)-1].Content, `"prepared":true`) {
 			t.Fatal("completion preparation result missing")
 		}
+
 		return ollama.Response{Message: ollama.Message{Content: "Подтвердите завершение кнопкой"}}, nil
 	}
+
 	a := testAgent(t, model, &fakeRAG{})
 	store := &taskStore{values: []tracker.Task{{ID: "saved", Status: "pending"}}}
 	a.tracker = store
@@ -867,8 +893,66 @@ func TestTaskCompletionGeneration(t *testing.T) {
 		answer.TaskCompletion.Status != "pending" || store.user != user || store.values[0].Status != "pending" {
 		t.Fatalf("completion: %+v; %v", answer, err)
 	}
+
 	answer, err = a.Generate(t.Context(), user, nil, nil)
 	if err != nil || answer.TaskCompletion != nil {
 		t.Fatalf("card leaked: %+v; %v", answer, err)
+	}
+}
+
+func TestEmptyTasksAndToolFailureRemainDistinct(t *testing.T) {
+	for _, failed := range []bool{false, true} {
+		t.Run(fmt.Sprint(failed), func(t *testing.T) {
+			model := &fakeModel{}
+			store := &taskStore{}
+			if failed {
+				store.err = errors.New(`ERROR: relation "tasks" does not exist (SQLSTATE 42P01)`)
+			}
+			model.reply = func(messages []ollama.Message, _ []ollama.Tool) (ollama.Response, error) {
+				if model.calls == 1 {
+					return ollama.Response{Message: ollama.Message{Calls: []ollama.Call{{Function: ollama.Function{
+						Name: "list_tasks", Arguments: []byte(`{}`),
+					}}}}}, nil
+				}
+				last := messages[len(messages)-1]
+				var result map[string]json.RawMessage
+				if err := json.Unmarshal([]byte(last.Content), &result); err != nil {
+					t.Fatal(err)
+				}
+				if last.Role != "tool" || last.ToolName != "list_tasks" {
+					t.Fatalf("%+v", last)
+				}
+				if failed {
+					if strings.Contains(last.Content, "SQLSTATE") || strings.Contains(last.Content, "does not exist") {
+						t.Fatalf("private error leaked into model context: %s", last.Content)
+					}
+					var publicError string
+					if err := json.Unmarshal(result["error"], &publicError); err != nil {
+						t.Fatal(err)
+					}
+					if publicError != "Сбой инструмента. Действие не выполнено." {
+						t.Fatalf("error lost its meaning: %s", publicError)
+					}
+					if result["error"] == nil || result["tasks"] != nil {
+						t.Fatalf("failure became empty list: %s", last.Content)
+					}
+				} else if string(result["tasks"]) != "[]" || result["error"] != nil {
+					t.Fatalf("empty list became failure: %s", last.Content)
+				}
+				return ollama.Response{Message: ollama.Message{Content: "Ответ"}}, nil
+			}
+			a := testAgent(t, model, &fakeRAG{})
+			a.tracker = store
+			answer, err := a.Generate(t.Context(), users.User{ID: "intern", Role: users.RoleIntern}, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if failed && answer.Tasks != nil {
+				t.Fatalf("failure attached tasks: %+v", answer.Tasks)
+			}
+			if !failed && (answer.Tasks == nil || len(answer.Tasks) != 0) {
+				t.Fatalf("empty tasks lost: %+v", answer.Tasks)
+			}
+		})
 	}
 }

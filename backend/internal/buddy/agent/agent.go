@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -271,7 +272,9 @@ func (a *Agent) callTools(
 }
 
 func toolError(name, detail string) ollama.Message {
-	content, _ := json.Marshal(map[string]string{"error": detail})
+	log.Printf("buddy tool %q: %s", name, detail)
+
+	content, _ := json.Marshal(map[string]string{"error": "Сбой инструмента. Действие не выполнено."})
 
 	return ollama.Message{
 		Role:     "tool",
