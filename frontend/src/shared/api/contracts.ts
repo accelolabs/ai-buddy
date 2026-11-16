@@ -9,6 +9,7 @@ export interface Task extends TaskDraft {
   created_at: string;
 }
 export interface TicketDraft {
+  recipient?: { id: string; name: string };
   title: string;
   description: string;
 }

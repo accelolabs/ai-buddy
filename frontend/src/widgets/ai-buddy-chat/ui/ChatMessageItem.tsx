@@ -5,7 +5,7 @@ import type { ChatMessage } from '@/entities/chat';
 import { BuddyAvatar } from './BuddyAvatar';
 import { ExecutionStages } from './ExecutionStages';
 import { ActionCard } from './ActionCard';
-import { dateTime, taskStatus } from '@/shared/api/contracts';
+import { RouteChamferCard, RouteWireSegment } from '@/widgets/trainee-route';
 
 export function ChatMessageItem({
   message,
@@ -26,6 +26,8 @@ export function ChatMessageItem({
         </div>
       </div>
     );
+  const completionIndex =
+    message.tasks?.findIndex((task) => task.id === message.task_completion?.id) ?? -1;
   return (
     <div className="flex gap-3 py-3">
       <BuddyAvatar className="h-8 w-8 shrink-0" />
@@ -50,21 +52,28 @@ export function ChatMessageItem({
         )}
         {message.ticket && <ActionCard kind="ticket" draft={message.ticket} />}
         {message.task && <ActionCard kind="task" draft={message.task} />}
-        {message.tasks && (
-          <div className="rounded-xl border p-4">
+        {message.tasks && !message.task_completion && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
             <h3 className="font-bold">Задачи</h3>
             {message.tasks.length ? (
-              message.tasks.map((task) => (
-                <p key={task.id} className="mt-2">
-                  {task.description} · {taskStatus(task.status)} · {dateTime(task.deadline)}
-                </p>
+              message.tasks.map((task, index) => (
+                <div key={task.id}>
+                  <RouteWireSegment variant={task.status === 'completed' ? 'green' : 'gray'} />
+                  <RouteChamferCard task={task} order={index + 1} pending={false} />
+                </div>
               ))
             ) : (
               <p>Задач пока нет</p>
             )}
           </div>
         )}
-        {message.task_completion && <ActionCard kind="complete" draft={message.task_completion} />}
+        {message.task_completion && (
+          <ActionCard
+            kind="complete"
+            draft={message.task_completion}
+            order={completionIndex >= 0 ? completionIndex + 1 : undefined}
+          />
+        )}
         {message.error && (
           <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">
             {message.error}
