@@ -1,0 +1,43 @@
+.chat-background {
+  contain: layout paint;
+}
+
+@keyframes chat-neon-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    filter: drop-shadow(0 0 2px currentColor);
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 6px currentColor);
+  }
+}
+
+@keyframes chat-dash-flow {
+  0% {
+    stroke-dashoffset: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.chat-circuit-pulse {
+  animation: chat-neon-pulse 3s infinite ease-in-out;
+}
+
+.chat-circuit-flow {
+  stroke-dasharray: 0.3 0.7;
+  animation: chat-dash-flow 4.5s infinite linear;
+}
+
+.chat-background[data-paused] :is(.chat-circuit-pulse, .chat-circuit-flow) {
+  animation-play-state: paused;
+}
+
+@media (width < 900px) {
+  .chat-background :is(.chat-circuit-pulse, .chat-circuit-flow) {
+    animation-play-state: paused;
+  }
+}
